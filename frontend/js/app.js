@@ -507,9 +507,11 @@ function renderStrategyRows(statusMap) {
 // 2026-08-26：帳號↔策略配對第一步（見
 // docs/superpowers/plans/2026-08-26-account-strategy-pairing.md）——每個策略列
 // 下面多顯示一行「這個策略有沒有被客製化綁定給目前登入的帳號」，跟上面真正
-// 控制下單的啟動/停止開關並排顯示，不是另一個獨立畫面。這裡的開關只是記錄
-// 使用者自己的意圖，目前還不會影響上面那個真正的啟動/停止（那個仍然是全域
-// 單例的 strategy_service，還沒有按帳號分流）。
+// 控制下單的啟動/停止開關並排顯示，不是另一個獨立畫面。純文字顯示、不能點
+// ——這裡的綁定狀態目前完全不影響上面那個真正的啟動/停止（那個仍然是全域
+// 單例的 strategy_service，還沒有按帳號分流），放一個看起來能點的開關會讓
+// 人誤以為在控制同一件事（2026-08-26 實測發現的困惑，見對話紀錄）。等 Plan B
+// 真的把執行引擎接上帳號分流之後，再把這裡換成真正有作用的開關。
 let myStrategyConfigs = {};
 
 async function loadMyStrategyConfigs() {
@@ -533,32 +535,9 @@ function renderMyConfigBindings() {
       el.innerHTML = '<span class="binding-muted">尚未綁定給你的帳號</span>';
       return;
     }
-    el.innerHTML = `
-      <span class="binding-ok">✓ 已綁定給你（${escHtml(cfg.product_code)} × ${escHtml(cfg.qty)}）</span>
-      <label class="switch">
-        <input type="checkbox" class="my-config-toggle" data-strategy-id="${escHtml(sid)}" ${cfg.enabled ? 'checked' : ''} />
-        <span class="switch-track"></span>
-      </label>
-    `;
-    el.querySelector('.my-config-toggle').addEventListener('change', (ev) => onMyConfigToggle(sid, ev.target.checked));
+    const enabledNote = cfg.enabled ? '啟用中' : '未啟用';
+    el.innerHTML = `<span class="binding-ok">✓ 已綁定給你（${escHtml(cfg.product_code)} × ${escHtml(cfg.qty)}，${enabledNote}）</span>`;
   });
-}
-
-async function onMyConfigToggle(strategyId, checked) {
-  try {
-    const res = await apiFetch(`${API}/api/my-strategy-configs/toggle`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategy_id: strategyId, enabled: checked }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || '更新失敗');
-    if (myStrategyConfigs[strategyId]) myStrategyConfigs[strategyId].enabled = checked;
-  } catch (e) {
-    const box = document.querySelector(`.my-config-toggle[data-strategy-id="${strategyId}"]`);
-    if (box) box.checked = !checked;
-    alert(e.message);
-  }
 }
 
 async function setupAdminStrategyPanel() {
