@@ -247,6 +247,15 @@ input:focus { border-color: var(--blue); }
 }
 .strategy-row-detail.stopped { color: var(--red); }
 
+.strategy-row-binding {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 4px; font-size: 10px;
+}
+.strategy-row-binding .binding-ok { color: var(--green); }
+.strategy-row-binding .binding-muted { color: var(--muted); }
+
+.hidden { display: none !important; }
+
 .params-box { font-size: 11px; color: var(--muted); line-height: 1.5; max-height: 160px; overflow-y: auto; }
 
 .bottom-grid {

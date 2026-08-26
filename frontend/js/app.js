@@ -492,9 +492,107 @@ function renderStrategyRows(statusMap) {
     detail.className = 'strategy-row-detail' + (st.stopped ? ' stopped' : '');
     detail.textContent = strategyDetailText(st);
 
+    const binding = document.createElement('div');
+    binding.className = 'strategy-row-binding';
+    binding.id = `strategy-binding-${sid}`;
+
     row.appendChild(head);
     row.appendChild(detail);
+    row.appendChild(binding);
     container.appendChild(row);
+  });
+  renderMyConfigBindings();
+}
+
+// 2026-08-26：帳號↔策略配對第一步（見
+// docs/superpowers/plans/2026-08-26-account-strategy-pairing.md）——每個策略列
+// 下面多顯示一行「這個策略有沒有被客製化綁定給目前登入的帳號」，跟上面真正
+// 控制下單的啟動/停止開關並排顯示，不是另一個獨立畫面。這裡的開關只是記錄
+// 使用者自己的意圖，目前還不會影響上面那個真正的啟動/停止（那個仍然是全域
+// 單例的 strategy_service，還沒有按帳號分流）。
+let myStrategyConfigs = {};
+
+async function loadMyStrategyConfigs() {
+  try {
+    const res = await apiFetch(`${API}/api/my-strategy-configs`);
+    const rows = await res.json();
+    myStrategyConfigs = Object.fromEntries(rows.map((r) => [r.strategy_id, r]));
+  } catch (e) {
+    console.error(e);
+  }
+  renderMyConfigBindings();
+}
+
+function renderMyConfigBindings() {
+  strategyDefs.forEach((def) => {
+    const sid = def.strategy_id;
+    const el = document.getElementById(`strategy-binding-${sid}`);
+    if (!el) return;
+    const cfg = myStrategyConfigs[sid];
+    if (!cfg) {
+      el.innerHTML = '<span class="binding-muted">尚未綁定給你的帳號</span>';
+      return;
+    }
+    el.innerHTML = `
+      <span class="binding-ok">✓ 已綁定給你（${escHtml(cfg.product_code)} × ${escHtml(cfg.qty)}）</span>
+      <label class="switch">
+        <input type="checkbox" class="my-config-toggle" data-strategy-id="${escHtml(sid)}" ${cfg.enabled ? 'checked' : ''} />
+        <span class="switch-track"></span>
+      </label>
+    `;
+    el.querySelector('.my-config-toggle').addEventListener('change', (ev) => onMyConfigToggle(sid, ev.target.checked));
+  });
+}
+
+async function onMyConfigToggle(strategyId, checked) {
+  try {
+    const res = await apiFetch(`${API}/api/my-strategy-configs/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ strategy_id: strategyId, enabled: checked }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || '更新失敗');
+    if (myStrategyConfigs[strategyId]) myStrategyConfigs[strategyId].enabled = checked;
+  } catch (e) {
+    const box = document.querySelector(`.my-config-toggle[data-strategy-id="${strategyId}"]`);
+    if (box) box.checked = !checked;
+    alert(e.message);
+  }
+}
+
+async function setupAdminStrategyPanel() {
+  const defsRes = await apiFetch(`${API}/api/admin/strategy-defs`);
+  const defs = await defsRes.json();
+  const select = document.getElementById('admin-strategy-select');
+  const kindLabel = { breakout: '突破', pullback: '拉回' };
+  const dirLabel = { long: '只做多', short: '只做空' };
+  select.innerHTML = defs
+    .map((d) => `<option value="${escHtml(d.strategy_id)}">${escHtml(d.label)}（${kindLabel[d.strategy] || d.strategy}／${dirLabel[d.direction_limit] || d.direction_limit}）</option>`)
+    .join('');
+  document.getElementById('admin-strategy-panel').classList.remove('hidden');
+
+  document.getElementById('admin-save-btn').addEventListener('click', async () => {
+    const body = {
+      user_id: document.getElementById('admin-user-id').value.trim(),
+      strategy_id: select.value,
+      product_code: document.getElementById('admin-product-code').value.trim(),
+      qty: parseInt(document.getElementById('admin-qty').value, 10),
+      enabled: document.getElementById('admin-enabled').checked,
+    };
+    try {
+      const res = await apiFetch(`${API}/api/admin/strategy-configs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || '儲存失敗');
+      await loadMyStrategyConfigs(); // 萬一管理員幫自己帳號改設定，畫面要同步
+      alert('已儲存客製化設定。');
+    } catch (e) {
+      alert(e.message);
+    }
   });
 }
 
@@ -784,6 +882,14 @@ async function init() {
   await loadStrategyDefs();
   await refreshStrategyStatus();
   await refreshTradingSafety();
+  await loadMyStrategyConfigs();
+  try {
+    const meRes = await apiFetch(`${API}/api/me`);
+    const me = await meRes.json();
+    if (me.is_admin) await setupAdminStrategyPanel();
+  } catch (e) {
+    console.error(e);
+  }
 
   setInterval(() => refreshConnection(), 5000);
   setInterval(() => refreshOrders(), 3000);

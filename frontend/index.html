@@ -26,7 +26,6 @@
       <span class="dot" id="ws-status" title="WebSocket 狀態"></span>
       <span id="ws-count" style="font-size:10px;color:#8b949e;min-width:48px">—</span>
       <a href="backtest.html" class="nav-link">回測</a>
-      <a href="strategy-config.html" class="nav-link">我的策略</a>
       <button id="logout-btn" class="action-btn" type="button" onclick="logout()">登出</button>
     </div>
   </header>
@@ -64,6 +63,31 @@
           可同時勾選多個策略同時運行，各自獨立記帳、獨立風控。
         </div>
         <div id="strategy-list" class="strategy-list">載入中…</div>
+      </div>
+
+      <div class="panel hidden" id="admin-strategy-panel">
+        <div class="panel-header"><span>管理員：策略客製化</span></div>
+        <div class="form-row">
+          <label>目標使用者 user id</label>
+          <input type="text" id="admin-user-id" placeholder="uuid（Supabase Studio 複製）" />
+        </div>
+        <div class="form-row">
+          <label>策略</label>
+          <select id="admin-strategy-select"></select>
+        </div>
+        <div class="form-row">
+          <label>商品代碼</label>
+          <input type="text" id="admin-product-code" value="TM2608" />
+        </div>
+        <div class="form-row">
+          <label>口數</label>
+          <input type="number" id="admin-qty" min="1" value="1" />
+        </div>
+        <div class="form-row" style="flex-direction:row;align-items:center;gap:6px">
+          <input type="checkbox" id="admin-enabled" style="width:auto" />
+          <label style="margin:0;text-transform:none;font-size:12px">建立後直接啟用</label>
+        </div>
+        <button class="action-btn" type="button" id="admin-save-btn">儲存客製化設定</button>
       </div>
 
       <div class="panel">
@@ -150,6 +174,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=54"></script>
+  <script src="js/app.js?v=55"></script>
 </body>
 </html>
