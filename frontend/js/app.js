@@ -439,23 +439,47 @@ async function refreshOrders() {
 }
 
 let strategyDefs = [];
+let myStrategyConfigs = {};
 
+// 2026-08-26：帳號↔策略配對（見
+// docs/superpowers/plans/2026-08-26-account-strategy-pairing.md）——這個面板
+// 現在只顯示「綁定給目前登入帳號」的策略，不是固定顯示全部 4 個。綁定關係
+// 由後端直接寫入資料庫（見 backend/strategy_config_store.py 的
+// admin_upsert_strategy_config），這裡沒有網頁表單可以自己新增綁定——上架
+// 一個策略是工程操作（寫程式碼、部署、綁定資料庫），不是 Dashboard 上的
+// 一般操作。啟動/停止那顆開關完全沒變，還是原本會真的下單的機制。
 async function loadStrategyDefs() {
   try {
-    const res = await apiFetch(`${API}/api/strategy/list`);
-    strategyDefs = await res.json();
+    const [listRes, mineRes] = await Promise.all([
+      apiFetch(`${API}/api/strategy/list`),
+      apiFetch(`${API}/api/my-strategy-configs`),
+    ]);
+    const allDefs = await listRes.json();
+    const mineRows = await mineRes.json();
+    myStrategyConfigs = Object.fromEntries(mineRows.map((r) => [r.strategy_id, r]));
+    strategyDefs = allDefs.filter((d) => myStrategyConfigs[d.strategy_id]);
   } catch (e) {
     console.error(e);
+    strategyDefs = [];
   }
   renderStrategyRows({});
 }
 
 function renderStrategyRows(statusMap) {
   const container = document.getElementById('strategy-list');
+  const emptyEl = document.getElementById('strategy-list-empty');
   container.innerHTML = '';
+
+  if (!strategyDefs.length) {
+    if (emptyEl) emptyEl.classList.remove('hidden');
+    return;
+  }
+  if (emptyEl) emptyEl.classList.add('hidden');
+
   strategyDefs.forEach((def) => {
     const sid = def.strategy_id;
     const st = statusMap[sid] || { armed: false };
+    const cfg = myStrategyConfigs[sid];
     const row = document.createElement('div');
     row.className = 'strategy-row';
     row.dataset.strategyId = sid;
@@ -492,86 +516,15 @@ function renderStrategyRows(statusMap) {
     detail.className = 'strategy-row-detail' + (st.stopped ? ' stopped' : '');
     detail.textContent = strategyDetailText(st);
 
-    const binding = document.createElement('div');
-    binding.className = 'strategy-row-binding';
-    binding.id = `strategy-binding-${sid}`;
-
     row.appendChild(head);
     row.appendChild(detail);
-    row.appendChild(binding);
+    if (cfg) {
+      const binding = document.createElement('div');
+      binding.className = 'strategy-row-binding';
+      binding.textContent = `商品代碼 ${cfg.product_code} · 口數 ${cfg.qty}`;
+      row.appendChild(binding);
+    }
     container.appendChild(row);
-  });
-  renderMyConfigBindings();
-}
-
-// 2026-08-26：帳號↔策略配對第一步（見
-// docs/superpowers/plans/2026-08-26-account-strategy-pairing.md）——每個策略列
-// 下面多顯示一行「這個策略有沒有被客製化綁定給目前登入的帳號」，跟上面真正
-// 控制下單的啟動/停止開關並排顯示，不是另一個獨立畫面。純文字顯示、不能點
-// ——這裡的綁定狀態目前完全不影響上面那個真正的啟動/停止（那個仍然是全域
-// 單例的 strategy_service，還沒有按帳號分流），放一個看起來能點的開關會讓
-// 人誤以為在控制同一件事（2026-08-26 實測發現的困惑，見對話紀錄）。等 Plan B
-// 真的把執行引擎接上帳號分流之後，再把這裡換成真正有作用的開關。
-let myStrategyConfigs = {};
-
-async function loadMyStrategyConfigs() {
-  try {
-    const res = await apiFetch(`${API}/api/my-strategy-configs`);
-    const rows = await res.json();
-    myStrategyConfigs = Object.fromEntries(rows.map((r) => [r.strategy_id, r]));
-  } catch (e) {
-    console.error(e);
-  }
-  renderMyConfigBindings();
-}
-
-function renderMyConfigBindings() {
-  strategyDefs.forEach((def) => {
-    const sid = def.strategy_id;
-    const el = document.getElementById(`strategy-binding-${sid}`);
-    if (!el) return;
-    const cfg = myStrategyConfigs[sid];
-    if (!cfg) {
-      el.innerHTML = '<span class="binding-muted">尚未綁定給你的帳號</span>';
-      return;
-    }
-    const enabledNote = cfg.enabled ? '啟用中' : '未啟用';
-    el.innerHTML = `<span class="binding-ok">✓ 已綁定給你（${escHtml(cfg.product_code)} × ${escHtml(cfg.qty)}，${enabledNote}）</span>`;
-  });
-}
-
-async function setupAdminStrategyPanel() {
-  const defsRes = await apiFetch(`${API}/api/admin/strategy-defs`);
-  const defs = await defsRes.json();
-  const select = document.getElementById('admin-strategy-select');
-  const kindLabel = { breakout: '突破', pullback: '拉回' };
-  const dirLabel = { long: '只做多', short: '只做空' };
-  select.innerHTML = defs
-    .map((d) => `<option value="${escHtml(d.strategy_id)}">${escHtml(d.label)}（${kindLabel[d.strategy] || d.strategy}／${dirLabel[d.direction_limit] || d.direction_limit}）</option>`)
-    .join('');
-  document.getElementById('admin-strategy-panel').classList.remove('hidden');
-
-  document.getElementById('admin-save-btn').addEventListener('click', async () => {
-    const body = {
-      user_id: document.getElementById('admin-user-id').value.trim(),
-      strategy_id: select.value,
-      product_code: document.getElementById('admin-product-code').value.trim(),
-      qty: parseInt(document.getElementById('admin-qty').value, 10),
-      enabled: document.getElementById('admin-enabled').checked,
-    };
-    try {
-      const res = await apiFetch(`${API}/api/admin/strategy-configs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || '儲存失敗');
-      await loadMyStrategyConfigs(); // 萬一管理員幫自己帳號改設定，畫面要同步
-      alert('已儲存客製化設定。');
-    } catch (e) {
-      alert(e.message);
-    }
   });
 }
 
@@ -861,14 +814,6 @@ async function init() {
   await loadStrategyDefs();
   await refreshStrategyStatus();
   await refreshTradingSafety();
-  await loadMyStrategyConfigs();
-  try {
-    const meRes = await apiFetch(`${API}/api/me`);
-    const me = await meRes.json();
-    if (me.is_admin) await setupAdminStrategyPanel();
-  } catch (e) {
-    console.error(e);
-  }
 
   setInterval(() => refreshConnection(), 5000);
   setInterval(() => refreshOrders(), 3000);
