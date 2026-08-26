@@ -479,7 +479,6 @@ function renderStrategyRows(statusMap) {
   strategyDefs.forEach((def) => {
     const sid = def.strategy_id;
     const st = statusMap[sid] || { armed: false };
-    const cfg = myStrategyConfigs[sid];
     const row = document.createElement('div');
     row.className = 'strategy-row';
     row.dataset.strategyId = sid;
@@ -518,12 +517,6 @@ function renderStrategyRows(statusMap) {
 
     row.appendChild(head);
     row.appendChild(detail);
-    if (cfg) {
-      const binding = document.createElement('div');
-      binding.className = 'strategy-row-binding';
-      binding.textContent = `商品代碼 ${cfg.product_code} · 口數 ${cfg.qty}`;
-      row.appendChild(binding);
-    }
     container.appendChild(row);
   });
 }
