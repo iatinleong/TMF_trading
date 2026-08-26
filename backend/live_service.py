@@ -70,6 +70,22 @@ ws_clients: dict[str, set] = {}  # product_code -> WebSocket set
 _connect_error: str = ""
 _last_poll_at: float | None = None
 
+# 2026-08-26 實測抓到的問題：Shioaji 補缺原本包在「群益自己的 quote_ready
+# 變 true」分支底下，但群益的 OnConnection(3003) 事件實測過會間歇性完全不
+# 觸發（quote_ready 因此永遠卡在 False），Shioaji 這個本來要拿來自動補救的
+# 安全網就永遠沒機會執行——即使 Shioaji 本身是完全獨立的第三方連線，根本
+# 不需要群益報價「就緒」才能查。改成跟 quote_ready 脫鉤、定期檢查一次（見
+# _should_attempt_periodic_shioaji_backfill），不用等一個可能永遠不會發生
+# 的事件。
+SHIOAJI_BACKFILL_INTERVAL_SECONDS = 300.0
+_last_shioaji_backfill_attempt: float = 0.0
+
+
+def _should_attempt_periodic_shioaji_backfill(
+    now: float, last_attempt: float, *, interval: float = SHIOAJI_BACKFILL_INTERVAL_SECONDS
+) -> bool:
+    return (now - last_attempt) >= interval
+
 
 def _default_environment() -> int:
     _load_project_env()
@@ -236,7 +252,7 @@ def set_product(product_code: str) -> dict[str, Any]:
 
 async def poll_once() -> dict[str, Any] | None:
     """單次輪詢：刷新 broker 快照並回傳 tick 訊息。"""
-    global _last_poll_at
+    global _last_poll_at, _last_shioaji_backfill_attempt
     st = _broker_state()
     if not st.get("connected"):
         return None
@@ -281,19 +297,23 @@ async def poll_once() -> dict[str, Any] | None:
             )
         except Exception:  # noqa: BLE001 - 稽核 log 不該影響主流程
             pass
-        if ok:
-            # 2026-08-25：群益回補對「進行中交易時段」已經收盤的 K 棒不給資料
-            # （見 backend/shioaji_backfill.py 檔頭說明），這裡在群益回補成功
-            # 後順手檢查殘留缺口，有永豐金鑰才會真的連線，純粹錦上添花，
-            # 失敗/沒設定都不影響主流程。只在剛回補完那一次跑，不會每輪重跑。
-            try:
-                from .shioaji_backfill import backfill_via_shioaji
 
-                added = await asyncio.to_thread(backfill_via_shioaji, quote_product)
-                if added:
-                    logger.info("Shioaji 補缺完成：%s 新增 %d 根", quote_product, added)
-            except Exception as exc:  # noqa: BLE001
-                logger.debug("Shioaji 補缺失敗（不影響主流程）: %s", exc)
+    # 2026-08-26：Shioaji 補缺刻意跟上面的 quote_ready 分支脫鉤、獨立定期跑
+    # （見 _should_attempt_periodic_shioaji_backfill 說明）——群益的
+    # OnConnection(3003) 事件實測過會間歇性完全不觸發，quote_ready 卡住的話
+    # 上面那個分支整輪都不會進來，Shioaji 這個安全網也就永遠沒機會執行。
+    # Shioaji 是獨立的第三方連線，不需要等群益報價「就緒」。
+    now = time.time()
+    if _should_attempt_periodic_shioaji_backfill(now, _last_shioaji_backfill_attempt):
+        _last_shioaji_backfill_attempt = now
+        try:
+            from .shioaji_backfill import backfill_via_shioaji
+
+            added = await asyncio.to_thread(backfill_via_shioaji, quote_product)
+            if added:
+                logger.info("Shioaji 定期補缺：%s 新增 %d 根", quote_product, added)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Shioaji 定期補缺失敗（不影響主流程）: %s", exc)
 
     if st.get("connected") and not st.get("quote_connected"):
         try:
