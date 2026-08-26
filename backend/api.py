@@ -678,6 +678,36 @@ def api_query_stop_loss_report(account: str | None = None) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@app.get("/api/my-strategy-configs")
+def api_my_strategy_configs(request: Request) -> list[dict[str, object]]:
+    """只回傳呼叫者自己被客製化過的策略列——新帳號常態是空 list，不代表出錯，
+    前端要顯示「還沒有任何策略，請聯絡管理員」這種空狀態，不是自己生一份預設清單。"""
+    user_id = getattr(request.state, "user_id", "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="請先登入")
+    return list_user_strategy_configs(user_id)
+
+
+@app.post("/api/my-strategy-configs/toggle")
+def api_toggle_my_strategy_config(
+    request: Request, body: ToggleStrategyRequest
+) -> dict[str, object]:
+    """使用者自助動作：只能切換「已經綁定給自己」的策略開關，不能新增策略或
+    改參數（那是管理員的事，見 /api/admin/strategy-configs）。"""
+    user_id = getattr(request.state, "user_id", "")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="請先登入")
+    try:
+        row = set_strategy_enabled(user_id, body.strategy_id, body.enabled)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail="這個帳號還沒有這個策略的設定，請聯絡管理員幫你客製化"
+        )
+    return row
+
+
 @app.websocket("/ws/{product_code}")
 async def live_ws(websocket: WebSocket, product_code: str):
     # HTTP middleware（require_supabase_auth）不會套用到 WebSocket，這裡要自己

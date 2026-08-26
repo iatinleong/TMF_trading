@@ -11,9 +11,12 @@ from starlette.requests import Request
 
 from backend.api import (
     AdminStrategyConfigRequest,
+    ToggleStrategyRequest,
     api_admin_strategy_defs,
     api_admin_upsert_strategy_config,
     api_me,
+    api_my_strategy_configs,
+    api_toggle_my_strategy_config,
 )
 
 
@@ -106,3 +109,69 @@ def test_admin_upsert_calls_store_for_target_user(monkeypatch):
         "user-789", "breakout_long", product_code="TM2608", qty=3, enabled=False,
     )
     assert result == {"strategy_id": "breakout_long", "user_id": "user-789"}
+
+
+def test_my_strategy_configs_requires_login():
+    request = _make_request(user_id="")
+
+    with pytest.raises(HTTPException) as exc_info:
+        api_my_strategy_configs(request)
+    assert exc_info.value.status_code == 401
+
+
+def test_my_strategy_configs_returns_only_this_users_rows():
+    request = _make_request(user_id="user-123")
+
+    with patch(
+        "backend.api.list_user_strategy_configs",
+        return_value=[{"strategy_id": "breakout_long", "enabled": True}],
+    ) as mock_list:
+        result = api_my_strategy_configs(request)
+
+    mock_list.assert_called_once_with("user-123")
+    assert result == [{"strategy_id": "breakout_long", "enabled": True}]
+
+
+def test_my_strategy_configs_empty_for_account_with_no_custom_strategy():
+    # 新帳號、還沒被管理員客製化過任何策略——回傳空 list，不是錯誤。
+    request = _make_request(user_id="brand-new-user")
+
+    with patch("backend.api.list_user_strategy_configs", return_value=[]):
+        result = api_my_strategy_configs(request)
+
+    assert result == []
+
+
+def test_toggle_requires_login():
+    request = _make_request(user_id="")
+    body = ToggleStrategyRequest(strategy_id="breakout_long", enabled=True)
+
+    with pytest.raises(HTTPException) as exc_info:
+        api_toggle_my_strategy_config(request, body)
+    assert exc_info.value.status_code == 401
+
+
+def test_toggle_returns_404_when_not_customized_for_this_user():
+    request = _make_request(user_id="user-123")
+    body = ToggleStrategyRequest(strategy_id="breakout_long", enabled=True)
+
+    with patch("backend.api.set_strategy_enabled", return_value=None) as mock_set:
+        with pytest.raises(HTTPException) as exc_info:
+            api_toggle_my_strategy_config(request, body)
+
+    mock_set.assert_called_once_with("user-123", "breakout_long", True)
+    assert exc_info.value.status_code == 404
+
+
+def test_toggle_updates_existing_row():
+    request = _make_request(user_id="user-123")
+    body = ToggleStrategyRequest(strategy_id="breakout_long", enabled=False)
+
+    with patch(
+        "backend.api.set_strategy_enabled",
+        return_value={"strategy_id": "breakout_long", "enabled": False},
+    ) as mock_set:
+        result = api_toggle_my_strategy_config(request, body)
+
+    mock_set.assert_called_once_with("user-123", "breakout_long", False)
+    assert result == {"strategy_id": "breakout_long", "enabled": False}
