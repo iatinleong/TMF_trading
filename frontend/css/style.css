@@ -221,7 +221,7 @@ input:focus { border-color: var(--blue); }
 }
 .strategy-status-dot.armed { background: var(--green); }
 .strategy-status-dot.stopped { background: var(--red); }
-.strategy-row-head label {
+.strategy-row-head label:not(.switch) {
   flex: 1; margin: 0; font-size: 12px; font-weight: 600;
   color: var(--text); text-transform: none; letter-spacing: normal;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
