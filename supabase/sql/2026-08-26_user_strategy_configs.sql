@@ -20,13 +20,10 @@ alter table public.user_strategy_configs enable row level security;
 -- 不靠 RLS policy。
 
 -- 把「這個帳號」現在已經在跑的 4 個策略種成初始資料，代表現況。
--- ⚠️ 執行前，把下面的 '<YOUR_USER_ID>' 換成你自己的 Supabase user id
---    （Supabase Studio → Authentication → Users，複製你自己那一列的 UID；
---    或是先登入一次前端，用瀏覽器開發者工具打 GET /api/me 也看得到）。
 insert into public.user_strategy_configs (user_id, strategy_id, product_code, qty, enabled)
 values
-  ('<YOUR_USER_ID>', 'breakout_long', 'TM2608', 1, true),
-  ('<YOUR_USER_ID>', 'breakout_short', 'TM2608', 1, true),
-  ('<YOUR_USER_ID>', 'pullback_long', 'TM2608', 1, true),
-  ('<YOUR_USER_ID>', 'pullback_short', 'TM2608', 1, true)
+  ('01e79d6d-a686-4588-bdd2-5329512b97ef', 'breakout_long', 'TM2608', 1, true),
+  ('01e79d6d-a686-4588-bdd2-5329512b97ef', 'breakout_short', 'TM2608', 1, true),
+  ('01e79d6d-a686-4588-bdd2-5329512b97ef', 'pullback_long', 'TM2608', 1, true),
+  ('01e79d6d-a686-4588-bdd2-5329512b97ef', 'pullback_short', 'TM2608', 1, true)
 on conflict (user_id, strategy_id) do nothing;
