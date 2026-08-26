@@ -103,3 +103,21 @@ async def test_api_endpoint_accepts_token_via_query_param():
 
     mock_verify.assert_called_once_with("from-query")
     assert result == "ok-response"
+
+
+@pytest.mark.anyio
+async def test_valid_token_attaches_user_id_and_email_to_request_state():
+    request = _make_request(
+        "/api/positions",
+        headers=[(b"authorization", b"Bearer valid-token-here")],
+    )
+    call_next = AsyncMock(return_value="ok-response")
+
+    with patch(
+        "backend.api.verify_supabase_jwt",
+        return_value={"sub": "user-123", "email": "a@example.com"},
+    ):
+        await require_supabase_auth(request, call_next)
+
+    assert request.state.user_id == "user-123"
+    assert request.state.user_email == "a@example.com"

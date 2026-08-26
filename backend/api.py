@@ -139,10 +139,16 @@ async def require_supabase_auth(request: Request, call_next):
         token = auth_header[7:].strip()
 
     try:
-        verify_supabase_jwt(token or "")
+        claims = verify_supabase_jwt(token or "")
     except InvalidSupabaseToken:
         return JSONResponse({"detail": "請先登入"}, status_code=401)
 
+    # 2026-08-26：多帳號規劃第一步——把登入者身分掛到 request.state，讓後面
+    # 個人化/權限判斷的端點（/api/my-strategy-configs、/api/admin/* 等）知道
+    # 「這是誰、是不是管理員」，不用每個 handler 自己重新解一次 JWT（見
+    # docs/superpowers/plans/2026-08-26-account-strategy-pairing.md）。
+    request.state.user_id = claims.get("sub", "")
+    request.state.user_email = claims.get("email", "")
     return await call_next(request)
 
 
@@ -431,6 +437,26 @@ def _serialize_summary(summary: dict) -> dict[str, float | int | None]:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+def _is_admin(request: Request) -> bool:
+    """現階段只用一個環境變數做管理員清單（逗號分隔的信箱），不建角色資料表
+    ——只有你一個人是管理員，沒必要為此多一張表。之後真的有多個管理員/更細
+    的權限需求，再另外規劃。"""
+    email = getattr(request.state, "user_email", "").strip().lower()
+    if not email:
+        return False
+    admin_emails = {e.strip().lower() for e in os.getenv("ADMIN_EMAILS", "").split(",") if e.strip()}
+    return email in admin_emails
+
+
+@app.get("/api/me")
+def api_me(request: Request) -> dict[str, object]:
+    return {
+        "user_id": getattr(request.state, "user_id", ""),
+        "email": getattr(request.state, "user_email", ""),
+        "is_admin": _is_admin(request),
+    }
 
 
 # ── 實盤 Dashboard（對齊賽博纏論 API 命名）────────────────────────────────
