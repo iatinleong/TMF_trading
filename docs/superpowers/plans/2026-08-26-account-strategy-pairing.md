@@ -2,6 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **2026-08-26 事後更新：實際做出來的跟下面 Task 4/6 寫的不一樣，以這段為準。**
+> 執行完 Task 1-6 之後，根據回饋修正了兩個地方：
+> 1. **沒有「管理員：策略客製化」網頁表單**——「客製化」指的是幫客戶另外寫一份策略程式碼（不同進出場邏輯），不是網頁表單能表達的東西。綁定改成用 `scripts/bind_strategy.py`（CLI 工具）直接寫資料庫，`/api/admin/strategy-defs`、`/api/admin/strategy-configs`、`/api/my-strategy-configs/toggle`、`_is_admin`/`ADMIN_EMAILS` 都已經拿掉。
+> 2. **沒有獨立的「我的策略」頁面**——綁定給帳號的策略，直接顯示在既有的「自動策略」面板裡（過濾掉沒綁定的），不是另一個分頁/導覽連結。`frontend/strategy-config.html`/`strategy-config.js` 已刪除。
+>
+> `user_strategy_configs` 表、`backend/strategy_config_store.py`、`/api/my-strategy-configs`（唯讀）這些底層資料層維持不變，只是存取方式（CLI 而非網頁）跟顯示位置（既有面板而非獨立頁）改了。
+
 **Goal:** 每個登入帳號的「策略」欄位預設是空的；只有管理員（你自己）針對特定使用者的需求，手動把 `STRATEGY_DEFS` 裡的某個策略客製化綁定給那個帳號（設定商品代碼/口數），使用者自己只能對「已經綁定給他的」策略按開關（啟用/停用），不能自己新增或改參數。你目前這個帳號本身已經在跑 4 個策略（`breakout_long`/`breakout_short`/`pullback_long`/`pullback_short`），這個計畫會把這個現況原封不動地寫成第一批資料。
 
 **Architecture:** 沿用專案既有的「輕量 REST 呼叫 Supabase，不用完整 SDK」慣例（見 `backend/secrets_store.py`），新增一張 `user_strategy_configs` 表。後端在 `require_supabase_auth` middleware 驗證 JWT 後，把 `claims["sub"]`/`claims["email"]` 掛到 `request.state`；一般使用者端點只能讀/切換自己 `user_id` 底下已存在的列，新增/改參數的寫入動作只開放給 `ADMIN_EMAILS` 環境變數允許清單裡的信箱。**這個計畫刻意不觸碰 `live_service.py`/`strategy_service.py` 的執行邏輯**——這兩個模組目前是全域單例（一份持倉、一條 SKCOM 連線），「一台機器同時並發多個不同帳號登入、各自執行策略」是否可行，仍待用兩個真實帳號實測（見對話紀錄）。這個計畫只把「哪個帳號綁定了哪個策略、什麼參數、有沒有開啟」這個設定層先做出來，之後並發登入確認可行了，才會有 Plan B 去改 `live_service.py`/`strategy_service.py` 讓執行真的按登入帳號分流。
