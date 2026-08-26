@@ -47,12 +47,18 @@ from .live_service import (
     ws_clients,
 )
 from .load_taifex_tick import load_tmfr1_range
+from .strategy_config_store import (
+    admin_upsert_strategy_config,
+    list_user_strategy_configs,
+    set_strategy_enabled,
+)
 from .strategy_service import (
     STRATEGY_DEFS,
     klines_with_signals,
     reconcile_after_manual_close,
     start_strategy,
     stop_strategy,
+    strategy_config_defaults,
     strategy_list,
     strategy_status,
     strategy_tick,
@@ -208,6 +214,19 @@ class StrategyStartRequest(BaseModel):
 
 class StrategyStopRequest(BaseModel):
     strategy_id: str
+
+
+class AdminStrategyConfigRequest(BaseModel):
+    user_id: str
+    strategy_id: str
+    product_code: str = "TM2608"
+    qty: int | None = None
+    enabled: bool = False
+
+
+class ToggleStrategyRequest(BaseModel):
+    strategy_id: str
+    enabled: bool
 
 
 class ClosePositionRequest(BaseModel):
@@ -457,6 +476,49 @@ def api_me(request: Request) -> dict[str, object]:
         "email": getattr(request.state, "user_email", ""),
         "is_admin": _is_admin(request),
     }
+
+
+@app.get("/api/admin/strategy-defs")
+def api_admin_strategy_defs(request: Request) -> list[dict[str, object]]:
+    """管理員專用參考清單：目前可以綁定的策略（仍然是 STRATEGY_DEFS 固定的
+    4 個，還沒有動態新增策略的機制——新增策略仍然要改程式碼部署）。"""
+    if not _is_admin(request):
+        raise HTTPException(status_code=403, detail="沒有管理權限")
+    catalog: list[dict[str, object]] = []
+    for strategy_id in STRATEGY_DEFS:
+        defaults = strategy_config_defaults(strategy_id)
+        catalog.append(
+            {
+                "strategy_id": strategy_id,
+                "label": defaults["label"],
+                "strategy": defaults["strategy"],
+                "direction_limit": defaults["direction_limit"],
+                "default_qty": defaults["qty"],
+            }
+        )
+    return catalog
+
+
+@app.post("/api/admin/strategy-configs")
+def api_admin_upsert_strategy_config(
+    request: Request, body: AdminStrategyConfigRequest
+) -> dict[str, object]:
+    """把某個策略客製化綁定給某個使用者（新增或更新參數）。這是唯一能讓某個
+    帳號的策略欄位「從空變成有東西」的路徑，一般使用者自己沒有這個能力。"""
+    if not _is_admin(request):
+        raise HTTPException(status_code=403, detail="沒有管理權限")
+    if body.strategy_id not in STRATEGY_DEFS:
+        raise HTTPException(status_code=400, detail=f"未知的策略 id: {body.strategy_id}")
+    try:
+        return admin_upsert_strategy_config(
+            body.user_id,
+            body.strategy_id,
+            product_code=body.product_code,
+            qty=body.qty,
+            enabled=body.enabled,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # ── 實盤 Dashboard（對齊賽博纏論 API 命名）────────────────────────────────
