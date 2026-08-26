@@ -1,0 +1,353 @@
+{
+  "generated_at": "2026-07-05T12:25:31.470442+08:00",
+  "dataset_meta": {
+    "start": "2026-05-22 16:00:00",
+    "end": "2026-07-03 13:45:00",
+    "bars_per_symbol": 551
+  },
+  "sample_size_caveat": "樣本期間只有約 551 根 60 分 K（約 30 個交易日），baseline 每個商品也只有 24 筆交易；部分濾網會把交易數再壓縮到個位數，因此勝率、Profit Factor 與總損益都可能受小樣本噪音影響。本次結果僅能視為短窗探索，正式採用前應至少再做更長期間與樣本外驗證。",
+  "variants": [
+    {
+      "key": "baseline",
+      "label": "A. Baseline",
+      "description": "原始 breakout 訊號，無額外濾網。",
+      "trend_alignment": false,
+      "min_separation_ratio": null,
+      "delay_bars": 0
+    },
+    {
+      "key": "trend_align_60ma",
+      "label": "B. 60MA 對齊",
+      "description": "多單僅保留 close > ma_slow；空單僅保留 close < ma_slow。",
+      "trend_alignment": true,
+      "min_separation_ratio": null,
+      "delay_bars": 0
+    },
+    {
+      "key": "min_sep_0_05pct",
+      "label": "C1. 最小分離 0.05%",
+      "description": "要求 abs(ma_fast-ma_mid)/close >= 0.05%。",
+      "trend_alignment": false,
+      "min_separation_ratio": 0.0005,
+      "delay_bars": 0
+    },
+    {
+      "key": "min_sep_0_10pct",
+      "label": "C2. 最小分離 0.10%",
+      "description": "要求 abs(ma_fast-ma_mid)/close >= 0.10%。",
+      "trend_alignment": false,
+      "min_separation_ratio": 0.001,
+      "delay_bars": 0
+    },
+    {
+      "key": "delay_1bar",
+      "label": "D. 延後 1 根確認",
+      "description": "初次交叉後，再等 1 根確認 ma_fast 與 ma_mid 仍維持同方向，訊號於確認棒收盤成立、下一棒開盤進場。",
+      "trend_alignment": false,
+      "min_separation_ratio": null,
+      "delay_bars": 1
+    },
+    {
+      "key": "trend_align_60ma_and_sep_0_05pct",
+      "label": "E1. 60MA 對齊 + 0.05%",
+      "description": "60MA 對齊，且 abs(ma_fast-ma_mid)/close >= 0.05%。",
+      "trend_alignment": true,
+      "min_separation_ratio": 0.0005,
+      "delay_bars": 0
+    },
+    {
+      "key": "trend_align_60ma_and_sep_0_10pct",
+      "label": "E2. 60MA 對齊 + 0.10%",
+      "description": "60MA 對齊，且 abs(ma_fast-ma_mid)/close >= 0.10%。",
+      "trend_alignment": true,
+      "min_separation_ratio": 0.001,
+      "delay_bars": 0
+    }
+  ],
+  "results": {
+    "MTX": {
+      "baseline": {
+        "variant_key": "baseline",
+        "variant_label": "A. Baseline",
+        "description": "原始 breakout 訊號，無額外濾網。",
+        "metrics": {
+          "total_trades": 24,
+          "win_rate": 0.20833333333333334,
+          "total_net_pnl_ntd": -24785.252,
+          "profit_factor": 0.8337352246722424,
+          "profit_factor_display": null,
+          "avg_win_ntd": 24857.1444,
+          "avg_loss_ntd": -7845.840736842106,
+          "avg_holding_bars_winners": 4.2,
+          "avg_holding_bars_losers": 0.42105263157894735,
+          "same_bar_stop_loss_fraction_of_losers": 0.8947368421052632,
+          "winning_trades": 5,
+          "losing_trades": 19,
+          "same_bar_stop_loss_loser_count": 17
+        }
+      },
+      "trend_align_60ma": {
+        "variant_key": "trend_align_60ma",
+        "variant_label": "B. 60MA 對齊",
+        "description": "多單僅保留 close > ma_slow；空單僅保留 close < ma_slow。",
+        "metrics": {
+          "total_trades": 8,
+          "win_rate": 0.125,
+          "total_net_pnl_ntd": -28631.434,
+          "profit_factor": 0.46473972398479313,
+          "profit_factor_display": null,
+          "avg_win_ntd": 24859.242,
+          "avg_loss_ntd": -7641.525142857142,
+          "avg_holding_bars_winners": 1.0,
+          "avg_holding_bars_losers": 0.0,
+          "same_bar_stop_loss_fraction_of_losers": 1.0,
+          "winning_trades": 1,
+          "losing_trades": 7,
+          "same_bar_stop_loss_loser_count": 7
+        }
+      },
+      "min_sep_0_05pct": {
+        "variant_key": "min_sep_0_05pct",
+        "variant_label": "C1. 最小分離 0.05%",
+        "description": "要求 abs(ma_fast-ma_mid)/close >= 0.05%。",
+        "metrics": {
+          "total_trades": 18,
+          "win_rate": 0.2222222222222222,
+          "total_net_pnl_ntd": -11430.894,
+          "profit_factor": 0.8968889378475283,
+          "profit_factor_display": null,
+          "avg_win_ntd": 24857.2805,
+          "avg_loss_ntd": -7918.572571428572,
+          "avg_holding_bars_winners": 4.75,
+          "avg_holding_bars_losers": 0.5,
+          "same_bar_stop_loss_fraction_of_losers": 0.8571428571428571,
+          "winning_trades": 4,
+          "losing_trades": 14,
+          "same_bar_stop_loss_loser_count": 12
+        }
+      },
+      "min_sep_0_10pct": {
+        "variant_key": "min_sep_0_10pct",
+        "variant_label": "C2. 最小分離 0.10%",
+        "description": "要求 abs(ma_fast-ma_mid)/close >= 0.10%。",
+        "metrics": {
+          "total_trades": 11,
+          "win_rate": 0.18181818181818182,
+          "total_net_pnl_ntd": -19054.348,
+          "profit_factor": 0.7229078594861665,
+          "profit_factor_display": null,
+          "avg_win_ntd": 24855.519,
+          "avg_loss_ntd": -7640.598444444444,
+          "avg_holding_bars_winners": 5.0,
+          "avg_holding_bars_losers": 0.0,
+          "same_bar_stop_loss_fraction_of_losers": 1.0,
+          "winning_trades": 2,
+          "losing_trades": 9,
+          "same_bar_stop_loss_loser_count": 9
+        }
+      },
+      "delay_1bar": {
+        "variant_key": "delay_1bar",
+        "variant_label": "D. 延後 1 根確認",
+        "description": "初次交叉後，再等 1 根確認 ma_fast 與 ma_mid 仍維持同方向，訊號於確認棒收盤成立、下一棒開盤進場。",
+        "metrics": {
+          "total_trades": 23,
+          "win_rate": 0.2608695652173913,
+          "total_net_pnl_ntd": -34589.013,
+          "profit_factor": 0.8117481333674363,
+          "profit_factor_display": null,
+          "avg_win_ntd": 24858.157000000003,
+          "avg_loss_ntd": -10808.115000000002,
+          "avg_holding_bars_winners": 7.666666666666667,
+          "avg_holding_bars_losers": 0.8235294117647058,
+          "same_bar_stop_loss_fraction_of_losers": 0.7058823529411765,
+          "winning_trades": 6,
+          "losing_trades": 17,
+          "same_bar_stop_loss_loser_count": 12
+        }
+      },
+      "trend_align_60ma_and_sep_0_05pct": {
+        "variant_key": "trend_align_60ma_and_sep_0_05pct",
+        "variant_label": "E1. 60MA 對齊 + 0.05%",
+        "description": "60MA 對齊，且 abs(ma_fast-ma_mid)/close >= 0.05%。",
+        "metrics": {
+          "total_trades": 8,
+          "win_rate": 0.125,
+          "total_net_pnl_ntd": -28631.434,
+          "profit_factor": 0.46473972398479313,
+          "profit_factor_display": null,
+          "avg_win_ntd": 24859.242,
+          "avg_loss_ntd": -7641.525142857142,
+          "avg_holding_bars_winners": 1.0,
+          "avg_holding_bars_losers": 0.0,
+          "same_bar_stop_loss_fraction_of_losers": 1.0,
+          "winning_trades": 1,
+          "losing_trades": 7,
+          "same_bar_stop_loss_loser_count": 7
+        }
+      },
+      "trend_align_60ma_and_sep_0_10pct": {
+        "variant_key": "trend_align_60ma_and_sep_0_10pct",
+        "variant_label": "E2. 60MA 對齊 + 0.10%",
+        "description": "60MA 對齊，且 abs(ma_fast-ma_mid)/close >= 0.10%。",
+        "metrics": {
+          "total_trades": 8,
+          "win_rate": 0.0,
+          "total_net_pnl_ntd": -61127.176,
+          "profit_factor": 0.0,
+          "profit_factor_display": null,
+          "avg_win_ntd": null,
+          "avg_loss_ntd": -7640.897000000001,
+          "avg_holding_bars_winners": null,
+          "avg_holding_bars_losers": 0.0,
+          "same_bar_stop_loss_fraction_of_losers": 1.0,
+          "winning_trades": 0,
+          "losing_trades": 8,
+          "same_bar_stop_loss_loser_count": 8
+        }
+      }
+    },
+    "TX": {
+      "baseline": {
+        "variant_key": "baseline",
+        "variant_label": "A. Baseline",
+        "description": "原始 breakout 訊號，無額外濾網。",
+        "metrics": {
+          "total_trades": 24,
+          "win_rate": 0.20833333333333334,
+          "total_net_pnl_ntd": -88540.892,
+          "profit_factor": 0.8490181397608391,
+          "profit_factor_display": null,
+          "avg_win_ntd": 99578.616,
+          "avg_loss_ntd": -30864.94589473684,
+          "avg_holding_bars_winners": 4.2,
+          "avg_holding_bars_losers": 0.47368421052631576,
+          "same_bar_stop_loss_fraction_of_losers": 0.8947368421052632,
+          "winning_trades": 5,
+          "losing_trades": 19,
+          "same_bar_stop_loss_loser_count": 17
+        }
+      },
+      "trend_align_60ma": {
+        "variant_key": "trend_align_60ma",
+        "variant_label": "B. 60MA 對齊",
+        "description": "多單僅保留 close > ma_slow；空單僅保留 close < ma_slow。",
+        "metrics": {
+          "total_trades": 8,
+          "win_rate": 0.125,
+          "total_net_pnl_ntd": -113325.75200000001,
+          "profit_factor": 0.4677363327057337,
+          "profit_factor_display": null,
+          "avg_win_ntd": 99587.056,
+          "avg_loss_ntd": -30416.115428571426,
+          "avg_holding_bars_winners": 1.0,
+          "avg_holding_bars_losers": 0.0,
+          "same_bar_stop_loss_fraction_of_losers": 1.0,
+          "winning_trades": 1,
+          "losing_trades": 7,
+          "same_bar_stop_loss_loser_count": 7
+        }
+      },
+      "min_sep_0_05pct": {
+        "variant_key": "min_sep_0_05pct",
+        "variant_label": "C1. 最小分離 0.05%",
+        "description": "要求 abs(ma_fast-ma_mid)/close >= 0.05%。",
+        "metrics": {
+          "total_trades": 18,
+          "win_rate": 0.2222222222222222,
+          "total_net_pnl_ntd": -36023.55600000001,
+          "profit_factor": 0.9170614271215184,
+          "profit_factor_display": null,
+          "avg_win_ntd": 99579.15999999999,
+          "avg_loss_ntd": -31024.299714285713,
+          "avg_holding_bars_winners": 4.75,
+          "avg_holding_bars_losers": 0.5714285714285714,
+          "same_bar_stop_loss_fraction_of_losers": 0.8571428571428571,
+          "winning_trades": 4,
+          "losing_trades": 14,
+          "same_bar_stop_loss_loser_count": 12
+        }
+      },
+      "min_sep_0_10pct": {
+        "variant_key": "min_sep_0_10pct",
+        "variant_label": "C2. 最小分離 0.10%",
+        "description": "要求 abs(ma_fast-ma_mid)/close >= 0.10%。",
+        "metrics": {
+          "total_trades": 11,
+          "win_rate": 0.18181818181818182,
+          "total_net_pnl_ntd": -74567.48800000001,
+          "profit_factor": 0.7275691985124901,
+          "profit_factor_display": null,
+          "avg_win_ntd": 99572.08799999999,
+          "avg_loss_ntd": -30412.40711111111,
+          "avg_holding_bars_winners": 5.0,
+          "avg_holding_bars_losers": 0.0,
+          "same_bar_stop_loss_fraction_of_losers": 1.0,
+          "winning_trades": 2,
+          "losing_trades": 9,
+          "same_bar_stop_loss_loser_count": 9
+        }
+      },
+      "delay_1bar": {
+        "variant_key": "delay_1bar",
+        "variant_label": "D. 延後 1 根確認",
+        "description": "初次交叉後，再等 1 根確認 ma_fast 與 ma_mid 仍維持同方向，訊號於確認棒收盤成立、下一棒開盤進場。",
+        "metrics": {
+          "total_trades": 23,
+          "win_rate": 0.2608695652173913,
+          "total_net_pnl_ntd": -131105.84,
+          "profit_factor": 0.8200582338634121,
+          "profit_factor_display": null,
+          "avg_win_ntd": 99582.60933333333,
+          "avg_loss_ntd": -42858.911529411766,
+          "avg_holding_bars_winners": 7.666666666666667,
+          "avg_holding_bars_losers": 0.8235294117647058,
+          "same_bar_stop_loss_fraction_of_losers": 0.7058823529411765,
+          "winning_trades": 6,
+          "losing_trades": 17,
+          "same_bar_stop_loss_loser_count": 12
+        }
+      },
+      "trend_align_60ma_and_sep_0_05pct": {
+        "variant_key": "trend_align_60ma_and_sep_0_05pct",
+        "variant_label": "E1. 60MA 對齊 + 0.05%",
+        "description": "60MA 對齊，且 abs(ma_fast-ma_mid)/close >= 0.05%。",
+        "metrics": {
+          "total_trades": 8,
+          "win_rate": 0.125,
+          "total_net_pnl_ntd": -113325.75200000001,
+          "profit_factor": 0.4677363327057337,
+          "profit_factor_display": null,
+          "avg_win_ntd": 99587.056,
+          "avg_loss_ntd": -30416.115428571426,
+          "avg_holding_bars_winners": 1.0,
+          "avg_holding_bars_losers": 0.0,
+          "same_bar_stop_loss_fraction_of_losers": 1.0,
+          "winning_trades": 1,
+          "losing_trades": 7,
+          "same_bar_stop_loss_loser_count": 7
+        }
+      },
+      "trend_align_60ma_and_sep_0_10pct": {
+        "variant_key": "trend_align_60ma_and_sep_0_10pct",
+        "variant_label": "E2. 60MA 對齊 + 0.10%",
+        "description": "60MA 對齊，且 abs(ma_fast-ma_mid)/close >= 0.10%。",
+        "metrics": {
+          "total_trades": 8,
+          "win_rate": 0.0,
+          "total_net_pnl_ntd": -243308.79200000002,
+          "profit_factor": 0.0,
+          "profit_factor_display": null,
+          "avg_win_ntd": null,
+          "avg_loss_ntd": -30413.599,
+          "avg_holding_bars_winners": null,
+          "avg_holding_bars_losers": 0.0,
+          "same_bar_stop_loss_fraction_of_losers": 1.0,
+          "winning_trades": 0,
+          "losing_trades": 8,
+          "same_bar_stop_loss_loser_count": 8
+        }
+      }
+    }
+  }
+}

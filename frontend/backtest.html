@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>台指期量化回測 Dashboard</title>
+  <script src="js/supabase.js?v=1"></script>
+  <script src="js/auth.js?v=3"></script>
+  <link rel="stylesheet" href="css/dashboard.css?v=4" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Taiwan Index Futures Backtest</p>
+        <h1>台指期量化回測 Dashboard</h1>
+      </div>
+      <div class="header-status">
+        <a href="index.html" class="header-link">← 實盤交易 Dashboard</a>
+        <button type="button" class="header-link" onclick="logout()" style="cursor:pointer">登出</button>
+        <span id="connection-status" class="status-pill">就緒</span>
+      </div>
+    </header>
+
+    <section class="panel control-panel">
+      <div class="control-grid">
+        <label class="field">
+          <span>檢視範圍</span>
+          <select id="strategy-view-select">
+            <option value="all">全部四個策略（跟實盤同時運行一致）</option>
+            <option value="breakout_long">只看 突破做多（breakout_long）</option>
+            <option value="breakout_short">只看 突破做空（breakout_short）</option>
+            <option value="pullback_long">只看 回測做多（pullback_long）</option>
+            <option value="pullback_short">只看 回測做空（pullback_short）</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>起始日期（data/raw_tick/TMFR1）</span>
+          <input id="live4-start-date" type="date" value="2024-07-29" />
+        </label>
+        <label class="field">
+          <span>結束日期</span>
+          <input id="live4-end-date" type="date" value="2025-05-26" />
+        </label>
+        <label class="field">
+          <span>停損點數</span>
+          <input id="live4-stop-loss-points" type="number" min="0" step="10" value="100" />
+        </label>
+        <label class="field">
+          <span>停利點數</span>
+          <input id="live4-take-profit-points" type="number" min="0" step="10" value="300" />
+        </label>
+        <label class="field checkbox-field">
+          <input id="live4-stop-take-checkbox" type="checkbox" checked />
+          <span>啟用停損停利（比照實盤，關掉則純靠訊號出場）</span>
+        </label>
+        <label class="field">
+          <span>單策略起始本金</span>
+          <input id="live4-capital-input" type="number" min="0" step="10000" value="100000" />
+        </label>
+        <label class="field">
+          <span>風控保險上限（元 / %）</span>
+          <div class="inline-fields">
+            <input id="live4-max-loss-ntd" type="number" min="0" step="1000" value="10000" />
+            <input id="live4-max-loss-pct" type="number" min="0" max="100" step="1" value="10" />
+          </div>
+        </label>
+        <label class="field checkbox-field">
+          <input id="live4-risk-stop-checkbox" type="checkbox" checked />
+          <span>啟用風控保險（點數停損之外的額外浮動損益保險，哪個先觸發用哪個）</span>
+        </label>
+      </div>
+
+      <div class="control-actions">
+        <div id="dataset-meta" class="dataset-meta">單一策略跟四策略用的是同一套引擎（backend/backtest_engine.py run_direction_limited_backtest），只差在畫面只顯示哪幾個策略，不是兩套不同邏輯</div>
+        <button id="run-button" class="primary-button" type="button">執行回測</button>
+      </div>
+    </section>
+
+    <div id="error-banner" class="error-banner hidden" role="alert"></div>
+
+    <section class="stats-grid" id="summary-grid">
+      <article class="stat-card">
+        <span class="stat-label">總交易次數</span>
+        <strong id="summary-total-trades">—</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">勝率</span>
+        <strong id="summary-win-rate">—</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">總淨損益</span>
+        <strong id="summary-total-net-pnl">—</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">最大回撤</span>
+        <strong id="summary-max-drawdown">—</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">Profit Factor</span>
+        <strong id="summary-profit-factor">—</strong>
+      </article>
+      <article class="stat-card">
+        <span class="stat-label">平均獲利 / 平均虧損</span>
+        <strong id="summary-avg-win-loss">—</strong>
+      </article>
+    </section>
+
+    <section class="panel" id="live4-summary-panel" style="display:none">
+      <div class="panel-heading">
+        <div>
+          <h2>四策略績效總覽（各自獨立本金起算）</h2>
+          <p>比照 backend/strategy_service.py 的 breakout_long / breakout_short / pullback_long / pullback_short</p>
+        </div>
+      </div>
+      <div class="stats-grid" id="live4-strategy-cards"></div>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>K 線與訊號</h2>
+          <p>顯示 K 線、均線與多空訊號箭頭</p>
+        </div>
+        <div id="chart-caption" class="chart-caption">等待回測結果</div>
+      </div>
+      <div id="candle-chart" class="chart-surface"></div>
+    </section>
+
+    <section class="panel chart-panel secondary-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>資金曲線</h2>
+          <p>依回測結果繪製淨值變化</p>
+        </div>
+      </div>
+      <div id="equity-chart" class="chart-surface equity-surface"></div>
+    </section>
+
+    <section class="panel table-panel">
+      <div class="panel-heading">
+        <div>
+          <h2>交易紀錄</h2>
+          <p id="trade-log-caption">尚未執行回測</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>策略</th>
+              <th>入場時間</th>
+              <th>方向</th>
+              <th>入場價</th>
+              <th>出場時間</th>
+              <th>出場價</th>
+              <th>出場原因</th>
+              <th>停損價</th>
+              <th>停利價</th>
+              <th>毛利點數</th>
+              <th>毛利 NT$</th>
+              <th>總成本 NT$</th>
+              <th>淨損益 NT$</th>
+            </tr>
+          </thead>
+          <tbody id="trade-table-body">
+            <tr>
+              <td colspan="13" class="empty-row">尚未執行回測</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div id="loading-overlay" class="loading-overlay hidden">
+    <div class="spinner"></div>
+    <p>回測執行中，請稍候…</p>
+  </div>
+
+  <script src="js/lightweight-charts.js"></script>
+  <script src="js/dashboard.js?v=7"></script>
+</body>
+</html>

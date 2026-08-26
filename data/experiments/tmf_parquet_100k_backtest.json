@@ -1,0 +1,2398 @@
+{
+  "symbol": "TMF",
+  "data_span": [
+    "2024-07-29 09:45:00",
+    "2026-07-03 13:45:00"
+  ],
+  "starting_capital": 100000.0,
+  "per_strategy_variant": {
+    "breakout_with_sltp": {
+      "strategy": "breakout",
+      "variant": "with_sltp",
+      "n_trades": 84,
+      "win_rate": 19.047619047619047,
+      "breakeven_win_rate": 23.076923076923077,
+      "net_pnl_ntd": -26405.36199999998,
+      "ending_capital_ntd": 73594.63800000002,
+      "total_return_pct": -26.405361999999975,
+      "max_drawdown_pct": 34.416289137081165,
+      "breached_maint_margin": false,
+      "whipsaw_rate_pct": 7.142857142857142,
+      "avg_holding_hours": 36.67857142857143,
+      "direction_breakdown": {
+        "long": {
+          "n_trades": 42,
+          "win_rate": 21.428571428571427,
+          "whipsaw_rate": 2.380952380952381,
+          "net_pnl_ntd": -5387.0274
+        },
+        "short": {
+          "n_trades": 42,
+          "win_rate": 16.666666666666664,
+          "whipsaw_rate": 11.904761904761903,
+          "net_pnl_ntd": -21018.334600000002
+        }
+      },
+      "capital_curve": [
+        {
+          "exit_time": "2024-07-30 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.878,
+          "capital_ntd": 98441.122
+        },
+        {
+          "exit_time": "2024-07-31 04:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.758,
+          "capital_ntd": 96882.364
+        },
+        {
+          "exit_time": "2024-08-02 02:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.8732,
+          "capital_ntd": 95323.4908
+        },
+        {
+          "exit_time": "2024-08-06 09:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1557.988,
+          "capital_ntd": 93765.5028
+        },
+        {
+          "exit_time": "2024-08-08 04:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.3476,
+          "capital_ntd": 92207.15520000001
+        },
+        {
+          "exit_time": "2024-08-09 17:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4941.4092,
+          "capital_ntd": 97148.5644
+        },
+        {
+          "exit_time": "2024-08-10 02:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.628,
+          "capital_ntd": 95589.9364
+        },
+        {
+          "exit_time": "2024-08-14 03:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4941.2576,
+          "capital_ntd": 100531.194
+        },
+        {
+          "exit_time": "2024-08-15 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.792,
+          "capital_ntd": 98972.402
+        },
+        {
+          "exit_time": "2024-08-21 17:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.8588,
+          "capital_ntd": 97413.5432
+        },
+        {
+          "exit_time": "2024-08-22 10:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.87,
+          "capital_ntd": 95854.6732
+        },
+        {
+          "exit_time": "2024-08-22 19:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.862,
+          "capital_ntd": 94295.81120000001
+        },
+        {
+          "exit_time": "2024-08-22 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.864,
+          "capital_ntd": 92736.94720000001
+        },
+        {
+          "exit_time": "2024-08-23 12:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.786,
+          "capital_ntd": 91178.1612
+        },
+        {
+          "exit_time": "2024-08-29 09:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.8156,
+          "capital_ntd": 89619.3456
+        },
+        {
+          "exit_time": "2024-08-31 00:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.898,
+          "capital_ntd": 88060.4476
+        },
+        {
+          "exit_time": "2024-09-03 11:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.866,
+          "capital_ntd": 86501.5816
+        },
+        {
+          "exit_time": "2024-09-03 23:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4941.256,
+          "capital_ntd": 91442.8376
+        },
+        {
+          "exit_time": "2024-09-05 03:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.4908,
+          "capital_ntd": 89884.3468
+        },
+        {
+          "exit_time": "2024-09-06 21:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.506,
+          "capital_ntd": 88325.8408
+        },
+        {
+          "exit_time": "2024-09-10 10:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.4448,
+          "capital_ntd": 86767.39600000001
+        },
+        {
+          "exit_time": "2024-09-10 13:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.4108,
+          "capital_ntd": 85208.98520000001
+        },
+        {
+          "exit_time": "2024-09-11 13:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.414,
+          "capital_ntd": 83650.5712
+        },
+        {
+          "exit_time": "2024-09-19 10:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.758,
+          "capital_ntd": 82091.8132
+        },
+        {
+          "exit_time": "2024-09-23 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.9184,
+          "capital_ntd": 80532.89480000001
+        },
+        {
+          "exit_time": "2024-09-23 16:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.9124,
+          "capital_ntd": 78973.98240000001
+        },
+        {
+          "exit_time": "2024-09-24 12:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.9224,
+          "capital_ntd": 77415.06000000001
+        },
+        {
+          "exit_time": "2024-09-26 09:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.88,
+          "capital_ntd": 82355.94000000002
+        },
+        {
+          "exit_time": "2024-09-30 10:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.9124,
+          "capital_ntd": 87296.85240000002
+        },
+        {
+          "exit_time": "2024-10-01 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.9348,
+          "capital_ntd": 85737.91760000002
+        },
+        {
+          "exit_time": "2024-10-02 03:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.8252,
+          "capital_ntd": 84179.09240000001
+        },
+        {
+          "exit_time": "2024-10-09 04:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.972,
+          "capital_ntd": 89120.0644
+        },
+        {
+          "exit_time": "2024-10-10 04:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.0996,
+          "capital_ntd": 87560.9648
+        },
+        {
+          "exit_time": "2024-10-17 16:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -2849.331,
+          "capital_ntd": 84711.6338
+        },
+        {
+          "exit_time": "2024-10-21 19:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.4180000000001,
+          "capital_ntd": 83152.21579999999
+        },
+        {
+          "exit_time": "2024-10-22 09:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.4,
+          "capital_ntd": 81592.8158
+        },
+        {
+          "exit_time": "2024-10-22 13:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.4104,
+          "capital_ntd": 80033.4054
+        },
+        {
+          "exit_time": "2024-10-23 11:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.384,
+          "capital_ntd": 78474.0214
+        },
+        {
+          "exit_time": "2024-10-28 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3052,
+          "capital_ntd": 76914.7162
+        },
+        {
+          "exit_time": "2024-10-30 12:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.2044,
+          "capital_ntd": 75355.5118
+        },
+        {
+          "exit_time": "2024-11-01 09:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 5220.9344,
+          "capital_ntd": 80576.44619999999
+        },
+        {
+          "exit_time": "2024-11-06 01:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.7816,
+          "capital_ntd": 85517.2278
+        },
+        {
+          "exit_time": "2024-11-07 03:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.226,
+          "capital_ntd": 83958.0018
+        },
+        {
+          "exit_time": "2024-11-11 09:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3752,
+          "capital_ntd": 82398.6266
+        },
+        {
+          "exit_time": "2024-11-14 00:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1192,
+          "capital_ntd": 80839.5074
+        },
+        {
+          "exit_time": "2024-11-19 11:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1556,
+          "capital_ntd": 79280.3518
+        },
+        {
+          "exit_time": "2024-11-22 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1556,
+          "capital_ntd": 77721.1962
+        },
+        {
+          "exit_time": "2024-11-27 12:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.9128,
+          "capital_ntd": 82662.10900000001
+        },
+        {
+          "exit_time": "2024-11-29 09:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.8884,
+          "capital_ntd": 81103.22060000002
+        },
+        {
+          "exit_time": "2024-11-29 16:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.898,
+          "capital_ntd": 79544.32260000001
+        },
+        {
+          "exit_time": "2024-11-30 00:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.936,
+          "capital_ntd": 77985.38660000001
+        },
+        {
+          "exit_time": "2024-12-04 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.2508,
+          "capital_ntd": 76426.13580000002
+        },
+        {
+          "exit_time": "2024-12-06 01:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.346,
+          "capital_ntd": 74866.78980000001
+        },
+        {
+          "exit_time": "2024-12-09 16:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3244,
+          "capital_ntd": 73307.46540000002
+        },
+        {
+          "exit_time": "2024-12-10 04:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3348,
+          "capital_ntd": 71748.13060000002
+        },
+        {
+          "exit_time": "2024-12-19 05:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.7948,
+          "capital_ntd": 76688.92540000002
+        },
+        {
+          "exit_time": "2024-12-19 16:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1336000000001,
+          "capital_ntd": 75129.79180000002
+        },
+        {
+          "exit_time": "2024-12-24 01:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.7536,
+          "capital_ntd": 80070.54540000002
+        },
+        {
+          "exit_time": "2024-12-25 02:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3176,
+          "capital_ntd": 78511.22780000002
+        },
+        {
+          "exit_time": "2024-12-26 17:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3148,
+          "capital_ntd": 76951.91300000003
+        },
+        {
+          "exit_time": "2024-12-27 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3056,
+          "capital_ntd": 75392.60740000002
+        },
+        {
+          "exit_time": "2024-12-30 10:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.2968,
+          "capital_ntd": 73833.31060000003
+        },
+        {
+          "exit_time": "2025-01-03 02:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1432,
+          "capital_ntd": 72274.16740000002
+        },
+        {
+          "exit_time": "2025-01-03 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1496,
+          "capital_ntd": 70715.01780000002
+        },
+        {
+          "exit_time": "2025-01-06 10:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.6952,
+          "capital_ntd": 75655.71300000002
+        },
+        {
+          "exit_time": "2025-01-09 02:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.594,
+          "capital_ntd": 80596.30700000002
+        },
+        {
+          "exit_time": "2025-01-10 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.22,
+          "capital_ntd": 79037.08700000001
+        },
+        {
+          "exit_time": "2025-01-13 10:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.9208,
+          "capital_ntd": 83978.00780000002
+        },
+        {
+          "exit_time": "2025-01-15 12:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.0368,
+          "capital_ntd": 82418.97100000002
+        },
+        {
+          "exit_time": "2025-01-16 11:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4940.8408,
+          "capital_ntd": 87359.81180000002
+        },
+        {
+          "exit_time": "2025-01-17 12:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.2388,
+          "capital_ntd": 85800.57300000002
+        },
+        {
+          "exit_time": "2025-01-20 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3068,
+          "capital_ntd": 84241.26620000001
+        },
+        {
+          "exit_time": "2025-02-03 09:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -4249.2546,
+          "capital_ntd": 79992.01160000001
+        },
+        {
+          "exit_time": "2025-02-04 00:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.0808,
+          "capital_ntd": 78432.93080000002
+        },
+        {
+          "exit_time": "2025-02-04 13:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1236,
+          "capital_ntd": 76873.80720000001
+        },
+        {
+          "exit_time": "2025-02-07 13:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3436,
+          "capital_ntd": 75314.46360000002
+        },
+        {
+          "exit_time": "2025-02-10 22:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.334,
+          "capital_ntd": 73755.12960000001
+        },
+        {
+          "exit_time": "2025-02-12 03:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.348,
+          "capital_ntd": 72195.78160000002
+        },
+        {
+          "exit_time": "2025-02-17 11:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.38,
+          "capital_ntd": 70636.40160000001
+        },
+        {
+          "exit_time": "2026-06-05 10:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1568.116,
+          "capital_ntd": 69068.28560000002
+        },
+        {
+          "exit_time": "2026-06-12 13:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1567.6824,
+          "capital_ntd": 67500.60320000001
+        },
+        {
+          "exit_time": "2026-06-24 12:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1568.5156,
+          "capital_ntd": 65932.08760000001
+        },
+        {
+          "exit_time": "2026-07-01 09:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 9231.206,
+          "capital_ntd": 75163.29360000002
+        },
+        {
+          "exit_time": "2026-07-03 12:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1568.6556,
+          "capital_ntd": 73594.63800000002
+        }
+      ]
+    },
+    "breakout_signal_only": {
+      "strategy": "breakout",
+      "variant": "signal_only",
+      "n_trades": 152,
+      "win_rate": 33.55263157894737,
+      "breakeven_win_rate": null,
+      "net_pnl_ntd": 234558.07180000003,
+      "ending_capital_ntd": 334558.07180000003,
+      "total_return_pct": 234.55807180000002,
+      "max_drawdown_pct": 25.633677823307423,
+      "breached_maint_margin": false,
+      "whipsaw_rate_pct": 0.0,
+      "avg_holding_hours": 110.97861842105263,
+      "direction_breakdown": {
+        "long": {
+          "n_trades": 76,
+          "win_rate": 35.526315789473685,
+          "whipsaw_rate": 0.0,
+          "net_pnl_ntd": 240896.5082
+        },
+        "short": {
+          "n_trades": 76,
+          "win_rate": 31.57894736842105,
+          "whipsaw_rate": 0.0,
+          "net_pnl_ntd": -6338.4364000000005
+        }
+      },
+      "capital_curve": [
+        {
+          "exit_time": "2024-07-31 02:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -4558.818,
+          "capital_ntd": 95441.182
+        },
+        {
+          "exit_time": "2024-07-31 13:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -4438.8156,
+          "capital_ntd": 91002.3664
+        },
+        {
+          "exit_time": "2024-08-01 20:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2611.0434,
+          "capital_ntd": 93613.4098
+        },
+        {
+          "exit_time": "2024-08-06 04:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 24741.486,
+          "capital_ntd": 118354.8958
+        },
+        {
+          "exit_time": "2024-08-08 04:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 7431.8322,
+          "capital_ntd": 125786.728
+        },
+        {
+          "exit_time": "2024-08-09 00:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -4388.4042,
+          "capital_ntd": 121398.3238
+        },
+        {
+          "exit_time": "2024-08-10 02:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2621.4556,
+          "capital_ntd": 124019.7794
+        },
+        {
+          "exit_time": "2024-08-10 05:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1168.6202,
+          "capital_ntd": 122851.1592
+        },
+        {
+          "exit_time": "2024-08-13 21:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1381.3288,
+          "capital_ntd": 124232.488
+        },
+        {
+          "exit_time": "2024-08-14 00:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1698.7328,
+          "capital_ntd": 122533.7552
+        },
+        {
+          "exit_time": "2024-08-15 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -148.7638,
+          "capital_ntd": 122384.9914
+        },
+        {
+          "exit_time": "2024-08-15 23:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -3228.8254,
+          "capital_ntd": 119156.166
+        },
+        {
+          "exit_time": "2024-08-16 22:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -98.888,
+          "capital_ntd": 119057.27799999999
+        },
+        {
+          "exit_time": "2024-08-17 04:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1748.921,
+          "capital_ntd": 117308.35699999999
+        },
+        {
+          "exit_time": "2024-08-20 18:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 551.033,
+          "capital_ntd": 117859.38999999998
+        },
+        {
+          "exit_time": "2024-08-22 04:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1921.0604,
+          "capital_ntd": 119780.45039999999
+        },
+        {
+          "exit_time": "2024-08-22 12:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1758.866,
+          "capital_ntd": 118021.58439999999
+        },
+        {
+          "exit_time": "2024-08-22 20:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1608.863,
+          "capital_ntd": 116412.7214
+        },
+        {
+          "exit_time": "2024-08-23 01:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -3508.825,
+          "capital_ntd": 112903.8964
+        },
+        {
+          "exit_time": "2024-08-23 17:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2298.8008,
+          "capital_ntd": 110605.0956
+        },
+        {
+          "exit_time": "2024-08-26 17:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1371.1258,
+          "capital_ntd": 111976.2214
+        },
+        {
+          "exit_time": "2024-08-27 18:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 61.0996,
+          "capital_ntd": 112037.321
+        },
+        {
+          "exit_time": "2024-08-29 03:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -888.8814,
+          "capital_ntd": 111148.4396
+        },
+        {
+          "exit_time": "2024-08-29 20:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1638.8964,
+          "capital_ntd": 109509.5432
+        },
+        {
+          "exit_time": "2024-08-30 11:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -448.9202,
+          "capital_ntd": 109060.623
+        },
+        {
+          "exit_time": "2024-08-30 19:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -668.9246,
+          "capital_ntd": 108391.69840000001
+        },
+        {
+          "exit_time": "2024-08-30 22:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -478.9284,
+          "capital_ntd": 107912.77
+        },
+        {
+          "exit_time": "2024-09-03 01:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 541.092,
+          "capital_ntd": 108453.86200000001
+        },
+        {
+          "exit_time": "2024-09-03 12:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1358.87,
+          "capital_ntd": 107094.99200000001
+        },
+        {
+          "exit_time": "2024-09-05 02:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 8021.3176,
+          "capital_ntd": 115116.30960000001
+        },
+        {
+          "exit_time": "2024-09-06 18:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1178.4984,
+          "capital_ntd": 113937.81120000001
+        },
+        {
+          "exit_time": "2024-09-09 17:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -28.4754,
+          "capital_ntd": 113909.33580000002
+        },
+        {
+          "exit_time": "2024-09-10 13:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2408.4278,
+          "capital_ntd": 111500.90800000001
+        },
+        {
+          "exit_time": "2024-09-11 09:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1638.4124,
+          "capital_ntd": 109862.49560000001
+        },
+        {
+          "exit_time": "2024-09-16 12:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 7041.414,
+          "capital_ntd": 116903.90960000001
+        },
+        {
+          "exit_time": "2024-09-16 18:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -128.7294,
+          "capital_ntd": 116775.18020000002
+        },
+        {
+          "exit_time": "2024-09-16 22:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -478.7224,
+          "capital_ntd": 116296.45780000002
+        },
+        {
+          "exit_time": "2024-09-18 23:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 581.2988,
+          "capital_ntd": 116877.75660000002
+        },
+        {
+          "exit_time": "2024-09-19 01:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -748.6746,
+          "capital_ntd": 116129.08200000002
+        },
+        {
+          "exit_time": "2024-09-19 03:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2438.7084,
+          "capital_ntd": 113690.37360000002
+        },
+        {
+          "exit_time": "2024-09-20 18:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 3251.1778,
+          "capital_ntd": 116941.55140000003
+        },
+        {
+          "exit_time": "2024-09-23 10:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1408.9154,
+          "capital_ntd": 115532.63600000003
+        },
+        {
+          "exit_time": "2024-09-24 11:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1308.9174,
+          "capital_ntd": 114223.71860000002
+        },
+        {
+          "exit_time": "2024-09-24 16:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -3248.9562,
+          "capital_ntd": 110974.76240000002
+        },
+        {
+          "exit_time": "2024-09-27 12:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 4130.8962,
+          "capital_ntd": 115105.65860000002
+        },
+        {
+          "exit_time": "2024-10-01 12:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 5510.9238,
+          "capital_ntd": 120616.58240000003
+        },
+        {
+          "exit_time": "2024-10-02 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -4298.88,
+          "capital_ntd": 116317.70240000002
+        },
+        {
+          "exit_time": "2024-10-04 12:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -3378.8616,
+          "capital_ntd": 112938.84080000002
+        },
+        {
+          "exit_time": "2024-10-07 22:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2321.0244,
+          "capital_ntd": 115259.86520000001
+        },
+        {
+          "exit_time": "2024-10-08 03:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1449.051,
+          "capital_ntd": 113810.81420000001
+        },
+        {
+          "exit_time": "2024-10-08 04:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2349.033,
+          "capital_ntd": 111461.78120000001
+        },
+        {
+          "exit_time": "2024-10-08 19:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1879.0236,
+          "capital_ntd": 109582.75760000001
+        },
+        {
+          "exit_time": "2024-10-09 17:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 180.9352,
+          "capital_ntd": 109763.69280000002
+        },
+        {
+          "exit_time": "2024-10-10 04:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1219.0928,
+          "capital_ntd": 108544.60000000002
+        },
+        {
+          "exit_time": "2024-10-15 21:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 3920.8044,
+          "capital_ntd": 112465.40440000001
+        },
+        {
+          "exit_time": "2024-10-16 16:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1210.7502,
+          "capital_ntd": 113676.15460000001
+        },
+        {
+          "exit_time": "2024-10-17 11:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -199.2216,
+          "capital_ntd": 113476.933
+        },
+        {
+          "exit_time": "2024-10-17 17:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -5789.3334,
+          "capital_ntd": 107687.5996
+        },
+        {
+          "exit_time": "2024-10-18 13:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -459.44,
+          "capital_ntd": 107228.1596
+        },
+        {
+          "exit_time": "2024-10-18 21:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2769.4862,
+          "capital_ntd": 104458.6734
+        },
+        {
+          "exit_time": "2024-10-19 01:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -889.5238,
+          "capital_ntd": 103569.1496
+        },
+        {
+          "exit_time": "2024-10-22 09:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1870.5314,
+          "capital_ntd": 105439.68100000001
+        },
+        {
+          "exit_time": "2024-10-22 11:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1299.4052,
+          "capital_ntd": 104140.27580000002
+        },
+        {
+          "exit_time": "2024-10-22 19:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -899.3972,
+          "capital_ntd": 103240.87860000001
+        },
+        {
+          "exit_time": "2024-10-22 21:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 500.5748,
+          "capital_ntd": 103741.45340000001
+        },
+        {
+          "exit_time": "2024-10-23 01:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 100.5668,
+          "capital_ntd": 103842.02020000001
+        },
+        {
+          "exit_time": "2024-10-23 11:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1799.3952,
+          "capital_ntd": 102042.62500000001
+        },
+        {
+          "exit_time": "2024-10-24 19:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 570.6522,
+          "capital_ntd": 102613.27720000001
+        },
+        {
+          "exit_time": "2024-10-25 03:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -979.3168000000001,
+          "capital_ntd": 101633.96040000001
+        },
+        {
+          "exit_time": "2024-10-25 12:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -809.3134,
+          "capital_ntd": 100824.64700000001
+        },
+        {
+          "exit_time": "2024-10-28 11:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 460.6612,
+          "capital_ntd": 101285.30820000001
+        },
+        {
+          "exit_time": "2024-10-30 02:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2810.7082,
+          "capital_ntd": 104096.01640000001
+        },
+        {
+          "exit_time": "2024-10-30 16:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1639.2028,
+          "capital_ntd": 102456.81360000001
+        },
+        {
+          "exit_time": "2024-11-01 19:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1260.8552,
+          "capital_ntd": 103717.66880000001
+        },
+        {
+          "exit_time": "2024-11-05 03:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 770.865,
+          "capital_ntd": 104488.53380000002
+        },
+        {
+          "exit_time": "2024-11-05 13:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1749.1854,
+          "capital_ntd": 102739.34840000002
+        },
+        {
+          "exit_time": "2024-11-07 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -639.2076,
+          "capital_ntd": 102100.14080000002
+        },
+        {
+          "exit_time": "2024-11-07 11:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -5289.3006,
+          "capital_ntd": 96810.84020000002
+        },
+        {
+          "exit_time": "2024-11-08 22:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1010.5734,
+          "capital_ntd": 97821.41360000001
+        },
+        {
+          "exit_time": "2024-11-13 11:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 7410.7014,
+          "capital_ntd": 105232.11500000002
+        },
+        {
+          "exit_time": "2024-11-14 02:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -649.1374,
+          "capital_ntd": 104582.97760000001
+        },
+        {
+          "exit_time": "2024-11-15 00:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -139.12720000000002,
+          "capital_ntd": 104443.85040000001
+        },
+        {
+          "exit_time": "2024-11-15 19:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1209.1058,
+          "capital_ntd": 103234.7446
+        },
+        {
+          "exit_time": "2024-11-19 03:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 780.934,
+          "capital_ntd": 104015.6786
+        },
+        {
+          "exit_time": "2024-11-20 03:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1850.9126,
+          "capital_ntd": 105866.5912
+        },
+        {
+          "exit_time": "2024-11-20 04:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -799.1404,
+          "capital_ntd": 105067.45079999999
+        },
+        {
+          "exit_time": "2024-11-20 13:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1789.1206,
+          "capital_ntd": 103278.3302
+        },
+        {
+          "exit_time": "2024-11-22 01:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 220.9196,
+          "capital_ntd": 103499.24979999999
+        },
+        {
+          "exit_time": "2024-11-25 17:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2750.869,
+          "capital_ntd": 106250.1188
+        },
+        {
+          "exit_time": "2024-11-28 18:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 6660.9472,
+          "capital_ntd": 112911.06599999999
+        },
+        {
+          "exit_time": "2024-11-29 02:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -898.9016,
+          "capital_ntd": 112012.1644
+        },
+        {
+          "exit_time": "2024-11-29 12:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1138.9064,
+          "capital_ntd": 110873.25799999999
+        },
+        {
+          "exit_time": "2024-11-29 20:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -608.917,
+          "capital_ntd": 110264.34099999999
+        },
+        {
+          "exit_time": "2024-11-29 23:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 311.1014,
+          "capital_ntd": 110575.44239999999
+        },
+        {
+          "exit_time": "2024-12-04 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 8180.944,
+          "capital_ntd": 118756.38639999999
+        },
+        {
+          "exit_time": "2024-12-04 09:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1359.2468,
+          "capital_ntd": 117397.1396
+        },
+        {
+          "exit_time": "2024-12-05 13:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 1020.7056,
+          "capital_ntd": 118417.8452
+        },
+        {
+          "exit_time": "2024-12-05 23:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -389.3226,
+          "capital_ntd": 118028.5226
+        },
+        {
+          "exit_time": "2024-12-06 12:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -929.3118,
+          "capital_ntd": 117099.2108
+        },
+        {
+          "exit_time": "2024-12-09 17:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1819.3296,
+          "capital_ntd": 115279.8812
+        },
+        {
+          "exit_time": "2024-12-10 05:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1549.335,
+          "capital_ntd": 113730.5462
+        },
+        {
+          "exit_time": "2024-12-12 00:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2550.747,
+          "capital_ntd": 116281.2932
+        },
+        {
+          "exit_time": "2024-12-12 23:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -619.1896,
+          "capital_ntd": 115662.1036
+        },
+        {
+          "exit_time": "2024-12-13 16:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -599.1892,
+          "capital_ntd": 115062.91440000001
+        },
+        {
+          "exit_time": "2024-12-16 16:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -299.1952,
+          "capital_ntd": 114763.7192
+        },
+        {
+          "exit_time": "2024-12-17 02:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1179.2128,
+          "capital_ntd": 113584.50640000001
+        },
+        {
+          "exit_time": "2024-12-17 17:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1369.209,
+          "capital_ntd": 112215.29740000001
+        },
+        {
+          "exit_time": "2024-12-18 13:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2239.2264,
+          "capital_ntd": 109976.07100000001
+        },
+        {
+          "exit_time": "2024-12-19 09:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -4219.1868,
+          "capital_ntd": 105756.88420000001
+        },
+        {
+          "exit_time": "2024-12-21 02:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1129.125,
+          "capital_ntd": 104627.75920000001
+        },
+        {
+          "exit_time": "2024-12-24 16:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 3470.783,
+          "capital_ntd": 108098.54220000001
+        },
+        {
+          "exit_time": "2024-12-25 03:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1489.3162,
+          "capital_ntd": 106609.22600000001
+        },
+        {
+          "exit_time": "2024-12-26 10:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -539.3352,
+          "capital_ntd": 106069.89080000001
+        },
+        {
+          "exit_time": "2024-12-27 11:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -309.3306,
+          "capital_ntd": 105760.5602
+        },
+        {
+          "exit_time": "2024-12-28 01:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1779.3012,
+          "capital_ntd": 103981.259
+        },
+        {
+          "exit_time": "2025-01-03 01:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2280.78,
+          "capital_ntd": 106262.039
+        },
+        {
+          "exit_time": "2025-01-03 05:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1399.1464,
+          "capital_ntd": 104862.8926
+        },
+        {
+          "exit_time": "2025-01-03 11:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2189.1622,
+          "capital_ntd": 102673.7304
+        },
+        {
+          "exit_time": "2025-01-07 16:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 7470.6446,
+          "capital_ntd": 110144.375
+        },
+        {
+          "exit_time": "2025-01-07 23:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1179.5284,
+          "capital_ntd": 108964.8466
+        },
+        {
+          "exit_time": "2025-01-08 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1919.5136,
+          "capital_ntd": 107045.333
+        },
+        {
+          "exit_time": "2025-01-10 21:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 5600.6368,
+          "capital_ntd": 112645.96979999999
+        },
+        {
+          "exit_time": "2025-01-10 23:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1829.2146,
+          "capital_ntd": 110816.75519999999
+        },
+        {
+          "exit_time": "2025-01-14 10:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2750.877,
+          "capital_ntd": 113567.63219999998
+        },
+        {
+          "exit_time": "2025-01-15 03:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -729.0534,
+          "capital_ntd": 112838.57879999997
+        },
+        {
+          "exit_time": "2025-01-15 22:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -539.0496,
+          "capital_ntd": 112299.52919999998
+        },
+        {
+          "exit_time": "2025-01-17 10:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 3680.866,
+          "capital_ntd": 115980.39519999997
+        },
+        {
+          "exit_time": "2025-01-17 20:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -3259.2728,
+          "capital_ntd": 112721.12239999996
+        },
+        {
+          "exit_time": "2025-01-20 20:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -599.326,
+          "capital_ntd": 112121.79639999996
+        },
+        {
+          "exit_time": "2025-01-21 02:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -639.3268,
+          "capital_ntd": 111482.46959999997
+        },
+        {
+          "exit_time": "2025-01-21 10:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1039.3188,
+          "capital_ntd": 110443.15079999997
+        },
+        {
+          "exit_time": "2025-01-21 12:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1329.3246,
+          "capital_ntd": 109113.82619999998
+        },
+        {
+          "exit_time": "2025-02-03 10:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -7539.2004,
+          "capital_ntd": 101574.62579999998
+        },
+        {
+          "exit_time": "2025-02-04 05:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2629.1022,
+          "capital_ntd": 98945.52359999999
+        },
+        {
+          "exit_time": "2025-02-07 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 3940.7664,
+          "capital_ntd": 102886.28999999998
+        },
+        {
+          "exit_time": "2025-02-07 09:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -119.3148,
+          "capital_ntd": 102766.97519999999
+        },
+        {
+          "exit_time": "2025-02-08 03:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -359.31,
+          "capital_ntd": 102407.66519999999
+        },
+        {
+          "exit_time": "2025-02-10 21:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1189.3266,
+          "capital_ntd": 101218.33859999999
+        },
+        {
+          "exit_time": "2025-02-11 17:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -839.3336,
+          "capital_ntd": 100379.00499999999
+        },
+        {
+          "exit_time": "2025-02-12 03:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1139.3396,
+          "capital_ntd": 99239.66539999998
+        },
+        {
+          "exit_time": "2025-02-12 18:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -339.3556,
+          "capital_ntd": 98900.30979999999
+        },
+        {
+          "exit_time": "2025-02-12 20:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -119.3512,
+          "capital_ntd": 98780.95859999998
+        },
+        {
+          "exit_time": "2025-02-12 23:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1779.318,
+          "capital_ntd": 97001.64059999998
+        },
+        {
+          "exit_time": "2025-02-13 09:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2269.3278,
+          "capital_ntd": 94732.31279999999
+        },
+        {
+          "exit_time": "2025-02-13 20:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1189.3494,
+          "capital_ntd": 93542.96339999998
+        },
+        {
+          "exit_time": "2025-02-15 05:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 310.6806,
+          "capital_ntd": 93853.64399999999
+        },
+        {
+          "exit_time": "2026-06-05 10:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 219286.301,
+          "capital_ntd": 313139.945
+        },
+        {
+          "exit_time": "2026-06-12 12:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 9272.1008,
+          "capital_ntd": 322412.0458
+        },
+        {
+          "exit_time": "2026-06-24 12:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 19261.901,
+          "capital_ntd": 341673.94680000003
+        },
+        {
+          "exit_time": "2026-06-30 12:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -3128.5468,
+          "capital_ntd": 338545.4
+        },
+        {
+          "exit_time": "2026-07-03 11:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 371.3832,
+          "capital_ntd": 338916.7832
+        },
+        {
+          "exit_time": "2026-07-03 13:45:00",
+          "direction": "short",
+          "exit_reason": "end_of_data",
+          "net_pnl_ntd": -4358.7114,
+          "capital_ntd": 334558.07180000003
+        }
+      ]
+    },
+    "pullback_with_sltp": {
+      "strategy": "pullback",
+      "variant": "with_sltp",
+      "n_trades": 61,
+      "win_rate": 27.86885245901639,
+      "breakeven_win_rate": 33.33333333333333,
+      "net_pnl_ntd": 174021.59740000003,
+      "ending_capital_ntd": 274021.5974,
+      "total_return_pct": 174.02159740000002,
+      "max_drawdown_pct": 20.60784527344298,
+      "breached_maint_margin": false,
+      "whipsaw_rate_pct": 9.836065573770492,
+      "avg_holding_hours": 206.21311475409837,
+      "direction_breakdown": {
+        "long": {
+          "n_trades": 32,
+          "win_rate": 31.25,
+          "whipsaw_rate": 9.375,
+          "net_pnl_ntd": 187735.1286
+        },
+        "short": {
+          "n_trades": 29,
+          "win_rate": 24.137931034482758,
+          "whipsaw_rate": 10.344827586206897,
+          "net_pnl_ntd": -13713.531200000001
+        }
+      },
+      "capital_curve": [
+        {
+          "exit_time": "2024-08-09 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.5644,
+          "capital_ntd": 98441.4356
+        },
+        {
+          "exit_time": "2024-08-14 00:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2941.2792,
+          "capital_ntd": 101382.7148
+        },
+        {
+          "exit_time": "2024-08-14 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.8076,
+          "capital_ntd": 99823.9072
+        },
+        {
+          "exit_time": "2024-08-21 17:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.8816,
+          "capital_ntd": 98265.02560000001
+        },
+        {
+          "exit_time": "2024-08-31 00:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.9068,
+          "capital_ntd": 96706.11880000001
+        },
+        {
+          "exit_time": "2024-09-02 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.9392,
+          "capital_ntd": 95147.17960000002
+        },
+        {
+          "exit_time": "2024-09-04 23:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.486,
+          "capital_ntd": 93588.69360000001
+        },
+        {
+          "exit_time": "2024-09-11 03:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.4324,
+          "capital_ntd": 92030.26120000001
+        },
+        {
+          "exit_time": "2024-09-11 13:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.4172,
+          "capital_ntd": 90471.84400000001
+        },
+        {
+          "exit_time": "2024-09-16 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.6748,
+          "capital_ntd": 88913.16920000002
+        },
+        {
+          "exit_time": "2024-09-19 02:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.72,
+          "capital_ntd": 87354.44920000002
+        },
+        {
+          "exit_time": "2024-09-19 10:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.7184,
+          "capital_ntd": 85795.73080000002
+        },
+        {
+          "exit_time": "2024-09-20 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.8844,
+          "capital_ntd": 84236.84640000002
+        },
+        {
+          "exit_time": "2024-09-24 16:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2961.0404,
+          "capital_ntd": 87197.88680000002
+        },
+        {
+          "exit_time": "2024-09-26 21:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.74,
+          "capital_ntd": 90138.62680000003
+        },
+        {
+          "exit_time": "2024-09-27 10:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.2664,
+          "capital_ntd": 88579.36040000003
+        },
+        {
+          "exit_time": "2024-10-11 09:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.8544,
+          "capital_ntd": 91520.21480000003
+        },
+        {
+          "exit_time": "2024-10-14 22:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.7992,
+          "capital_ntd": 94461.01400000002
+        },
+        {
+          "exit_time": "2024-10-15 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.2472,
+          "capital_ntd": 92901.76680000003
+        },
+        {
+          "exit_time": "2024-10-18 11:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.4868,
+          "capital_ntd": 91342.28000000003
+        },
+        {
+          "exit_time": "2024-10-19 04:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.5084,
+          "capital_ntd": 89782.77160000002
+        },
+        {
+          "exit_time": "2024-10-25 16:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3828,
+          "capital_ntd": 88223.38880000002
+        },
+        {
+          "exit_time": "2024-10-30 22:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.8572,
+          "capital_ntd": 91164.24600000001
+        },
+        {
+          "exit_time": "2024-11-06 20:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3192,
+          "capital_ntd": 89604.92680000002
+        },
+        {
+          "exit_time": "2024-11-11 13:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3864,
+          "capital_ntd": 88045.54040000001
+        },
+        {
+          "exit_time": "2024-11-15 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.13,
+          "capital_ntd": 86486.41040000001
+        },
+        {
+          "exit_time": "2024-11-18 16:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.954,
+          "capital_ntd": 89427.3644
+        },
+        {
+          "exit_time": "2024-11-20 12:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.114,
+          "capital_ntd": 87868.2504
+        },
+        {
+          "exit_time": "2024-11-22 03:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1,
+          "capital_ntd": 86309.1504
+        },
+        {
+          "exit_time": "2024-11-25 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1892,
+          "capital_ntd": 84749.9612
+        },
+        {
+          "exit_time": "2024-11-27 13:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.99,
+          "capital_ntd": 87690.95120000001
+        },
+        {
+          "exit_time": "2024-11-28 11:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.916,
+          "capital_ntd": 86132.03520000001
+        },
+        {
+          "exit_time": "2024-11-30 00:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1558.948,
+          "capital_ntd": 84573.08720000001
+        },
+        {
+          "exit_time": "2024-12-06 01:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.688,
+          "capital_ntd": 87513.7752
+        },
+        {
+          "exit_time": "2024-12-09 16:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.324,
+          "capital_ntd": 85954.45120000001
+        },
+        {
+          "exit_time": "2024-12-10 09:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.298,
+          "capital_ntd": 84395.15320000002
+        },
+        {
+          "exit_time": "2024-12-11 12:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.8068,
+          "capital_ntd": 87335.96000000002
+        },
+        {
+          "exit_time": "2024-12-12 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.196,
+          "capital_ntd": 85776.76400000002
+        },
+        {
+          "exit_time": "2024-12-13 23:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.2244,
+          "capital_ntd": 84217.53960000002
+        },
+        {
+          "exit_time": "2024-12-17 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.2012,
+          "capital_ntd": 82658.33840000002
+        },
+        {
+          "exit_time": "2024-12-21 00:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1024,
+          "capital_ntd": 81099.23600000002
+        },
+        {
+          "exit_time": "2024-12-27 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -609.3142,
+          "capital_ntd": 80489.92180000003
+        },
+        {
+          "exit_time": "2024-12-30 23:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.7568,
+          "capital_ntd": 83430.67860000003
+        },
+        {
+          "exit_time": "2025-01-02 11:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.828,
+          "capital_ntd": 86371.50660000002
+        },
+        {
+          "exit_time": "2025-01-03 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.1828,
+          "capital_ntd": 84812.32380000003
+        },
+        {
+          "exit_time": "2025-01-09 16:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.718,
+          "capital_ntd": 87753.04180000002
+        },
+        {
+          "exit_time": "2025-01-10 20:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.24,
+          "capital_ntd": 86193.80180000002
+        },
+        {
+          "exit_time": "2025-01-14 11:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.0504,
+          "capital_ntd": 84634.75140000001
+        },
+        {
+          "exit_time": "2025-01-15 22:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.0855999999999,
+          "capital_ntd": 83075.6658
+        },
+        {
+          "exit_time": "2025-01-20 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3064,
+          "capital_ntd": 81516.3594
+        },
+        {
+          "exit_time": "2025-01-22 09:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.6016,
+          "capital_ntd": 84456.961
+        },
+        {
+          "exit_time": "2025-02-05 00:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.164,
+          "capital_ntd": 82897.79699999999
+        },
+        {
+          "exit_time": "2025-02-06 09:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2940.712,
+          "capital_ntd": 85838.50899999999
+        },
+        {
+          "exit_time": "2025-02-12 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 570.6774,
+          "capital_ntd": 86409.18639999999
+        },
+        {
+          "exit_time": "2025-02-12 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3652,
+          "capital_ntd": 84849.82119999999
+        },
+        {
+          "exit_time": "2025-02-12 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.3184,
+          "capital_ntd": 83290.50279999999
+        },
+        {
+          "exit_time": "2025-02-13 21:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -709.331,
+          "capital_ntd": 82581.17179999998
+        },
+        {
+          "exit_time": "2025-02-17 09:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1559.348,
+          "capital_ntd": 81021.82379999998
+        },
+        {
+          "exit_time": "2026-05-25 09:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 196136.6472,
+          "capital_ntd": 277158.471
+        },
+        {
+          "exit_time": "2026-06-05 09:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1568.2332,
+          "capital_ntd": 275590.2378
+        },
+        {
+          "exit_time": "2026-07-02 12:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1568.6404,
+          "capital_ntd": 274021.5974
+        }
+      ]
+    },
+    "pullback_signal_only": {
+      "strategy": "pullback",
+      "variant": "signal_only",
+      "n_trades": 27,
+      "win_rate": 40.74074074074074,
+      "breakeven_win_rate": null,
+      "net_pnl_ntd": 233787.59380000003,
+      "ending_capital_ntd": 333787.59380000003,
+      "total_return_pct": 233.78759380000002,
+      "max_drawdown_pct": 26.706075114028984,
+      "breached_maint_margin": false,
+      "whipsaw_rate_pct": 0.0,
+      "avg_holding_hours": 615.6944444444445,
+      "direction_breakdown": {
+        "long": {
+          "n_trades": 14,
+          "win_rate": 50.0,
+          "whipsaw_rate": 0.0,
+          "net_pnl_ntd": 244396.949
+        },
+        "short": {
+          "n_trades": 13,
+          "win_rate": 30.76923076923077,
+          "whipsaw_rate": 0.0,
+          "net_pnl_ntd": -10609.355200000002
+        }
+      },
+      "capital_curve": [
+        {
+          "exit_time": "2024-08-31 05:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 7811.2482,
+          "capital_ntd": 107811.2482
+        },
+        {
+          "exit_time": "2024-09-11 10:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 11491.3218,
+          "capital_ntd": 119302.57
+        },
+        {
+          "exit_time": "2024-09-18 17:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 6011.4314,
+          "capital_ntd": 125314.00140000001
+        },
+        {
+          "exit_time": "2024-09-20 12:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -5668.8022,
+          "capital_ntd": 119645.1992
+        },
+        {
+          "exit_time": "2024-10-24 01:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 10900.8664,
+          "capital_ntd": 130546.0656
+        },
+        {
+          "exit_time": "2024-11-06 16:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 30.649,
+          "capital_ntd": 130576.7146
+        },
+        {
+          "exit_time": "2024-11-11 10:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 120.6472,
+          "capital_ntd": 130697.36180000001
+        },
+        {
+          "exit_time": "2024-11-20 11:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 5250.7498,
+          "capital_ntd": 135948.1116
+        },
+        {
+          "exit_time": "2024-11-21 12:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1909.107,
+          "capital_ntd": 134039.00460000001
+        },
+        {
+          "exit_time": "2024-11-23 05:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -3789.1446,
+          "capital_ntd": 130249.86000000002
+        },
+        {
+          "exit_time": "2024-11-27 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -3789.1446,
+          "capital_ntd": 126460.71540000002
+        },
+        {
+          "exit_time": "2024-12-04 10:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -4609.161,
+          "capital_ntd": 121851.55440000002
+        },
+        {
+          "exit_time": "2024-12-07 04:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 990.727,
+          "capital_ntd": 122842.28140000002
+        },
+        {
+          "exit_time": "2024-12-10 02:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -909.311,
+          "capital_ntd": 121932.97040000002
+        },
+        {
+          "exit_time": "2024-12-10 10:45:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -1929.2906,
+          "capital_ntd": 120003.67980000003
+        },
+        {
+          "exit_time": "2024-12-17 13:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 490.7578,
+          "capital_ntd": 120494.43760000003
+        },
+        {
+          "exit_time": "2024-12-21 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -4029.1518,
+          "capital_ntd": 116465.28580000003
+        },
+        {
+          "exit_time": "2024-12-25 02:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -6379.1988,
+          "capital_ntd": 110086.08700000003
+        },
+        {
+          "exit_time": "2024-12-27 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -609.3142,
+          "capital_ntd": 109476.77280000004
+        },
+        {
+          "exit_time": "2025-01-18 00:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -889.3198,
+          "capital_ntd": 108587.45300000004
+        },
+        {
+          "exit_time": "2025-02-04 03:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -5119.2352,
+          "capital_ntd": 103468.21780000004
+        },
+        {
+          "exit_time": "2025-02-05 19:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2409.181,
+          "capital_ntd": 101059.03680000005
+        },
+        {
+          "exit_time": "2025-02-12 00:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": 2620.7184,
+          "capital_ntd": 103679.75520000004
+        },
+        {
+          "exit_time": "2025-02-12 19:00:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -389.3418,
+          "capital_ntd": 103290.41340000005
+        },
+        {
+          "exit_time": "2025-02-13 21:00:00",
+          "direction": "long",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -819.3332,
+          "capital_ntd": 102471.08020000005
+        },
+        {
+          "exit_time": "2025-02-18 09:45:00",
+          "direction": "short",
+          "exit_reason": "immediate_reverse",
+          "net_pnl_ntd": -2829.3734,
+          "capital_ntd": 99641.70680000006
+        },
+        {
+          "exit_time": "2026-07-03 13:45:00",
+          "direction": "long",
+          "exit_reason": "end_of_data",
+          "net_pnl_ntd": 234145.887,
+          "capital_ntd": 333787.59380000003
+        }
+      ]
+    }
+  }
+}

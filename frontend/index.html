@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>台指期量化</title>
+  <script src="js/lightweight-charts.js"></script>
+  <script src="js/supabase.js?v=1"></script>
+  <script src="js/auth.js?v=3"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      台指期量化 <span id="conn-badge" class="live-badge offline">連線中…</span>
+    </div>
+    <div class="header-center">
+      <span id="ticker-price">—</span>
+      <span id="ticker-bid-ask" class="ticker-sub">—</span>
+    </div>
+    <div class="controls">
+      <input type="text" id="product-select" value="" placeholder="商品代碼，如 TM2608（留空會自動帶入目前連線中的近月合約）"
+        title="輸入群益商品代碼後按「確定」鎖定交易標的。微台格式為 TM+年月（例：2026/08 = TM2608），小台 MXFR1，大台 TXFR1" />
+      <button id="product-confirm-btn" class="action-btn" type="button" title="鎖定並開始訂閱這個商品">確定</button>
+      <span class="dot" id="ws-status" title="WebSocket 狀態"></span>
+      <span id="ws-count" style="font-size:10px;color:#8b949e;min-width:48px">—</span>
+      <a href="backtest.html" class="nav-link">回測</a>
+      <button id="logout-btn" class="action-btn" type="button" onclick="logout()">登出</button>
+    </div>
+  </header>
+
+  <div class="main-grid">
+    <div class="chart-panel">
+      <div id="chart"></div>
+      <div id="chart-legend" class="chart-legend"></div>
+    </div>
+
+    <aside class="sidebar">
+      <div class="panel">
+        <div class="panel-header"><span>帳戶</span></div>
+        <div class="account-grid">
+          <span class="label">登入 ID</span>      <span id="acc-user">—</span>
+          <span class="label">交易帳號</span>    <span id="acc-account">—</span>
+          <span class="label">環境</span>        <span id="acc-env">—</span>
+          <span class="label">權益數</span>      <span id="acc-equity">—</span>
+          <span class="label">浮動損益</span>    <span id="acc-floating-pl">—</span>
+          <span class="label">可用餘額</span>    <span id="acc-available">—</span>
+          <span class="label">維持保證金</span>  <span id="acc-maint-margin">—</span>
+          <span class="label">風險指標</span>    <span id="acc-risk">—</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span>自動策略（單邊限定，訊號進場/反向出場不反手）</span></div>
+        <div class="form-row">
+          <label>每筆口數</label>
+          <input type="number" id="strategy-qty" value="1" min="1" step="1" />
+        </div>
+        <div style="font-size:10px;color:#8b949e;margin-bottom:8px">
+          MA 週期固定 5/20/60。風控依目前帳戶「權益數」自動計算：持倉浮動損益達 -10% 或
+          -1 萬元會立刻強制市價平倉並停止該策略；空手時累計已實現虧損達同樣門檻則停止開新倉。
+          可同時勾選多個策略同時運行，各自獨立記帳、獨立風控。
+        </div>
+        <div id="strategy-list" class="strategy-list">載入中…</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span>下單</span></div>
+        <div class="safety-row">
+          <label for="trading-safety-toggle">允許真實下單</label>
+          <label class="switch">
+            <input type="checkbox" id="trading-safety-toggle" />
+            <span class="switch-track"></span>
+          </label>
+        </div>
+        <div id="trading-safety-msg" style="font-size:10px;color:#8b949e;margin-bottom:8px">
+          載入中…
+        </div>
+        <div class="side-tabs">
+          <button class="side-tab active long" data-side="buy" type="button">買進 Long</button>
+          <button class="side-tab short" data-side="sell" type="button">賣出 Short</button>
+        </div>
+        <div class="form-row">
+          <label>口數</label>
+          <input type="number" id="order-qty" value="1" min="1" step="1" />
+        </div>
+        <div class="form-row">
+          <label>委託價（M = 市價，P = 範圍市價，搭配 IOC/FOK）</label>
+          <input type="text" id="order-price" value="M" />
+        </div>
+        <div class="form-row">
+          <label>委託條件</label>
+          <select id="order-trade-type" title="ROD：掛到收盤前都有效；IOC：能成交多少算多少，剩下馬上取消；FOK：要嘛全部立刻成交，要嘛整筆取消">
+            <option value="0" title="掛單到收盤前都有效，不會自動取消">ROD（掛到收盤）</option>
+            <option value="1" title="立即成交能成交的部分，剩下的直接取消">IOC（部分成交剩下取消）</option>
+            <option value="2" selected title="必須整筆立即全部成交，否則整筆取消">FOK（全部成交否則取消）</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>新平倉</label>
+          <select id="order-new-close" title="新倉：一定開新部位；平倉：一定是關掉既有部位；自動：由券商系統判斷目前是開倉還是平倉">
+            <option value="0" title="強制開新部位（即使方向與現有持倉相反，也不會拿來平倉）">新倉（強制開新倉）</option>
+            <option value="1" title="強制視為平倉（沒有對應持倉時，這筆委託可能會失敗）">平倉（強制平掉既有倉位）</option>
+            <option value="2" selected title="由券商系統自動判斷：有相反方向持倉就先平倉，否則開新倉">自動（系統判斷開倉/平倉）</option>
+          </select>
+        </div>
+        <button id="submit-btn" class="submit-btn long" type="button">買進 Long</button>
+        <div id="order-msg" class="order-msg"></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="bottom-grid">
+    <div class="panel bottom-panel">
+      <div class="panel-header">
+        <span>持倉</span>
+        <button class="action-btn danger" type="button" onclick="flattenAll()">一鍵平倉</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>商品</th><th>方向</th><th>口數</th><th>價格</th><th>操作</th></tr>
+          </thead>
+          <tbody id="positions-body">
+            <tr><td colspan="5" class="empty">無持倉</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel bottom-panel">
+      <div class="panel-header">
+        <div class="order-tabs">
+          <span id="tab-active-orders" class="order-tab active" onclick="switchOrderTab('active')">有效委託</span>
+          <span id="tab-history-orders" class="order-tab" onclick="switchOrderTab('history')">歷史委託</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>時間</th><th>商品</th><th>方向</th><th>口數</th><th>價格</th><th>狀態</th><th>操作</th></tr>
+          </thead>
+          <tbody id="orders-body">
+            <tr><td colspan="7" class="empty">無委託</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/app.js?v=54"></script>
+</body>
+</html>

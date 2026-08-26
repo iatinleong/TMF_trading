@@ -1,0 +1,450 @@
+{
+  "metadata": {
+    "strategy": "pullback",
+    "symbols": [
+      "MTX",
+      "TX"
+    ],
+    "date_ranges": {
+      "MTX": {
+        "start": "2026-05-22T16:00:00",
+        "end": "2026-07-03T13:45:00",
+        "bar_count": 551
+      },
+      "TX": {
+        "start": "2026-05-22T16:00:00",
+        "end": "2026-07-03T13:45:00",
+        "bar_count": 551
+      }
+    },
+    "baseline_config": {
+      "ma_fast": 5,
+      "ma_mid": 20,
+      "ma_slow": 60,
+      "pullback_stop_loss_points": 150.0,
+      "pullback_take_profit_points": 300.0
+    },
+    "methodology_note": "所有變體都在訊號產生/進場前就改變規則，不做事後 retroactive slicing。no_immediate_reverse 版本不是單純把欄位改成 False，而是改成『每個合格回測/回彈 setup 都可發訊號，但 opposite arrow 不再強迫平倉反手』，避免 ignored opposite signal 仍污染 alternating-state。"
+  },
+  "results_by_symbol": {
+    "MTX": [
+      {
+        "variant_key": "baseline",
+        "variant_label": "A. Baseline",
+        "description": "原始 pullback：SL=150、TP=300，保留 opposite-arrow immediate_reverse。",
+        "symbol": "MTX",
+        "stop_loss_points": 150.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 5,
+        "win_rate": 0.4,
+        "profit_factor": 1.296358123444624,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 6794.105999999998,
+        "total_return_pct": 0.2988158132216183,
+        "sharpe_ratio": 0.7278319672795784,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.6721358811863973,
+        "trades_per_year_extrapolated": 43.57941834451901,
+        "exit_reason_counts": {
+          "stop_loss": 3,
+          "take_profit": 2
+        }
+      },
+      {
+        "variant_key": "tighter_sl_105",
+        "variant_label": "B1. Tight SL -30%",
+        "description": "固定停損縮至 105 點（較 baseline 150 點縮小 30%），TP 維持 300 點。",
+        "symbol": "MTX",
+        "stop_loss_points": 105.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 5,
+        "win_rate": 0.2,
+        "profit_factor": 0.6890843419146555,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -6705.444,
+        "total_return_pct": -0.2949163145043692,
+        "sharpe_ratio": -0.9774480919196,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.4743226352224399,
+        "trades_per_year_extrapolated": 43.57941834451901,
+        "exit_reason_counts": {
+          "stop_loss": 4,
+          "take_profit": 1
+        }
+      },
+      {
+        "variant_key": "tighter_sl_75",
+        "variant_label": "B2. Tight SL -50%",
+        "description": "固定停損縮至 75 點（較 baseline 150 點縮小 50%），TP 維持 300 點。",
+        "symbol": "MTX",
+        "stop_loss_points": 75.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 5,
+        "win_rate": 0.2,
+        "profit_factor": 0.9546826758191587,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -705.4440000000009,
+        "total_return_pct": -0.031026572523642073,
+        "sharpe_ratio": -0.11105734871272233,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.3423777642320762,
+        "trades_per_year_extrapolated": 43.57941834451901,
+        "exit_reason_counts": {
+          "stop_loss": 4,
+          "take_profit": 1
+        }
+      },
+      {
+        "variant_key": "wider_sl_225",
+        "variant_label": "C1. Wide SL +50%",
+        "description": "固定停損放寬至 225 點（較 baseline 增加 50%），TP 維持 300 點。",
+        "symbol": "MTX",
+        "stop_loss_points": 225.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 5,
+        "win_rate": 0.6,
+        "profit_factor": 1.956451294793362,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 21793.506,
+        "total_return_pct": 0.9585137791992382,
+        "sharpe_ratio": 2.0010767874938726,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.5010914787040938,
+        "trades_per_year_extrapolated": 43.57941834451901,
+        "exit_reason_counts": {
+          "take_profit": 3,
+          "stop_loss": 2
+        }
+      },
+      {
+        "variant_key": "wider_sl_300",
+        "variant_label": "C2. Wide SL +100%",
+        "description": "固定停損放寬至 300 點（較 baseline 增加 100%），TP 維持 300 點。",
+        "symbol": "MTX",
+        "stop_loss_points": 300.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 5,
+        "win_rate": 0.8,
+        "profit_factor": 3.9251083296263696,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 44293.956,
+        "total_return_pct": 1.9481201033576134,
+        "sharpe_ratio": 4.358654532390809,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.6659993011631303,
+        "trades_per_year_extrapolated": 43.57941834451901,
+        "exit_reason_counts": {
+          "take_profit": 4,
+          "stop_loss": 1
+        }
+      },
+      {
+        "variant_key": "atr14_sl_1_5x",
+        "variant_label": "D1. ATR14 × 1.5 SL",
+        "description": "訊號棒 ATR14 × 1.5 作為停損距離，TP 維持 baseline 300 點。",
+        "symbol": "MTX",
+        "stop_loss_points": null,
+        "take_profit_points": 300.0,
+        "atr_multiple": 1.5,
+        "disable_immediate_reverse": false,
+        "n_trades": 5,
+        "win_rate": 1.0,
+        "profit_factor": null,
+        "profit_factor_display": "∞",
+        "total_net_pnl_ntd": 87494.81999999999,
+        "total_return_pct": 3.8481642457416942,
+        "sharpe_ratio": 19.570226814661414,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.0,
+        "trades_per_year_extrapolated": 43.57941834451901,
+        "exit_reason_counts": {
+          "take_profit": 5
+        }
+      },
+      {
+        "variant_key": "atr14_sl_2_5x",
+        "variant_label": "D2. ATR14 × 2.5 SL",
+        "description": "訊號棒 ATR14 × 2.5 作為停損距離，TP 維持 baseline 300 點。",
+        "symbol": "MTX",
+        "stop_loss_points": null,
+        "take_profit_points": 300.0,
+        "atr_multiple": 2.5,
+        "disable_immediate_reverse": false,
+        "n_trades": 5,
+        "win_rate": 1.0,
+        "profit_factor": null,
+        "profit_factor_display": "∞",
+        "total_net_pnl_ntd": 87494.81999999999,
+        "total_return_pct": 3.8481642457416942,
+        "sharpe_ratio": 19.570226814661414,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.0,
+        "trades_per_year_extrapolated": 43.57941834451901,
+        "exit_reason_counts": {
+          "take_profit": 5
+        }
+      },
+      {
+        "variant_key": "no_immediate_reverse",
+        "variant_label": "E. Disable immediate_reverse",
+        "description": "停用 opposite-arrow 即時平倉反手；持倉改為只靠自身 SL/TP 出場。",
+        "symbol": "MTX",
+        "stop_loss_points": 150.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": true,
+        "n_trades": 16,
+        "win_rate": 0.5,
+        "profit_factor": 2.592297188455466,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 97345.216,
+        "total_return_pct": 4.2814006555496915,
+        "sharpe_ratio": 4.201409504283418,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.0084499869272405,
+        "trades_per_year_extrapolated": 139.45413870246085,
+        "exit_reason_counts": {
+          "stop_loss": 8,
+          "take_profit": 8
+        }
+      }
+    ],
+    "TX": [
+      {
+        "variant_key": "baseline",
+        "variant_label": "A. Baseline",
+        "description": "原始 pullback：SL=150、TP=300，保留 opposite-arrow immediate_reverse。",
+        "symbol": "TX",
+        "stop_loss_points": 150.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 6,
+        "win_rate": 0.3333333333333333,
+        "profit_factor": 0.9795034529663845,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -2493.847999999998,
+        "total_return_pct": -0.027421047249897572,
+        "sharpe_ratio": -0.06466814943577642,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.6688407654639705,
+        "trades_per_year_extrapolated": 52.29530201342282,
+        "exit_reason_counts": {
+          "stop_loss": 4,
+          "take_profit": 2
+        }
+      },
+      {
+        "variant_key": "tighter_sl_105",
+        "variant_label": "B1. Tight SL -30%",
+        "description": "固定停損縮至 105 點（較 baseline 150 點縮小 30%），TP 維持 300 點。",
+        "symbol": "TX",
+        "stop_loss_points": 105.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 6,
+        "win_rate": 0.16666666666666666,
+        "profit_factor": 0.5565122047635123,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -47491.868,
+        "total_return_pct": -0.5221957217977601,
+        "sharpe_ratio": -1.730698597421321,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.7065526551621388,
+        "trades_per_year_extrapolated": 52.29530201342282,
+        "exit_reason_counts": {
+          "stop_loss": 5,
+          "take_profit": 1
+        }
+      },
+      {
+        "variant_key": "tighter_sl_75",
+        "variant_label": "B2. Tight SL -50%",
+        "description": "固定停損縮至 75 點（較 baseline 150 點縮小 50%），TP 維持 300 點。",
+        "symbol": "TX",
+        "stop_loss_points": 75.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 6,
+        "win_rate": 0.16666666666666666,
+        "profit_factor": 0.773091066721372,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -17491.748,
+        "total_return_pct": -0.19233010527959282,
+        "sharpe_ratio": -0.6884205342631502,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.5086327574683632,
+        "trades_per_year_extrapolated": 52.29530201342282,
+        "exit_reason_counts": {
+          "stop_loss": 5,
+          "take_profit": 1
+        }
+      },
+      {
+        "variant_key": "wider_sl_225",
+        "variant_label": "C1. Wide SL +50%",
+        "description": "固定停損放寬至 225 點（較 baseline 增加 50%），TP 維持 300 點。",
+        "symbol": "TX",
+        "stop_loss_points": 225.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 6,
+        "win_rate": 0.5,
+        "profit_factor": 1.311920192959736,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 42503.452000000005,
+        "total_return_pct": 0.46734571055483537,
+        "sharpe_ratio": 0.8906588060041601,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.49944537706662073,
+        "trades_per_year_extrapolated": 52.29530201342282,
+        "exit_reason_counts": {
+          "take_profit": 3,
+          "stop_loss": 3
+        }
+      },
+      {
+        "variant_key": "wider_sl_300",
+        "variant_label": "C2. Wide SL +100%",
+        "description": "固定停損放寬至 300 點（較 baseline 增加 100%），TP 維持 300 點。",
+        "symbol": "TX",
+        "stop_loss_points": 300.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": false,
+        "n_trades": 6,
+        "win_rate": 0.6666666666666666,
+        "profit_factor": 1.9723877354088737,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 117504.95200000002,
+        "total_return_pct": 1.2920229464221358,
+        "sharpe_ratio": 2.2853017433318508,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 0.664357601793568,
+        "trades_per_year_extrapolated": 52.29530201342282,
+        "exit_reason_counts": {
+          "take_profit": 4,
+          "stop_loss": 2
+        }
+      },
+      {
+        "variant_key": "atr14_sl_1_5x",
+        "variant_label": "D1. ATR14 × 1.5 SL",
+        "description": "訊號棒 ATR14 × 1.5 作為停損距離，TP 維持 baseline 300 點。",
+        "symbol": "TX",
+        "stop_loss_points": null,
+        "take_profit_points": 300.0,
+        "atr_multiple": 1.5,
+        "disable_immediate_reverse": false,
+        "n_trades": 6,
+        "win_rate": 0.8333333333333334,
+        "profit_factor": 3.182646287665395,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 240528.84100000042,
+        "total_return_pct": 2.6447292353119045,
+        "sharpe_ratio": 3.7848334643543193,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.21170766434206,
+        "trades_per_year_extrapolated": 52.29530201342282,
+        "exit_reason_counts": {
+          "take_profit": 5,
+          "stop_loss": 1
+        }
+      },
+      {
+        "variant_key": "atr14_sl_2_5x",
+        "variant_label": "D2. ATR14 × 2.5 SL",
+        "description": "訊號棒 ATR14 × 2.5 作為停損距離，TP 維持 baseline 300 點。",
+        "symbol": "TX",
+        "stop_loss_points": null,
+        "take_profit_points": 300.0,
+        "atr_multiple": 2.5,
+        "disable_immediate_reverse": false,
+        "n_trades": 6,
+        "win_rate": 0.8333333333333334,
+        "profit_factor": 1.9125019248151822,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 167341.66300000023,
+        "total_return_pct": 1.840001334483677,
+        "sharpe_ratio": 1.9092708523875945,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.0164355651702874,
+        "trades_per_year_extrapolated": 52.29530201342282,
+        "exit_reason_counts": {
+          "take_profit": 5,
+          "stop_loss": 1
+        }
+      },
+      {
+        "variant_key": "no_immediate_reverse",
+        "variant_label": "E. Disable immediate_reverse",
+        "description": "停用 opposite-arrow 即時平倉反手；持倉改為只靠自身 SL/TP 出場。",
+        "symbol": "TX",
+        "stop_loss_points": 150.0,
+        "take_profit_points": 300.0,
+        "atr_multiple": null,
+        "disable_immediate_reverse": true,
+        "n_trades": 17,
+        "win_rate": 0.47058823529411764,
+        "profit_factor": 2.319236406447644,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 361158.148,
+        "total_return_pct": 3.9711059539288343,
+        "sharpe_ratio": 3.829967478127115,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.0035086783644704,
+        "trades_per_year_extrapolated": 148.17002237136467,
+        "exit_reason_counts": {
+          "stop_loss": 9,
+          "take_profit": 8
+        }
+      }
+    ]
+  },
+  "breakout_baseline_comparison": {
+    "MTX": {
+      "n_trades": 24,
+      "win_rate": 0.20833333333333334,
+      "profit_factor": 0.8337352246722424,
+      "total_net_pnl_ntd": -24785.252,
+      "total_return_pct": -1.0900956258678838,
+      "sharpe_ratio": -1.099074252597627,
+      "sharpe_flag": null,
+      "max_drawdown_pct": 2.523552357109711
+    },
+    "TX": {
+      "n_trades": 24,
+      "win_rate": 0.20833333333333334,
+      "profit_factor": 0.8490181397608391,
+      "total_net_pnl_ntd": -88540.892,
+      "total_return_pct": -0.9735493033577353,
+      "sharpe_ratio": -0.9854938583735676,
+      "sharpe_flag": null,
+      "max_drawdown_pct": 2.4350538866954254
+    }
+  },
+  "multiple_testing_update": {
+    "prior_breakout_variant_trials": 12,
+    "new_pullback_variant_trials": 7,
+    "combined_variant_trials": 19,
+    "prior_breakout_sigma_sr": 1.8739311292040906,
+    "prior_breakout_luck_threshold": 4.177569296629803,
+    "updated_luck_threshold_if_only_N_grows": 4.547470628157338,
+    "combined_sigma_sr": 5.390562865957629,
+    "updated_luck_threshold_combined_sigma": 13.081284536102178,
+    "note": "先前 breakout 研究已累積 12 個非 baseline 變體；本次 pullback 新增 7 個非 baseline 變體後，跨整個專案的試驗次數提高到 19。"
+  }
+}

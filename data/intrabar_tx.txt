@@ -1,0 +1,12 @@
+﻿=== TX  60��K�G�L���ȩwMA��V vs ���L�T�{��V ===
+�˵�K�μơ]����MA�x�����^: 531
+�x��]���L�T�{�^�T��K�μ�: 24
+�L���X�{�L�ܤ�1���ȩw���t��½�઺K�μ�: 8
+�Y�v���Y�ɤ����|�h�X���y������í�w�z�T��K�μ�: 8
+
+�d�ҡ]�e5�������T�����ê�K�Ρ^:
+  {'bar_end': Timestamp('2026-05-26 21:00:00'), 'n_ticks': 1150, 'n_sign_flips_intrabar': 14, 'official_sign_at_close': '��head(5<20)', 'official_signal_confirmed': False}
+  {'bar_end': Timestamp('2026-06-02 10:45:00'), 'n_ticks': 9206, 'n_sign_flips_intrabar': 20, 'official_sign_at_close': '�hhead(5>20)', 'official_signal_confirmed': False}
+  {'bar_end': Timestamp('2026-06-03 22:00:00'), 'n_ticks': 9074, 'n_sign_flips_intrabar': 83, 'official_sign_at_close': '��head(5<20)', 'official_signal_confirmed': True}
+  {'bar_end': Timestamp('2026-06-05 09:45:00'), 'n_ticks': 29056, 'n_sign_flips_intrabar': 2, 'official_sign_at_close': '�hhead(5>20)', 'official_signal_confirmed': False}
+  {'bar_end': Timestamp('2026-06-10 00:00:00'), 'n_ticks': 14918, 'n_sign_flips_intrabar': 115, 'official_sign_at_close': '��head(5<20)', 'official_signal_confirmed': True}

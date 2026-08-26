@@ -1,0 +1,48 @@
+.env
+.env.*
+__pycache__/
+*.pyc
+.pytest_cache/
+data/*.csv
+!data/sample_60min.csv
+data/raw/
+data/raw_tick/
+
+# 2026-08-26 首次 git init 補上——這幾類東西都不該進版控：
+
+# 真實密鑰/憑證，絕對不能進版控
+installer/local_secrets.iss
+GCP_CREDENTIALS.txt
+
+# 執行期產生的稽核 log／快取，記錄的是實際交易活動，不是原始碼
+data/*.log
+data/capital_logs/
+data/capital_logs.zip
+data/kline_cache/
+
+# venv、建置產物、編譯好的安裝檔——都是可以重新產生的東西，體積又大
+.venv_build/
+.venv/
+build/
+build_pyinstaller/
+dist/
+installer/Output/
+
+# Claude Code 工具/session 產生的東西，不是專案原始碼
+terminals/
+mcps/
+agent-tools/
+.claude/settings.local.json
+
+# 第三方廠商 SDK／執行檔，不是我們維護的原始碼，體積大且有重新散布疑慮
+CapitalAPI_2.13.58_PythonExample/
+CapitalAPI_v5.0_SKCOMVerifyDJ/
+tools/
+installer/redist/*.exe
+installer/redist/vc2010_applocal/*.dll
+
+# 執行期日誌檔
+gcp_log
+shioaji.log
+tunnel.log
+tunnel-url.txt

@@ -1,0 +1,780 @@
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from backend.capital_parse import parse_open_interest_line, parse_order_report_line
+from backend import strategy_service
+from backend.strategy_service import (
+    StrategyState,
+    _armed,
+    _cancel_mit_order_for_state,
+    _cancel_stop_order_for_state,
+    _check_orphaned_fill,
+    _place_mit_order_for_state,
+    _place_stop_order_for_state,
+    _settlement_month_from_tmf_code,
+    _tick_one,
+    reconcile_after_manual_close,
+    reconcile_orphan_stop_orders,
+    stop_strategy,
+)
+
+
+def _order_row(*, status_code: str, direction: str, qty: int, when: datetime) -> str:
+    """組出一筆結構跟真實 orders_raw 相符的委託列（欄位位置對照 capital_parse.py）。"""
+    date_part = when.strftime("%Y%m%d")
+    time_part = when.strftime("%H%M%S")
+    parts = [""] * 44
+    parts[0], parts[1], parts[2] = "TF", "FUT", "TAIFEX"
+    parts[7] = "test1"
+    parts[8] = parts[9] = "1234567890123"
+    parts[10] = status_code
+    parts[11] = date_part
+    parts[12] = time_part
+    parts[15] = "TMFH6"
+    parts[22] = direction
+    parts[27] = "20000.0000"
+    parts[30] = str(qty)
+    parts[31] = str(qty)
+    parts[32] = "0"
+    parts[33] = "N"
+    parts[43] = "20000.0000"
+    return ",".join(parts)
+
+
+def test_parse_open_interest_line():
+    row = parse_open_interest_line("TF,F0200006921941,TMFR1,B,2,0,21500")
+    assert row["product"] == "TMFR1"
+    assert row["direction_key"] == "long"
+    assert row["qty"] == "2"
+    assert row["price"] == "21500"
+
+
+def test_parse_order_report_line():
+    # 真實 orders_raw 資料（2026-07-27 從 /api/trading/status 取得），欄位位置已對照
+    # 官方文件《4.下單準備介紹.docx》GetOrderReport 58 欄位定義逐一核對過。
+    line = (
+        "TF,FUT,TAIFEX,F020000,B68,6921941,0000000,y2935,2315605181554,2315605181554,2,"
+        "20260727,104232,20260727,20260727,TMFH6,FITM,202608,0,,0,0,S,,,0,2,43706.0000,"
+        "43706.0000,1,1,1,0,O,A,N,RI,1,,0041,,0.0000,0,43708.0000,0.0000,0,0.0000,0.0000,0,"
+        ",0.0000,0,20260727,104232,,,,,,,,3,1.000000,1.000000,1.000000,0.000000,0.000000,"
+        "104232891,,,0,0,,TMFH6,,,"
+    )
+    row = parse_order_report_line(line)
+    assert row["product"] == "TMFH6"
+    assert row["seq_no"] == "2315605181554"
+    assert row["book_no"] == "y2935"
+    assert row["direction_key"] == "short"
+    assert row["status_code"] == "2"
+    assert row["status"] == "全部成交"
+    assert row["qty"] == "1"
+    assert row["price"] == "43708.0000"  # 成交均價優先於委託價（市價單委託價欄位為0）
+    assert row["is_active"] is False
+    # 2026-08-25：委託日期/時間（欄位 11/12）原本完全沒解析出來，「歷史委託」
+    # 畫面上看不到任何一筆單是什麼時候下的。
+    assert row["time"] == "2026-07-27 10:42:32"
+
+
+def test_parse_order_report_line_missing_time_fields():
+    parts = [""] * 34
+    parts[15] = "TMFH6"
+    line = ",".join(parts)
+    row = parse_order_report_line(line)
+    assert row["time"] == ""
+
+
+def test_strategy_loss_limit():
+    st = StrategyState(
+        strategy_id="test",
+        product_code="TMFR1",
+        strategy="ma_cross",
+        direction_limit="long",
+        label="測試策略",
+        initial_capital_ntd=100_000,
+        max_loss_ntd=10_000,
+        max_loss_pct=0.10,
+        realized_pnl_ntd=-10_001,
+    )
+    assert st.loss_limit_hit()
+
+    st2 = StrategyState(
+        strategy_id="test",
+        product_code="TMFR1",
+        strategy="ma_cross",
+        direction_limit="long",
+        label="測試策略",
+        initial_capital_ntd=100_000,
+        max_loss_ntd=10_000,
+        max_loss_pct=0.10,
+        realized_pnl_ntd=-9_999,
+    )
+    assert not st2.loss_limit_hit()
+
+
+def _open_long_state(**overrides) -> StrategyState:
+    defaults = dict(
+        strategy_id="test",
+        product_code="TMFR1",
+        strategy="ma_cross",
+        direction_limit="long",
+        label="測試策略",
+        qty=1,
+        initial_capital_ntd=100_000,
+        max_loss_ntd=10_000,
+        max_loss_pct=0.99,  # 拉高比例門檻，測試時只讓金額門檻生效
+        held_qty=1,
+        held_direction="long",
+        entry_price=20000.0,
+    )
+    defaults.update(overrides)
+    return StrategyState(**defaults)
+
+
+def test_tick_one_forces_close_on_stop_loss_points():
+    # entry_price=20000，預設 stop_loss_points=100，報價跌到 19800（跌200點）超過門檻，應強制平倉。
+    state = _open_long_state()
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    st = {"quote": {"last_price": 19800.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_called_once()
+    called = svc.place_order.call_args[0][0]
+    assert called["side"] == "sell"
+    assert called["new_close"] == 1
+    assert state.held_qty == 0
+    assert state.held_direction is None
+    assert state.stopped is True
+    assert "停損" in state.stop_reason
+    # TMF 每點 10 元，(19800-20000)*10*1 = -2000
+    assert state.realized_pnl_ntd == -2000.0
+
+
+def test_tick_one_forces_close_on_take_profit_points():
+    # entry_price=20000，預設 take_profit_points=300，報價漲到 20400（漲400點）超過門檻，應強制停利平倉。
+    state = _open_long_state()
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    st = {"quote": {"last_price": 20400.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_called_once()
+    called = svc.place_order.call_args[0][0]
+    assert called["side"] == "sell"
+    assert state.held_qty == 0
+    assert state.stopped is True
+    assert "停利" in state.stop_reason
+    # TMF 每點 10 元，(20400-20000)*10*1 = 4000
+    assert state.realized_pnl_ntd == 4000.0
+
+
+def test_tick_one_no_stop_loss_within_limit():
+    # entry 20000，報價 19950（跌50點），在 stop_loss_points=100 門檻之內，不該平倉、不該停止策略。
+    state = _open_long_state()
+    svc = MagicMock()
+    st = {"quote": {"last_price": 19950.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+    assert state.stopped is False
+
+
+def test_tick_one_risk_stop_fallback_triggers_before_point_stop():
+    # 2026-08-07 加回的保險：stop_loss_points 設很寬（1000點，不會被點數觸發），
+    # 但 max_loss_ntd 設很緊（500元 = 50點），報價跌50點（19950）點數停損還沒到，
+    # 但浮動虧損金額已經超過 NTD 門檻，應該要用 risk_stop 觸發強制平倉。
+    state = _open_long_state(stop_loss_points=1000.0, take_profit_points=3000.0, max_loss_ntd=500.0, max_loss_pct=0.99)
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    st = {"quote": {"last_price": 19950.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_called_once()
+    assert state.held_qty == 0
+    assert state.stopped is True
+    assert "風控保險" in state.stop_reason
+
+
+def test_tick_one_no_risk_stop_when_both_within_limits():
+    # 點數、NTD門檻都還沒到，兩邊都不該觸發。
+    state = _open_long_state(stop_loss_points=1000.0, take_profit_points=3000.0, max_loss_ntd=500.0, max_loss_pct=0.99)
+    svc = MagicMock()
+    st = {"quote": {"last_price": 19995.0}}  # 跌5點 = -50元，遠低於500元門檻
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+    assert state.stopped is False
+
+
+def test_check_orphaned_fill_detects_recent_matching_order():
+    row = _order_row(status_code="2", direction="B", qty=1, when=datetime.now())
+    live_state = {"orders_raw": row}
+    assert _check_orphaned_fill(live_state, expected_side="long", qty=1) is True
+
+
+def test_check_orphaned_fill_ignores_wrong_direction():
+    row = _order_row(status_code="2", direction="B", qty=1, when=datetime.now())
+    live_state = {"orders_raw": row}
+    assert _check_orphaned_fill(live_state, expected_side="short", qty=1) is False
+
+
+def test_check_orphaned_fill_ignores_wrong_qty():
+    row = _order_row(status_code="2", direction="B", qty=1, when=datetime.now())
+    live_state = {"orders_raw": row}
+    assert _check_orphaned_fill(live_state, expected_side="long", qty=3) is False
+
+
+def test_check_orphaned_fill_ignores_old_order():
+    old_time = datetime.now() - timedelta(minutes=5)
+    row = _order_row(status_code="2", direction="B", qty=1, when=old_time)
+    live_state = {"orders_raw": row}
+    assert _check_orphaned_fill(live_state, expected_side="long", qty=1) is False
+
+
+def test_check_orphaned_fill_ignores_no_fill_evidence_status():
+    # 狀態碼 3 = 全部取消，沒有成交跡象，不該被當成「其實成功了」。
+    row = _order_row(status_code="3", direction="B", qty=1, when=datetime.now())
+    live_state = {"orders_raw": row}
+    assert _check_orphaned_fill(live_state, expected_side="long", qty=1) is False
+
+
+def test_check_orphaned_fill_empty_orders_raw():
+    assert _check_orphaned_fill({"orders_raw": ""}, expected_side="long", qty=1) is False
+
+
+def test_tick_one_stop_loss_reports_failure_when_no_orphaned_fill():
+    # 平倉真的失敗、且查無相符成交紀錄時，維持原本行為：計入 consecutive_failures，
+    # 不清空持倉狀態（因為部位理論上還在）。
+    state = _open_long_state()
+    svc = MagicMock()
+    svc.place_order.return_value = {
+        "order_result": {"success": False, "message": "券商拒單"},
+        "state": {"orders_raw": ""},
+    }
+    st = {"quote": {"last_price": 18000.0}}
+
+    _tick_one(state, svc, st)
+
+    assert state.held_qty == 1
+    assert state.consecutive_failures == 1
+    assert state.stopped is False
+
+
+def test_tick_one_stop_loss_clears_position_on_orphaned_fill():
+    # 平倉委託回報失敗，但實際上 orders_raw 顯示近期已經真的平倉成功——
+    # 這裡必須清空 held_qty，否則下一輪會對著不存在的部位再送一次平倉單，
+    # 等於意外反手開一個新部位。
+    state = _open_long_state()
+    fill_row = _order_row(status_code="2", direction="S", qty=1, when=datetime.now())
+    svc = MagicMock()
+    svc.place_order.return_value = {
+        "order_result": {"success": False, "message": "逾時"},
+        "state": {"orders_raw": fill_row},
+    }
+    st = {"quote": {"last_price": 18000.0}}
+
+    _tick_one(state, svc, st)
+
+    assert state.held_qty == 0
+    assert state.held_direction is None
+    assert state.stopped is True
+    assert "已清空" in state.stop_reason
+
+
+def test_tick_one_stop_loss_runs_even_if_already_stopped():
+    # 策略已經因為其他原因被停止，但手上還有留倉時，點數停損仍要保護這筆單子。
+    state = _open_long_state(stopped=True, stop_reason="之前已停止")
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    st = {"quote": {"last_price": 18000.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_called_once()
+    assert state.held_qty == 0
+    assert "停損" in state.stop_reason
+
+
+@pytest.fixture(autouse=False)
+def clean_armed():
+    """`_armed` 是模組全域狀態，測試前後都要清空，避免污染其他測試。"""
+    _armed.clear()
+    yield _armed
+    _armed.clear()
+
+
+def test_stop_strategy_keeps_monitoring_when_holding_position(clean_armed):
+    # 2026-08-21 修正：手上還有留倉時，手動關開關不能把策略整個從監控清單移除，
+    # 否則停損停利保護會直接消失（沒有真正的券商端停損單在保護）。
+    state = _open_long_state(strategy_id="breakout_long")
+    _armed["breakout_long"] = state
+
+    result = stop_strategy("breakout_long")
+
+    assert "breakout_long" in _armed
+    assert _armed["breakout_long"].held_qty == 1
+    assert result["armed"] is False
+    assert result["stopped"] is True
+    assert "留倉" in result["stop_reason"]
+
+
+def test_stop_strategy_removes_when_flat(clean_armed):
+    state = _open_long_state(strategy_id="breakout_long", held_qty=0, held_direction=None)
+    _armed["breakout_long"] = state
+
+    result = stop_strategy("breakout_long")
+
+    assert "breakout_long" not in _armed
+    assert result["armed"] is False
+
+
+def test_reconcile_after_manual_close_stops_mismatched_strategy(clean_armed):
+    # 手動平倉之後，內部記錄的口數總和（1）超過券商實際回報的淨部位（0），
+    # 代表這筆持倉剛才被外部（手動平倉）關掉了，策略自己不知道。
+    state = _open_long_state(strategy_id="breakout_long")
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.status.return_value = {"positions": []}
+        affected = reconcile_after_manual_close("TMFR1")
+
+    assert affected == ["breakout_long"]
+    assert state.held_qty == 0
+    assert state.held_direction is None
+    assert state.stopped is True
+    assert "不一致" in state.stop_reason
+
+
+def test_reconcile_after_manual_close_leaves_matching_strategy_alone(clean_armed):
+    # 券商實際部位跟內部記錄的口數對得起來，不該動它。
+    state = _open_long_state(strategy_id="breakout_long")
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.status.return_value = {
+            "positions": [
+                {"product": "TMFR1", "direction_key": "long", "qty": "1"}
+            ]
+        }
+        affected = reconcile_after_manual_close("TMFR1")
+
+    assert affected == []
+    assert state.held_qty == 1
+    assert state.stopped is False
+
+
+def test_reconcile_after_manual_close_cancels_orphaned_smart_orders(clean_armed):
+    # 2026-08-21：這個場景現在也代表「真實 STP/MIT 智慧單在券商端自己觸發了」
+    # ——不管哪種原因，倉位沒了之後，另一張沒觸發的智慧單要順手撤掉，不然會
+    # 變成孤兒單一直掛著，等下一輪的孤兒單清理才會處理（而那個清理要
+    # held_qty==0 才會跑，這裡剛好順便一次做完）。
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        stop_order_smart_key="26462382",
+        tp_order_smart_key="26466668",
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.status.return_value = {"positions": []}
+        mock_get.return_value.cancel_stop_order.return_value = {
+            "cancel_result": {"success": True}
+        }
+        affected = reconcile_after_manual_close("TMFR1")
+
+    assert affected == ["breakout_long"]
+    assert state.stop_order_smart_key is None
+    assert state.tp_order_smart_key is None
+    assert mock_get.return_value.cancel_stop_order.call_count == 2
+
+
+def test_strategy_tick_runs_position_reconciliation_every_cycle(clean_armed):
+    # strategy_tick() 現在每輪都要主動核對一次 broker 實際部位，不能只靠手動
+    # 平倉按鈕才觸發，不然 STP/MIT 在券商端自己觸發時永遠不會被發現。
+    state = _open_long_state(strategy_id="breakout_long")
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get, patch.object(
+        strategy_service, "reconcile_after_manual_close"
+    ) as mock_reconcile:
+        mock_get.return_value.status.return_value = {"connected": True, "positions": []}
+        mock_reconcile.return_value = []
+        strategy_service.strategy_tick()
+
+    mock_reconcile.assert_called_once()
+
+
+def test_contract_from_product_recognizes_real_tmf_month_codes():
+    # 2026-08-21 修正：實際活著在用的商品碼是 "TM"+YYMM（例如 "TM2609"），
+    # 原本只認 "TMF" 前綴會誤判成 TX（point_value 200，正確應該是 TMF 的 10）。
+    from backend.strategy_service import _contract_from_product
+
+    assert _contract_from_product("TM2609") == "TMF"
+    assert _contract_from_product("TM2608") == "TMF"
+    assert _contract_from_product("TMFR1") == "TMF"
+    assert _contract_from_product("MXFR1") == "MTX"
+    assert _contract_from_product("TX00") == "TX"
+
+
+def test_settlement_month_from_tmf_code():
+    assert _settlement_month_from_tmf_code("TM2609") == "202609"
+    assert _settlement_month_from_tmf_code("tm2609") == "202609"
+
+
+def test_settlement_month_from_tmf_code_rejects_non_month_codes():
+    # TMFR1/TX00/MXFR1 這類連續代碼沒有具體月份可以推導，STP 目前只驗證過 TMF。
+    assert _settlement_month_from_tmf_code("TMFR1") is None
+    assert _settlement_month_from_tmf_code("TX00") is None
+    assert _settlement_month_from_tmf_code("MXFR1") is None
+
+
+def _stp_success_response() -> dict:
+    return {
+        "order_result": {
+            "success": True,
+            "raw": "20260821,智慧條件單已送出 條件單號：26462382,d3105,26462382,1687900003180",
+        }
+    }
+
+
+def test_place_stop_order_for_state_success_tracks_smart_key():
+    state = _open_long_state(product_code="TM2609")
+    svc = MagicMock()
+    svc.place_stop_order.return_value = _stp_success_response()
+
+    _place_stop_order_for_state(state, svc)
+
+    assert state.stop_order_smart_key == "26462382"
+    assert state.stop_order_order_no == "d3105"
+    assert state.stop_order_seq_no == "1687900003180"
+    call_kwargs = svc.place_stop_order.call_args.args[0]
+    assert call_kwargs["side"] == "sell"  # 保護多單用賣出停損
+    assert call_kwargs["settlement_month"] == "202609"
+    assert call_kwargs["new_close"] == "close"
+
+
+def test_place_stop_order_for_state_short_uses_buy_side():
+    state = _open_long_state(product_code="TM2609", held_direction="short")
+    svc = MagicMock()
+    svc.place_stop_order.return_value = _stp_success_response()
+
+    _place_stop_order_for_state(state, svc)
+
+    call_kwargs = svc.place_stop_order.call_args.args[0]
+    assert call_kwargs["side"] == "buy"  # 保護空單用買進停損
+
+
+def test_place_stop_order_for_state_failure_leaves_no_tracking():
+    state = _open_long_state(product_code="TM2609")
+    svc = MagicMock()
+    svc.place_stop_order.return_value = {
+        "order_result": {"success": False, "message": "風控失敗"}
+    }
+
+    _place_stop_order_for_state(state, svc)
+
+    assert state.stop_order_smart_key is None
+    assert "改用軟停損保護" in state.last_action
+
+
+def test_place_stop_order_for_state_skips_non_tmf_product():
+    state = _open_long_state(product_code="TMFR1")
+    svc = MagicMock()
+
+    _place_stop_order_for_state(state, svc)
+
+    svc.place_stop_order.assert_not_called()
+    assert state.stop_order_smart_key is None
+
+
+def test_cancel_stop_order_for_state_success_clears_tracking():
+    state = _open_long_state(
+        product_code="TM2609",
+        stop_order_smart_key="26462382",
+        stop_order_seq_no="1687900003180",
+        stop_order_order_no="d3105",
+    )
+    svc = MagicMock()
+    svc.cancel_stop_order.return_value = {"cancel_result": {"success": True}}
+
+    _cancel_stop_order_for_state(state, svc)
+
+    assert state.stop_order_smart_key is None
+    assert state.stop_order_seq_no == ""
+    assert state.stop_order_order_no == ""
+
+
+def test_cancel_stop_order_for_state_failure_keeps_tracking_for_retry():
+    state = _open_long_state(product_code="TM2609", stop_order_smart_key="26462382")
+    svc = MagicMock()
+    svc.cancel_stop_order.return_value = {"cancel_result": {"success": False}}
+
+    _cancel_stop_order_for_state(state, svc)
+
+    assert state.stop_order_smart_key == "26462382"
+
+
+def test_cancel_stop_order_for_state_noop_when_nothing_tracked():
+    state = _open_long_state(product_code="TM2609", stop_order_smart_key=None)
+    svc = MagicMock()
+
+    _cancel_stop_order_for_state(state, svc)
+
+    svc.cancel_stop_order.assert_not_called()
+
+
+def test_tick_one_skips_soft_stop_loss_when_broker_stop_order_exists(clean_armed):
+    # 有真正的 STP 停損單頂著時，軟停損檢查要讓路，不要兩邊搶著平倉。
+    # 用 150 點跌幅：超過預設 stop_loss_points=100（若軟停損沒讓路會觸發），
+    # 但用正確的 TMF point_value=10 換算浮動損益只有 1,500 元，不會誤觸風控保險。
+    state = _open_long_state(product_code="TM2609", stop_order_smart_key="26462382")
+    svc = MagicMock()
+    st = {"quote": {"last_price": 19850.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1  # 沒被軟停損平掉
+
+
+def test_tick_one_entry_places_stop_order(clean_armed):
+    state = _open_long_state(
+        product_code="TM2609", held_qty=0, held_direction=None, entry_price=0.0
+    )
+    state.last_signal_key = None
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    svc.place_stop_order.return_value = _stp_success_response()
+    st = {"quote": {"last_price": 20000.0}}
+
+    fake_bars = MagicMock()
+    fake_bars.empty = False
+    fake_bars.__len__.return_value = 100
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-08-21T09:45:00", "direction": "long", "key": "k1"},
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    assert state.held_qty == 1
+    svc.place_stop_order.assert_called_once()
+    assert state.stop_order_smart_key == "26462382"
+
+
+def test_tick_one_entry_records_estimated_trade_on_orphaned_fill(clean_armed):
+    # 2026-08-25：進場委託回報失敗、但 orders_raw 顯示近期有相符的真實成交紀錄時，
+    # 原本完全不會呼叫 _record_trade()，圖表上看不到這筆疑似進場——使用者得自己
+    # 去對帳才知道發生過什麼事。這裡改成補記一筆（價格用當下報價估計），但不動
+    # held_qty/held_direction（那些欄位仍然刻意不猜測歸屬哪個策略）。
+    state = _open_long_state(
+        strategy_id="breakout_long_test",
+        product_code="TM2609",
+        held_qty=0,
+        held_direction=None,
+        entry_price=0.0,
+    )
+    state.last_signal_key = None
+    fill_row = _order_row(status_code="2", direction="B", qty=1, when=datetime.now())
+    svc = MagicMock()
+    svc.place_order.return_value = {
+        "order_result": {"success": False, "message": "逾時"},
+        "state": {"orders_raw": fill_row},
+    }
+    st = {"quote": {"last_price": 20000.0}}
+
+    fake_bars = MagicMock()
+    fake_bars.empty = False
+    fake_bars.__len__.return_value = 100
+
+    strategy_service._trade_log.pop("breakout_long_test", None)
+    try:
+        with patch.object(
+            strategy_service,
+            "_latest_closed_signal",
+            return_value={"time": "2026-08-25T09:45:00", "direction": "long", "key": "k1"},
+        ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+            strategy_service, "_signaled_frame", return_value=MagicMock()
+        ):
+            _tick_one(state, svc, st)
+
+        # held_qty 不能被這個分支動到：這筆單無法安全歸屬給哪個策略。
+        assert state.held_qty == 0
+        assert state.held_direction is None
+        assert state.stopped is True
+
+        trades = strategy_service._trade_log.get("breakout_long_test", [])
+        assert len(trades) == 1
+        assert trades[0]["type"] == "entry"
+        assert trades[0]["direction"] == "long"
+        assert trades[0]["price"] == 20000.0
+    finally:
+        strategy_service._trade_log.pop("breakout_long_test", None)
+
+
+def test_reconcile_orphan_stop_orders_cleans_flat_positions(clean_armed):
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        held_qty=0,
+        held_direction=None,
+        stop_order_smart_key="26462382",
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.cancel_stop_order.return_value = {
+            "cancel_result": {"success": True}
+        }
+        cleaned = reconcile_orphan_stop_orders()
+
+    assert cleaned == ["breakout_long"]
+    assert state.stop_order_smart_key is None
+
+
+def test_reconcile_orphan_stop_orders_ignores_held_positions(clean_armed):
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        stop_order_smart_key="26462382",
+    )  # held_qty=1 (預設)，代表這張 STP 單還在保護，不是孤兒單
+    _armed["breakout_long"] = state
+    svc_get_patch = patch.object(strategy_service.TradingService, "get")
+
+    with svc_get_patch as mock_get:
+        cleaned = reconcile_orphan_stop_orders()
+        mock_get.return_value.cancel_stop_order.assert_not_called()
+
+    assert cleaned == []
+    assert state.stop_order_smart_key == "26462382"
+
+
+def _mit_success_response() -> dict:
+    return {
+        "order_result": {
+            "success": True,
+            "raw": "20260821,智慧條件單已送出 條件單號：26466668,b5009,26466668,1687900005267",
+        }
+    }
+
+
+def test_place_mit_order_for_state_long_uses_sell_gte():
+    state = _open_long_state(product_code="TM2609")  # held_direction="long"
+    svc = MagicMock()
+    svc.place_mit_order.return_value = _mit_success_response()
+
+    _place_mit_order_for_state(state, svc)
+
+    assert state.tp_order_smart_key == "26466668"
+    call_kwargs = svc.place_mit_order.call_args.args[0]
+    assert call_kwargs["side"] == "sell"
+    assert call_kwargs["trigger_direction"] == "gte"
+    assert call_kwargs["settlement_month"] == "202609"
+
+
+def test_place_mit_order_for_state_short_uses_buy_lte():
+    state = _open_long_state(product_code="TM2609", held_direction="short")
+    svc = MagicMock()
+    svc.place_mit_order.return_value = _mit_success_response()
+
+    _place_mit_order_for_state(state, svc)
+
+    call_kwargs = svc.place_mit_order.call_args.args[0]
+    assert call_kwargs["side"] == "buy"
+    assert call_kwargs["trigger_direction"] == "lte"
+
+
+def test_place_mit_order_for_state_failure_leaves_no_tracking():
+    state = _open_long_state(product_code="TM2609")
+    svc = MagicMock()
+    svc.place_mit_order.return_value = {
+        "order_result": {"success": False, "message": "風控失敗"}
+    }
+
+    _place_mit_order_for_state(state, svc)
+
+    assert state.tp_order_smart_key is None
+    assert "改用軟停利保護" in state.last_action
+
+
+def test_place_mit_order_for_state_skips_non_tmf_product():
+    state = _open_long_state(product_code="TMFR1")
+    svc = MagicMock()
+
+    _place_mit_order_for_state(state, svc)
+
+    svc.place_mit_order.assert_not_called()
+    assert state.tp_order_smart_key is None
+
+
+def test_cancel_mit_order_for_state_success_clears_tracking():
+    state = _open_long_state(
+        product_code="TM2609",
+        tp_order_smart_key="26466668",
+        tp_order_seq_no="1687900005267",
+        tp_order_order_no="b5009",
+    )
+    svc = MagicMock()
+    svc.cancel_stop_order.return_value = {"cancel_result": {"success": True}}
+
+    _cancel_mit_order_for_state(state, svc)
+
+    assert state.tp_order_smart_key is None
+    call_kwargs = svc.cancel_stop_order.call_args.args[0]
+    assert call_kwargs["trade_kind"] == 8  # MIT
+
+
+def test_cancel_mit_order_for_state_failure_keeps_tracking_for_retry():
+    state = _open_long_state(product_code="TM2609", tp_order_smart_key="26466668")
+    svc = MagicMock()
+    svc.cancel_stop_order.return_value = {"cancel_result": {"success": False}}
+
+    _cancel_mit_order_for_state(state, svc)
+
+    assert state.tp_order_smart_key == "26466668"
+
+
+def test_tick_one_skips_soft_take_profit_when_broker_mit_order_exists(clean_armed):
+    # 有真正的 MIT 停利單頂著時，軟停利檢查要讓路，不要兩邊搶著平倉。
+    state = _open_long_state(product_code="TM2609", tp_order_smart_key="26466668")
+    svc = MagicMock()
+    st = {"quote": {"last_price": 20350.0}}  # 進場價 20000 + 350 > 預設 take_profit_points=300
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+
+
+def test_reconcile_orphan_stop_orders_cleans_both_sl_and_tp(clean_armed):
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        held_qty=0,
+        held_direction=None,
+        stop_order_smart_key="26462382",
+        tp_order_smart_key="26466668",
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.cancel_stop_order.return_value = {
+            "cancel_result": {"success": True}
+        }
+        cleaned = reconcile_orphan_stop_orders()
+
+    assert cleaned == ["breakout_long"]
+    assert state.stop_order_smart_key is None
+    assert state.tp_order_smart_key is None
+    assert mock_get.return_value.cancel_stop_order.call_count == 2

@@ -1,0 +1,143 @@
+{
+  "variants": {
+    "baseline": {
+      "label": "Baseline（無濾網、預設 SL/TP）"
+    },
+    "c1_only": {
+      "label": "C1 單獨（進場最小分離 0.05%）"
+    },
+    "d2_only": {
+      "label": "D2 單獨（ATR14 × 2.5 停損 / TP500）"
+    },
+    "combined": {
+      "label": "COMBINED（C1 + D2）"
+    }
+  },
+  "symbols": {
+    "MTX": {
+      "baseline": {
+        "n_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "profit_factor": 0.8337352246722424,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -24785.252,
+        "total_return_pct": -1.0900956258678838,
+        "sharpe_ratio_annualized": -1.099074252597627,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.523552357109711,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "c1_only": {
+        "n_trades": 18,
+        "win_rate": 0.2222222222222222,
+        "profit_factor": 0.8968889378475283,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -11430.894,
+        "total_return_pct": -0.5027492780448409,
+        "sharpe_ratio_annualized": -0.5661060298914155,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.523552357109711,
+        "trades_per_year_extrapolated": 156.88590604026845
+      },
+      "d2_only": {
+        "n_trades": 24,
+        "win_rate": 0.625,
+        "profit_factor": 1.059361191824125,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 20956.143392857033,
+        "total_return_pct": 0.9216852121420263,
+        "sharpe_ratio_annualized": 0.3750533946955864,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 4.957620926345356,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "combined": {
+        "n_trades": 18,
+        "win_rate": 0.6111111111111112,
+        "profit_factor": 1.0892832098392564,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 22413.496428571427,
+        "total_return_pct": 0.9857819649036103,
+        "sharpe_ratio_annualized": 0.47646110446923867,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 4.957620926345356,
+        "trades_per_year_extrapolated": 156.88590604026845
+      },
+      "combined_vs_luck_threshold": {
+        "combined_sharpe": 0.47646110446923867,
+        "combined_sharpe_flag": null,
+        "beats_updated_luck_threshold_n13": false,
+        "gap_to_updated_threshold": -3.901254506371006
+      }
+    },
+    "TX": {
+      "baseline": {
+        "n_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "profit_factor": 0.8490181397608391,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -88540.892,
+        "total_return_pct": -0.9735493033577353,
+        "sharpe_ratio_annualized": -0.9854938583735676,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.4350538866954254,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "c1_only": {
+        "n_trades": 18,
+        "win_rate": 0.2222222222222222,
+        "profit_factor": 0.9170614271215184,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": -36023.55600000001,
+        "total_return_pct": -0.39609616591922703,
+        "sharpe_ratio_annualized": -0.44837135452040705,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.4350538866954254,
+        "trades_per_year_extrapolated": 156.88590604026845
+      },
+      "d2_only": {
+        "n_trades": 24,
+        "win_rate": 0.625,
+        "profit_factor": 1.0547405579402147,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 77589.07485714369,
+        "total_return_pct": 0.85312885457878,
+        "sharpe_ratio_annualized": 0.347289898562611,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 5.016242950525435,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "combined": {
+        "n_trades": 18,
+        "win_rate": 0.6111111111111112,
+        "profit_factor": 1.0857364383478942,
+        "profit_factor_display": null,
+        "total_net_pnl_ntd": 86504.02557143,
+        "total_return_pct": 0.9511529862688233,
+        "sharpe_ratio_annualized": 0.459760844626944,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 5.016242950525435,
+        "trades_per_year_extrapolated": 156.88590604026845
+      },
+      "combined_vs_luck_threshold": {
+        "combined_sharpe": 0.459760844626944,
+        "combined_sharpe_flag": null,
+        "beats_updated_luck_threshold_n13": false,
+        "gap_to_updated_threshold": -3.9179547662133003
+      }
+    }
+  },
+  "assumptions": {
+    "capital_normalization": "Total Return 以 proper_evaluation_with_dsr.py 相同邏輯計算：assumed_capital = 平均 close 價格 × point_value。",
+    "signal_timing": "訊號於收盤確認，下一根開盤成交；沿用既有引擎的 gap / 成本 / 同棒先停損規則。",
+    "combined_trial_count_note": "先前正式評估的非 baseline 變體數為 12；本次新增 COMBINED 1 個新變體後，多重檢定計數應更新為 N=13。"
+  },
+  "luck_threshold": {
+    "previous_expected_max_sharpe_n12": 4.177569296629803,
+    "previous_num_variants": 12,
+    "updated_num_variants": 13,
+    "sigma_of_observed_sharpes_with_combined": 1.9328277395223181,
+    "expected_max_sharpe_from_pure_luck_n13": 4.377715610840244,
+    "formula": "E[max(SR)] ~= sigma_SR * sqrt(2 * ln(N))"
+  }
+}

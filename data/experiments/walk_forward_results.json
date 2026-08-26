@@ -1,0 +1,344 @@
+{
+  "generated_at": "2026-07-05T12:53:48",
+  "split_method": {
+    "type": "single_walk_forward_split",
+    "is_ratio": 0.6,
+    "oos_ratio": 0.4,
+    "note": "先依時間排序後，以前 60% K 棒做 IS、後 40% K 棒做 OOS；各視窗獨立計算 MA/ATR 與回測。"
+  },
+  "variants_included": [
+    {
+      "key": "baseline",
+      "label": "Baseline breakout",
+      "notes": "原始 breakout。"
+    },
+    {
+      "key": "c1_entry_filter",
+      "label": "C1 進場濾網",
+      "notes": "最小均線分離 0.05%。"
+    },
+    {
+      "key": "d2_exit_only",
+      "label": "D2 出場機制",
+      "notes": "ATR14 × 2.5 停損 / TP500。"
+    },
+    {
+      "key": "combined_c1_d2",
+      "label": "C1 + D2 組合",
+      "notes": "C1 進場濾網 + D2 ATR 自適應停損。"
+    }
+  ],
+  "symbols": {
+    "MTX": {
+      "total_bars": 551,
+      "windows": {
+        "IS": {
+          "name": "IS",
+          "bars": 330,
+          "start": "2026-05-22 16:00:00",
+          "end": "2026-06-16 22:00:00"
+        },
+        "OOS": {
+          "name": "OOS",
+          "bars": 221,
+          "start": "2026-06-16 23:00:00",
+          "end": "2026-07-03 13:45:00"
+        }
+      },
+      "variants": {
+        "baseline": {
+          "label": "Baseline breakout",
+          "notes": "原始 breakout。",
+          "IS": {
+            "n_trades": 15,
+            "win_rate": 20.0,
+            "profit_factor": 0.5511362956265371,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": -42899.89,
+            "total_return_pct": -1.9145251256879432,
+            "sharpe_ratio": -3.6191014153580428,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 2.56062483433642,
+            "trades_per_year_extrapolated": 216.98019801980197,
+            "assumed_capital_ntd": 2240758.787878788
+          },
+          "OOS": {
+            "n_trades": 8,
+            "win_rate": 25.0,
+            "profit_factor": 1.0841090160612765,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": 3856.736,
+            "total_return_pct": 0.16603604647980305,
+            "sharpe_ratio": 0.4249872721810873,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 0.9871114390686742,
+            "trades_per_year_extrapolated": 175.86959247648903,
+            "assumed_capital_ntd": 2322830.542986425
+          },
+          "comparison": {
+            "status": "OOS 大致守住",
+            "note": "OOS 沒有明顯崩潰，表現大致維持。"
+          }
+        },
+        "c1_entry_filter": {
+          "label": "C1 進場濾網",
+          "notes": "最小均線分離 0.05%。",
+          "IS": {
+            "n_trades": 13,
+            "win_rate": 23.076923076923077,
+            "profit_factor": 0.6560652966797733,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": -27614.020000000004,
+            "total_return_pct": -1.2323512976664834,
+            "sharpe_ratio": -2.3496509621332127,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 2.56062483433642,
+            "trades_per_year_extrapolated": 188.04950495049505,
+            "assumed_capital_ntd": 2240758.787878788
+          },
+          "OOS": {
+            "n_trades": 4,
+            "win_rate": 25.0,
+            "profit_factor": 1.0839648573160383,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": 1925.224000000001,
+            "total_return_pct": 0.08288267113643051,
+            "sharpe_ratio": 0.27777087357416935,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 0.9871114390686742,
+            "trades_per_year_extrapolated": 87.93479623824452,
+            "assumed_capital_ntd": 2322830.542986425
+          },
+          "comparison": {
+            "status": "OOS 大致守住",
+            "note": "OOS 沒有明顯崩潰，表現大致維持。"
+          }
+        },
+        "d2_exit_only": {
+          "label": "D2 出場機制",
+          "notes": "ATR14 × 2.5 停損 / TP500。",
+          "IS": {
+            "n_trades": 15,
+            "win_rate": 66.66666666666666,
+            "profit_factor": 1.2492993377633745,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": 45237.86424999995,
+            "total_return_pct": 2.018863632029948,
+            "sharpe_ratio": 1.479894117286761,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 3.0744816498172156,
+            "trades_per_year_extrapolated": 216.98019801980197,
+            "assumed_capital_ntd": 2240758.787878788
+          },
+          "OOS": {
+            "n_trades": 8,
+            "win_rate": 50.0,
+            "profit_factor": 0.5859419059568145,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": -71038.97285714292,
+            "total_return_pct": -3.0582933856986947,
+            "sharpe_ratio": -2.907173141386939,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 4.852712143026409,
+            "trades_per_year_extrapolated": 175.86959247648903,
+            "assumed_capital_ntd": 2322830.542986425
+          },
+          "comparison": {
+            "status": "疑似過度擬合",
+            "note": "OOS 相比 IS 明顯惡化，符合典型 overfitting / data-snooping 訊號。"
+          }
+        },
+        "combined_c1_d2": {
+          "label": "C1 + D2 組合",
+          "notes": "C1 進場濾網 + D2 ATR 自適應停損。",
+          "IS": {
+            "n_trades": 13,
+            "win_rate": 69.23076923076923,
+            "profit_factor": 1.45924905063866,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": 63522.37424999994,
+            "total_return_pct": 2.8348599855379053,
+            "sharpe_ratio": 2.3255494526892733,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 3.0744816498172156,
+            "trades_per_year_extrapolated": 188.04950495049505,
+            "assumed_capital_ntd": 2240758.787878788
+          },
+          "OOS": {
+            "n_trades": 4,
+            "win_rate": 25.0,
+            "profit_factor": 0.22049404099576358,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": -87866.12982142852,
+            "total_return_pct": -3.7827180328213044,
+            "sharpe_ratio": -5.142323368285378,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 4.852712143026409,
+            "trades_per_year_extrapolated": 87.93479623824452,
+            "assumed_capital_ntd": 2322830.542986425
+          },
+          "comparison": {
+            "status": "疑似過度擬合",
+            "note": "OOS 相比 IS 明顯惡化，符合典型 overfitting / data-snooping 訊號。"
+          }
+        }
+      }
+    },
+    "TX": {
+      "total_bars": 551,
+      "windows": {
+        "IS": {
+          "name": "IS",
+          "bars": 330,
+          "start": "2026-05-22 16:00:00",
+          "end": "2026-06-16 22:00:00"
+        },
+        "OOS": {
+          "name": "OOS",
+          "bars": 221,
+          "start": "2026-06-16 23:00:00",
+          "end": "2026-07-03 13:45:00"
+        }
+      },
+      "variants": {
+        "baseline": {
+          "label": "Baseline breakout",
+          "notes": "原始 breakout。",
+          "IS": {
+            "n_trades": 15,
+            "win_rate": 20.0,
+            "profit_factor": 0.5589010342694202,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": -164749.428,
+            "total_return_pct": -1.8380996429778886,
+            "sharpe_ratio": -3.5062092949333308,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 2.470811728987761,
+            "trades_per_year_extrapolated": 216.98019801980197,
+            "assumed_capital_ntd": 8963030.303030303
+          },
+          "OOS": {
+            "n_trades": 8,
+            "win_rate": 25.0,
+            "profit_factor": 1.0910981650677654,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": 16626.888,
+            "total_return_pct": 0.1789533876224607,
+            "sharpe_ratio": 0.45804361764125123,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 0.9822845704554446,
+            "trades_per_year_extrapolated": 175.86959247648903,
+            "assumed_capital_ntd": 9291183.71040724
+          },
+          "comparison": {
+            "status": "OOS 大致守住",
+            "note": "OOS 沒有明顯崩潰，表現大致維持。"
+          }
+        },
+        "c1_entry_filter": {
+          "label": "C1 進場濾網",
+          "notes": "最小均線分離 0.05%。",
+          "IS": {
+            "n_trades": 13,
+            "win_rate": 23.076923076923077,
+            "profit_factor": 0.6676649069588643,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": -103905.956,
+            "total_return_pct": -1.159272617485969,
+            "sharpe_ratio": -2.232039016198827,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 2.470811728987761,
+            "trades_per_year_extrapolated": 188.04950495049505,
+            "assumed_capital_ntd": 8963030.303030303
+          },
+          "OOS": {
+            "n_trades": 4,
+            "win_rate": 25.0,
+            "profit_factor": 1.0909513331293286,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": 8300.751999999997,
+            "total_return_pct": 0.0893400911952925,
+            "sharpe_ratio": 0.29940748511923526,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 0.9822845704554446,
+            "trades_per_year_extrapolated": 87.93479623824452,
+            "assumed_capital_ntd": 9291183.71040724
+          },
+          "comparison": {
+            "status": "OOS 大致守住",
+            "note": "OOS 沒有明顯崩潰，表現大致維持。"
+          }
+        },
+        "d2_exit_only": {
+          "label": "D2 出場機制",
+          "notes": "ATR14 × 2.5 停損 / TP500。",
+          "IS": {
+            "n_trades": 15,
+            "win_rate": 66.66666666666666,
+            "profit_factor": 1.2492272394667872,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": 180730.01900000082,
+            "total_return_pct": 2.016394153424852,
+            "sharpe_ratio": 1.4775649678714546,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 3.0677098448170876,
+            "trades_per_year_extrapolated": 216.98019801980197,
+            "assumed_capital_ntd": 8963030.303030303
+          },
+          "OOS": {
+            "n_trades": 8,
+            "win_rate": 50.0,
+            "profit_factor": 0.5771377793750335,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": -292719.9921428571,
+            "total_return_pct": -3.1505134465802844,
+            "sharpe_ratio": -3.0048630628830324,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 4.910135281444939,
+            "trades_per_year_extrapolated": 175.86959247648903,
+            "assumed_capital_ntd": 9291183.71040724
+          },
+          "comparison": {
+            "status": "疑似過度擬合",
+            "note": "OOS 相比 IS 明顯惡化，符合典型 overfitting / data-snooping 訊號。"
+          }
+        },
+        "combined_c1_d2": {
+          "label": "C1 + D2 組合",
+          "notes": "C1 進場濾網 + D2 ATR 自適應停損。",
+          "IS": {
+            "n_trades": 13,
+            "win_rate": 69.23076923076923,
+            "profit_factor": 1.4587447836828242,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": 253568.0510000008,
+            "total_return_pct": 2.8290437767935717,
+            "sharpe_ratio": 2.319478459538566,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 3.0677098448170876,
+            "trades_per_year_extrapolated": 188.04950495049505,
+            "assumed_capital_ntd": 8963030.303030303
+          },
+          "OOS": {
+            "n_trades": 4,
+            "win_rate": 25.0,
+            "profit_factor": 0.21824748203992111,
+            "profit_factor_display": null,
+            "total_net_pnl_ntd": -356643.0734285708,
+            "total_return_pct": -3.838510619794201,
+            "sharpe_ratio": -5.261456330902043,
+            "sharpe_flag": null,
+            "max_drawdown_pct": 4.910135281444939,
+            "trades_per_year_extrapolated": 87.93479623824452,
+            "assumed_capital_ntd": 9291183.71040724
+          },
+          "comparison": {
+            "status": "疑似過度擬合",
+            "note": "OOS 相比 IS 明顯惡化，符合典型 overfitting / data-snooping 訊號。"
+          }
+        }
+      }
+    }
+  },
+  "combined_variant_note": "已偵測到 combined_filter_exit_test.py，因此本次納入 C1+D2 組合。"
+}

@@ -1,0 +1,77 @@
+策略王COM元件使用說明
+-登入-
+介紹
+策略王API整合元件函式庫主要提供功能。欲使用此元件功能，必須先申請API權限才可登入使用(登入前置準備)，否則將無法初始元件，進而無法使用相關函式功能。
+大部分函式執行成功回傳值為0(SK_SUCCESS)。
+登入前置準備
+憑證安裝&申請
+"為配合主管機關強化資通安全防護，策略王API 於V2.13.35 實施雙因子登入，並採用綁下單憑證方式，請客戶留意您的下單憑證狀態。"
+進入群益金融網 > 點選「憑證專區 > AP軟體憑證」：群益金鼎證券-2023最佳數位交易券商，提供多元金融投資產品 (capital.com.tw)
+點選「立即申請/展延」->下載憑證精靈(RAWinApp)
+執行憑證精靈(RAWinApp) > 輸入您的「身分證字號」+「密碼」登入
+點選「申請」
+詳閱「CA憑證申請同意書」>點選「我同意」>自動跳轉至「憑證作業」網頁
+依照步驟「驗證身分」>「寄發驗證碼」>「收取驗證碼」>回到「憑證精靈」畫面
+輸入驗證碼 > (等待5~20秒下載憑證資料)
+點選「檢測憑證請按此」
+檢查狀態是否為「此電腦已安裝您的有效憑證」，完成憑證安裝及申請
+2. API連線測試(需要雙因子登入)
+依主管機關規定，使用正式API前，須先進行連線測試。
+連線測試小程式(SKCOMVerifyDJ.exe)請至API下載專區下載。
+1、雙因子登入
+2-1、下單測試(證券) 【客戶如有證券或複委託帳號，請做此下單測試】
+2-2、下單測試(國內期貨) 【客戶如有國內期貨或海外期貨帳號，請做此下單測試】
+3、查詢測試紀錄有無驗證-成功
+API同意書簽署
+*同意書及風險預告書，請先確認是否為網路戶。
+一般自然人：行情相關特殊商品同意書簽署，可至金融網－線上簽署專區點選。
+（進入群益網上發－服務－同意區簽署點選）
+行情相關特殊商品－國內期貨(ex:東證TSE TOPIX)期貨
+一般自然人：使用國內、外下單（含證期選智慧單），可至金融網－線上簽署專區點選。
+（進入群益網上發－服務－同意區簽署點選）
+法人使用國內、外下單與回報功能，請由業務單位代客戶申請需求單，註明申請開放國內特殊商品之行情資訊、下單、回報權限。
+註：若傳統戶申請網路戶可透過下方link，加開電子戶。
+https://iopen.capital.com.tw/eopen/#/main/home
+(點選我已是群益證券客戶，再點最下方加開電子戶)
+函式範例
+註冊公告（必要項目）
+請於登入(SKCenterLib_Login或SKCenterLib_LoginSetQuote)前先註冊公告，建立SKReplyLib物件及事件OnReplyMessage。
+並在事件處理函式中，回傳指定參數，參數值為-1。
+SKReplyLib (回報)
+事件
+OnReplyMessage
+SKCenterLib (登入&環境設定)
+函式
+登入
+其它功能
+事件
+登入
+SKCenterLib_Login
+SKCenterLib_GenerateKeyCert
+其它功能
+SKCenterLib_SetLogPath
+SKCenterLib_GetReturnCodeMessage
+用法可參考在函式SKCenterLib_Login的程式碼。
+SKCenterLib_Debug
+SKCenterLib_GetLastLogInfo
+SKCenterLib_RequestAgreement
+SKCenterLib_GetSKAPIVersionAndBit
+事件
+OnTimer
+OnShowAgreement
+登入常見問題
+出現602錯誤 -> 代表憑證可能過期或是未安裝憑證 (測試畫面情境：SUB*****憑證過期未更新、電腦沒有憑證的時候)
+Center.log紀錄的錯誤訊息
+出現306錯誤 -> 帳號或密碼輸入錯誤 (測試畫面情境：輸錯密碼)
+Center.log紀錄的錯誤訊息
+錯誤代碼定義表
+V2.13.45 版本登入失敗錯誤代碼(由密碼平台回覆)
+Microsoft其他錯誤代碼定義
+當您在登入、下單、讀取同意書發生的錯誤，其代碼無法自
+錯誤代碼定義表確認時,可至以下link確認原因：
+Windows Sockets Error Codes  <997;10004~10112;11001~11031
+https://docs.microsoft.com/zh-tw/windows/win32/winsock/windows-sockets-error-codes-2?redirectedfrom=MSDN
+WinINet functions return error codes 12002~12054;12111~12174
+https://docs.microsoft.com/zh-tw/windows/win32/wininet/wininet-errors
+Microsoft Windows HTTP error code服務失敗
+https://docs.microsoft.com/zh-tw/windows/win32/winhttp/error-messages

@@ -1,0 +1,17 @@
+pandas>=2.0
+numpy>=1.24
+pyarrow>=14.0  # 讀取 data/raw_tick/TMFR1 逐筆 .parquet（見 backend/load_taifex_tick.py）
+matplotlib>=3.7
+pytest>=7.4
+httpx>=0.27  # fastapi.testclient.TestClient 依賴（見 tests/test_api_auth.py）
+python-dateutil>=2.8
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.0
+requests>=2.31
+python-dotenv>=1.0
+PyJWT[crypto]>=2.8  # 驗證 Supabase 登入發的 ES256 JWT（見 backend/supabase_auth.py）
+truststore>=0.9  # 讓 Python SSL 改用 Windows 系統憑證存放區（見 run_server.py）
+comtypes>=1.4; platform_system == "Windows"  # 群益證券 SKCOM API 下單整合（僅 Windows）
+pywin32>=306; platform_system == "Windows"  # backend/trading_service.py 用 pythoncom 做 COM STA 執行緒（僅 Windows）
+shioaji>=1.2  # 永豐 API，群益 K 線回補在交易時段中途缺資料時的備援資料源（見 backend/shioaji_backfill.py）

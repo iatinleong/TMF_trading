@@ -1,0 +1,245 @@
+{
+  "entry_filters": {
+    "MTX": {
+      "baseline": {
+        "n_trades": 24,
+        "total_return_pct": -1.0900956258678838,
+        "sharpe_per_trade_annualized": -1.099074252597627,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.523552357109711,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "B_trend_align": {
+        "n_trades": 8,
+        "total_return_pct": -1.2592569551330368,
+        "sharpe_per_trade_annualized": -2.6007894375221094,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.6806860582523433,
+        "trades_per_year_extrapolated": 69.72706935123043
+      },
+      "C1_min_sep_0.05pct": {
+        "n_trades": 18,
+        "total_return_pct": -0.5027492780448409,
+        "sharpe_per_trade_annualized": -0.5661060298914155,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.523552357109711,
+        "trades_per_year_extrapolated": 156.88590604026845
+      },
+      "C2_min_sep_0.10pct": {
+        "n_trades": 11,
+        "total_return_pct": -0.8380411628884976,
+        "sharpe_per_trade_annualized": -1.2902743660079556,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.3439651224926135,
+        "trades_per_year_extrapolated": 95.87472035794184
+      },
+      "D_delay_1bar": {
+        "n_trades": 23,
+        "total_return_pct": -1.5212809526563362,
+        "sharpe_per_trade_annualized": -1.2094169196610154,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.870094345451867,
+        "trades_per_year_extrapolated": 200.46532438478746
+      },
+      "E1_align_and_sep0.05": {
+        "n_trades": 8,
+        "total_return_pct": -1.2592569551330368,
+        "sharpe_per_trade_annualized": -2.6007894375221094,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.6806860582523433,
+        "trades_per_year_extrapolated": 69.72706935123043
+      },
+      "E2_align_and_sep0.10": {
+        "n_trades": 8,
+        "total_return_pct": -2.68847245044175,
+        "sharpe_per_trade_annualized": null,
+        "sharpe_flag": "unstable_near_zero_variance",
+        "max_drawdown_pct": 2.6884724504417497,
+        "trades_per_year_extrapolated": 69.72706935123043
+      }
+    },
+    "TX": {
+      "baseline": {
+        "n_trades": 24,
+        "total_return_pct": -0.9735493033577353,
+        "sharpe_per_trade_annualized": -0.9854938583735676,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.4350538866954254,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "B_trend_align": {
+        "n_trades": 8,
+        "total_return_pct": -1.2460706507462278,
+        "sharpe_per_trade_annualized": -2.5735367079366163,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.672451129995748,
+        "trades_per_year_extrapolated": 69.72706935123043
+      },
+      "C1_min_sep_0.05pct": {
+        "n_trades": 18,
+        "total_return_pct": -0.39609616591922703,
+        "sharpe_per_trade_annualized": -0.44837135452040705,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.4350538866954254,
+        "trades_per_year_extrapolated": 156.88590604026845
+      },
+      "C2_min_sep_0.10pct": {
+        "n_trades": 11,
+        "total_return_pct": -0.8199050670907662,
+        "sharpe_per_trade_annualized": -1.2623431086059818,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.3373761205707688,
+        "trades_per_year_extrapolated": 95.87472035794184
+      },
+      "D_delay_1bar": {
+        "n_trades": 23,
+        "total_return_pct": -1.4415711917396392,
+        "sharpe_per_trade_annualized": -1.147071051272732,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.811835486437888,
+        "trades_per_year_extrapolated": 200.46532438478746
+      },
+      "E1_align_and_sep0.05": {
+        "n_trades": 8,
+        "total_return_pct": -1.2460706507462278,
+        "sharpe_per_trade_annualized": -2.5735367079366163,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 1.672451129995748,
+        "trades_per_year_extrapolated": 69.72706935123043
+      },
+      "E2_align_and_sep0.10": {
+        "n_trades": 8,
+        "total_return_pct": -2.6752961213945317,
+        "sharpe_per_trade_annualized": null,
+        "sharpe_flag": "unstable_near_zero_variance",
+        "max_drawdown_pct": 2.6752961213945317,
+        "trades_per_year_extrapolated": 69.72706935123043
+      }
+    }
+  },
+  "exit_mechanisms": {
+    "MTX": {
+      "baseline": {
+        "n_trades": 24,
+        "total_return_pct": -1.0900956258678838,
+        "sharpe_per_trade_annualized": -1.099074252597627,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.523552357109711,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "B1_sl250_tp500": {
+        "n_trades": 24,
+        "total_return_pct": -3.3463975171694957,
+        "sharpe_per_trade_annualized": -2.324798240523041,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 4.421521710379092,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "B2_sl350_tp500": {
+        "n_trades": 24,
+        "total_return_pct": -2.9856674528681224,
+        "sharpe_per_trade_annualized": -1.791013367597527,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 3.620966613118442,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "C1_sl150_tp300": {
+        "n_trades": 24,
+        "total_return_pct": -3.2892031980148078,
+        "sharpe_per_trade_annualized": -4.768377958171189,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 3.2892031980148078,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "C2_sl150_tp250": {
+        "n_trades": 24,
+        "total_return_pct": -3.8389800910515386,
+        "sharpe_per_trade_annualized": -6.248343918373237,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 3.8389800910515386,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "D1_atr1.5_tp500": {
+        "n_trades": 24,
+        "total_return_pct": -0.8681328714441643,
+        "sharpe_per_trade_annualized": -0.4352977810797417,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 3.8325048179690615,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "D2_atr2.5_tp500": {
+        "n_trades": 24,
+        "total_return_pct": 0.9216852121420263,
+        "sharpe_per_trade_annualized": 0.3750533946955864,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 4.957620926345356,
+        "trades_per_year_extrapolated": 209.18120805369128
+      }
+    },
+    "TX": {
+      "baseline": {
+        "n_trades": 24,
+        "total_return_pct": -0.9735493033577353,
+        "sharpe_per_trade_annualized": -0.9854938583735676,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 2.4350538866954254,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "B1_sl250_tp500": {
+        "n_trades": 24,
+        "total_return_pct": -3.3574128692494556,
+        "sharpe_per_trade_annualized": -2.3355503482675544,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 4.4391409049369015,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "B2_sl350_tp500": {
+        "n_trades": 24,
+        "total_return_pct": -2.91751463907019,
+        "sharpe_per_trade_annualized": -1.7569903507330535,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 3.5594148156284082,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "C1_sl150_tp300": {
+        "n_trades": 24,
+        "total_return_pct": -3.17267100624136,
+        "sharpe_per_trade_annualized": -4.629407113469061,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 3.1726710062413606,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "C2_sl150_tp250": {
+        "n_trades": 24,
+        "total_return_pct": -3.7224514319622664,
+        "sharpe_per_trade_annualized": -6.10510632148516,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 3.7224514319622664,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "D1_atr1.5_tp500": {
+        "n_trades": 24,
+        "total_return_pct": -0.9227203551746017,
+        "sharpe_per_trade_annualized": -0.46190773558211,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 3.953870214543108,
+        "trades_per_year_extrapolated": 209.18120805369128
+      },
+      "D2_atr2.5_tp500": {
+        "n_trades": 24,
+        "total_return_pct": 0.85312885457878,
+        "sharpe_per_trade_annualized": 0.347289898562611,
+        "sharpe_flag": null,
+        "max_drawdown_pct": 5.016242950525435,
+        "trades_per_year_extrapolated": 209.18120805369128
+      }
+    }
+  },
+  "multiple_testing_haircut": {
+    "num_variants_tried_excluding_baseline": 12,
+    "sigma_of_observed_sharpes": 1.8739311292040906,
+    "expected_max_sharpe_from_pure_luck": 4.177569296629803,
+    "formula": "E[max(SR)] ~= sigma_SR * sqrt(2 * ln(N))  (Bailey & Lopez de Prado 2014)",
+    "interpretation": "在測試過 12 個變體之後，純粹靠運氣、資料裡完全沒有真訊號，也「預期」能隨機找到一個 Sharpe 高達約 4.18 的變體。任何變體的樣本內 Sharpe，若沒有明顯超過這個數字，就不能被當作真正的策略優勢，很可能只是這 12 次嘗試中運氣最好的一次。"
+  }
+}

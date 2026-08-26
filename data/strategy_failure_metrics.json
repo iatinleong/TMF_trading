@@ -1,0 +1,440 @@
+{
+  "MTX_breakout": {
+    "summary": {
+      "total_trades": 24,
+      "win_rate": 0.20833333333333334,
+      "total_net_pnl_ntd": -24785.252,
+      "profit_factor": 0.8337352246722424,
+      "avg_win_points": 500.0,
+      "avg_loss_points_abs": 154.10526315789474,
+      "realized_reward_risk": 3.244535519125683,
+      "avg_holding_bars": 1.2083333333333333,
+      "exit_reason_summary": {
+        "stop_loss": {
+          "count": 19,
+          "fraction": 0.7916666666666666,
+          "avg_holding_bars": 0.42105263157894735,
+          "avg_points": -154.10526315789474
+        },
+        "take_profit": {
+          "count": 5,
+          "fraction": 0.20833333333333334,
+          "avg_holding_bars": 4.2,
+          "avg_points": 500.0
+        }
+      },
+      "winning_exit_reasons": {
+        "take_profit": 5
+      },
+      "losing_exit_reasons": {
+        "stop_loss": 19
+      },
+      "engine_summary": {
+        "total_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "total_net_pnl_ntd": -24785.252,
+        "max_drawdown_ntd": 57377.42600000001,
+        "profit_factor": 0.8337352246722424,
+        "avg_win_ntd": 24857.144399999997,
+        "avg_loss_ntd": -7845.840736842105
+      }
+    },
+    "breakout_stats": {
+      "losing_trade_count": 19,
+      "stop_loss_loser_fraction": 1.0,
+      "same_bar_stop_loss_count": 15,
+      "same_bar_stop_loss_fraction": 0.7894736842105263,
+      "avg_holding_bars_stop_loss": 0.42105263157894735,
+      "avg_holding_bars_take_profit": 4.2,
+      "avg_holding_bars_stop_loss_losers": 0.42105263157894735,
+      "avg_holding_bars_take_profit_winners": 4.2,
+      "cluster_groups": {
+        "clustered": {
+          "count": 11,
+          "win_rate": 0.18181818181818182,
+          "avg_points": -38.90909090909091,
+          "avg_gap_to_opposite_signal": 5.7272727272727275
+        },
+        "isolated": {
+          "count": 13,
+          "win_rate": 0.23076923076923078,
+          "avg_points": 0.0,
+          "avg_gap_to_opposite_signal": 20.53846153846154
+        }
+      },
+      "aligned_groups": {
+        "aligned": {
+          "count": 8,
+          "win_rate": 0.25,
+          "avg_points": 12.5
+        },
+        "not_aligned": {
+          "count": 16,
+          "win_rate": 0.1875,
+          "avg_points": -33.0
+        }
+      },
+      "late_entry_all": {
+        "count": 24,
+        "avg_pre_move_5_points": 1002.2083333333334,
+        "avg_pre_move_10_points": 1143.9166666666667,
+        "avg_post_entry_mfe_points": 209.16666666666666,
+        "median_post_entry_mfe_points": 69.0,
+        "pre5_gt_mfe_fraction": 0.875,
+        "pre10_gt_mfe_fraction": 0.9166666666666666,
+        "near_local_extreme_fraction": 0.625
+      },
+      "late_entry_losers": {
+        "count": 19,
+        "avg_pre_move_5_points": 1099.3157894736842,
+        "avg_pre_move_10_points": 1235.0,
+        "avg_post_entry_mfe_points": 109.36842105263158,
+        "median_post_entry_mfe_points": 55.0,
+        "pre5_gt_mfe_fraction": 1.0,
+        "pre10_gt_mfe_fraction": 1.0,
+        "near_local_extreme_fraction": 0.7368421052631579
+      },
+      "late_entry_wins": {
+        "count": 5,
+        "avg_pre_move_5_points": 633.2,
+        "avg_pre_move_10_points": 797.8,
+        "avg_post_entry_mfe_points": 588.4,
+        "median_post_entry_mfe_points": 602.0,
+        "pre5_gt_mfe_fraction": 0.4,
+        "pre10_gt_mfe_fraction": 0.6,
+        "near_local_extreme_fraction": 0.2
+      },
+      "cluster_examples": [
+        {
+          "cluster_id": "C1",
+          "n_trades": 2,
+          "start": "2026-05-26 12:45:00",
+          "end": "2026-05-26 23:00:00",
+          "directions": "short → long",
+          "points": [
+            -228.0,
+            -150.0
+          ]
+        },
+        {
+          "cluster_id": "C2",
+          "n_trades": 2,
+          "start": "2026-05-30 03:00:00",
+          "end": "2026-06-01 11:45:00",
+          "directions": "short → long",
+          "points": [
+            -150.0,
+            -150.0
+          ]
+        },
+        {
+          "cluster_id": "C3",
+          "n_trades": 2,
+          "start": "2026-06-02 12:45:00",
+          "end": "2026-06-02 20:00:00",
+          "directions": "short → long",
+          "points": [
+            -150.0,
+            500.0
+          ]
+        },
+        {
+          "cluster_id": "C4",
+          "n_trades": 2,
+          "start": "2026-06-05 04:00:00",
+          "end": "2026-06-05 11:45:00",
+          "directions": "long → short",
+          "points": [
+            -150.0,
+            500.0
+          ]
+        },
+        {
+          "cluster_id": "C5",
+          "n_trades": 3,
+          "start": "2026-07-02 23:00:00",
+          "end": "2026-07-03 13:45:00",
+          "directions": "long → short → long",
+          "points": [
+            -150.0,
+            -150.0,
+            -150.0
+          ]
+        }
+      ]
+    },
+    "pullback_stats": null
+  },
+  "MTX_pullback": {
+    "summary": {
+      "total_trades": 5,
+      "win_rate": 0.4,
+      "total_net_pnl_ntd": 6794.105999999998,
+      "profit_factor": 1.296358123444624,
+      "avg_win_points": 300.0,
+      "avg_loss_points_abs": 150.0,
+      "realized_reward_risk": 2.0,
+      "avg_holding_bars": 0.4,
+      "exit_reason_summary": {
+        "stop_loss": {
+          "count": 3,
+          "fraction": 0.6,
+          "avg_holding_bars": 0.3333333333333333,
+          "avg_points": -150.0
+        },
+        "take_profit": {
+          "count": 2,
+          "fraction": 0.4,
+          "avg_holding_bars": 0.5,
+          "avg_points": 300.0
+        }
+      },
+      "winning_exit_reasons": {
+        "take_profit": 2
+      },
+      "losing_exit_reasons": {
+        "stop_loss": 3
+      },
+      "engine_summary": {
+        "total_trades": 5,
+        "win_rate": 0.4,
+        "total_net_pnl_ntd": 6794.105999999998,
+        "max_drawdown_ntd": 15282.198,
+        "profit_factor": 1.296358123444624,
+        "avg_win_ntd": 14859.715,
+        "avg_loss_ntd": -7641.774666666667
+      }
+    },
+    "breakout_stats": null,
+    "pullback_stats": {
+      "avg_holding_bars_stop_loss": 0.3333333333333333,
+      "avg_holding_bars_take_profit": 0.5,
+      "avg_holding_bars_immediate_reverse": null,
+      "winner_exit_reason_counts": {
+        "take_profit": 2
+      },
+      "loser_exit_reason_counts": {
+        "stop_loss": 3
+      }
+    }
+  },
+  "TX_breakout": {
+    "summary": {
+      "total_trades": 24,
+      "win_rate": 0.20833333333333334,
+      "total_net_pnl_ntd": -88540.89199999998,
+      "profit_factor": 0.8490181397608391,
+      "avg_win_points": 500.0,
+      "avg_loss_points_abs": 152.26315789473685,
+      "realized_reward_risk": 3.2837884548911163,
+      "avg_holding_bars": 1.25,
+      "exit_reason_summary": {
+        "stop_loss": {
+          "count": 19,
+          "fraction": 0.7916666666666666,
+          "avg_holding_bars": 0.47368421052631576,
+          "avg_points": -152.26315789473685
+        },
+        "take_profit": {
+          "count": 5,
+          "fraction": 0.20833333333333334,
+          "avg_holding_bars": 4.2,
+          "avg_points": 500.0
+        }
+      },
+      "winning_exit_reasons": {
+        "take_profit": 5
+      },
+      "losing_exit_reasons": {
+        "stop_loss": 19
+      },
+      "engine_summary": {
+        "total_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "total_net_pnl_ntd": -88540.892,
+        "max_drawdown_ntd": 221459.604,
+        "profit_factor": 0.8490181397608391,
+        "avg_win_ntd": 99578.616,
+        "avg_loss_ntd": -30864.94589473684
+      }
+    },
+    "breakout_stats": {
+      "losing_trade_count": 19,
+      "stop_loss_loser_fraction": 1.0,
+      "same_bar_stop_loss_count": 14,
+      "same_bar_stop_loss_fraction": 0.7368421052631579,
+      "avg_holding_bars_stop_loss": 0.47368421052631576,
+      "avg_holding_bars_take_profit": 4.2,
+      "avg_holding_bars_stop_loss_losers": 0.47368421052631576,
+      "avg_holding_bars_take_profit_winners": 4.2,
+      "cluster_groups": {
+        "clustered": {
+          "count": 11,
+          "win_rate": 0.18181818181818182,
+          "avg_points": -35.72727272727273,
+          "avg_gap_to_opposite_signal": 5.7272727272727275
+        },
+        "isolated": {
+          "count": 13,
+          "win_rate": 0.23076923076923078,
+          "avg_points": 0.0,
+          "avg_gap_to_opposite_signal": 20.53846153846154
+        }
+      },
+      "aligned_groups": {
+        "aligned": {
+          "count": 8,
+          "win_rate": 0.25,
+          "avg_points": 12.5
+        },
+        "not_aligned": {
+          "count": 16,
+          "win_rate": 0.1875,
+          "avg_points": -30.8125
+        }
+      },
+      "late_entry_all": {
+        "count": 24,
+        "avg_pre_move_5_points": 1005.25,
+        "avg_pre_move_10_points": 1149.75,
+        "avg_post_entry_mfe_points": 208.20833333333334,
+        "median_post_entry_mfe_points": 73.0,
+        "pre5_gt_mfe_fraction": 0.875,
+        "pre10_gt_mfe_fraction": 0.9166666666666666,
+        "near_local_extreme_fraction": 0.625
+      },
+      "late_entry_losers": {
+        "count": 19,
+        "avg_pre_move_5_points": 1101.8947368421052,
+        "avg_pre_move_10_points": 1241.1052631578948,
+        "avg_post_entry_mfe_points": 109.3157894736842,
+        "median_post_entry_mfe_points": 39.0,
+        "pre5_gt_mfe_fraction": 1.0,
+        "pre10_gt_mfe_fraction": 1.0,
+        "near_local_extreme_fraction": 0.7368421052631579
+      },
+      "late_entry_wins": {
+        "count": 5,
+        "avg_pre_move_5_points": 638.0,
+        "avg_pre_move_10_points": 802.6,
+        "avg_post_entry_mfe_points": 584.0,
+        "median_post_entry_mfe_points": 600.0,
+        "pre5_gt_mfe_fraction": 0.4,
+        "pre10_gt_mfe_fraction": 0.6,
+        "near_local_extreme_fraction": 0.2
+      },
+      "cluster_examples": [
+        {
+          "cluster_id": "C1",
+          "n_trades": 2,
+          "start": "2026-05-26 12:45:00",
+          "end": "2026-05-26 23:00:00",
+          "directions": "short → long",
+          "points": [
+            -193.0,
+            -150.0
+          ]
+        },
+        {
+          "cluster_id": "C2",
+          "n_trades": 2,
+          "start": "2026-05-30 03:00:00",
+          "end": "2026-06-01 11:45:00",
+          "directions": "short → long",
+          "points": [
+            -150.0,
+            -150.0
+          ]
+        },
+        {
+          "cluster_id": "C3",
+          "n_trades": 2,
+          "start": "2026-06-02 12:45:00",
+          "end": "2026-06-02 20:00:00",
+          "directions": "short → long",
+          "points": [
+            -150.0,
+            500.0
+          ]
+        },
+        {
+          "cluster_id": "C4",
+          "n_trades": 2,
+          "start": "2026-06-05 04:00:00",
+          "end": "2026-06-05 11:45:00",
+          "directions": "long → short",
+          "points": [
+            -150.0,
+            500.0
+          ]
+        },
+        {
+          "cluster_id": "C5",
+          "n_trades": 3,
+          "start": "2026-07-02 23:00:00",
+          "end": "2026-07-03 13:45:00",
+          "directions": "long → short → long",
+          "points": [
+            -150.0,
+            -150.0,
+            -150.0
+          ]
+        }
+      ]
+    },
+    "pullback_stats": null
+  },
+  "TX_pullback": {
+    "summary": {
+      "total_trades": 6,
+      "win_rate": 0.3333333333333333,
+      "total_net_pnl_ntd": -2493.847999999998,
+      "profit_factor": 0.9795034529663845,
+      "avg_win_points": 300.0,
+      "avg_loss_points_abs": 150.0,
+      "realized_reward_risk": 2.0,
+      "avg_holding_bars": 0.8333333333333334,
+      "exit_reason_summary": {
+        "stop_loss": {
+          "count": 4,
+          "fraction": 0.6666666666666666,
+          "avg_holding_bars": 1.0,
+          "avg_points": -150.0
+        },
+        "take_profit": {
+          "count": 2,
+          "fraction": 0.3333333333333333,
+          "avg_holding_bars": 0.5,
+          "avg_points": 300.0
+        }
+      },
+      "winning_exit_reasons": {
+        "take_profit": 2
+      },
+      "losing_exit_reasons": {
+        "stop_loss": 4
+      },
+      "engine_summary": {
+        "total_trades": 6,
+        "win_rate": 0.3333333333333333,
+        "total_net_pnl_ntd": -2493.847999999998,
+        "max_drawdown_ntd": 60828.72,
+        "profit_factor": 0.9795034529663845,
+        "avg_win_ntd": 59588.884000000005,
+        "avg_loss_ntd": -30417.904000000002
+      }
+    },
+    "breakout_stats": null,
+    "pullback_stats": {
+      "avg_holding_bars_stop_loss": 1.0,
+      "avg_holding_bars_take_profit": 0.5,
+      "avg_holding_bars_immediate_reverse": null,
+      "winner_exit_reason_counts": {
+        "take_profit": 2
+      },
+      "loser_exit_reason_counts": {
+        "stop_loss": 4
+      }
+    }
+  }
+}

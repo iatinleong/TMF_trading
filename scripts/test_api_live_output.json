@@ -1,0 +1,88 @@
+{
+  "base_url": "http://127.0.0.1:8765",
+  "failed": 3,
+  "connection": {
+    "connected": true,
+    "quote_ready": true,
+    "quote_connected": 1
+  },
+  "ticker_samples": [
+    {
+      "time": "14:00:24",
+      "last_price": null,
+      "bid": null,
+      "ask": null
+    },
+    {
+      "time": "14:00:28",
+      "last_price": null,
+      "bid": null,
+      "ask": null
+    },
+    {
+      "time": "14:00:30",
+      "last_price": null,
+      "bid": null,
+      "ask": null
+    },
+    {
+      "time": "14:00:32",
+      "last_price": null,
+      "bid": null,
+      "ask": null
+    },
+    {
+      "time": "14:00:36",
+      "last_price": null,
+      "bid": null,
+      "ask": null
+    }
+  ],
+  "results": [
+    {
+      "name": "health",
+      "ok": true,
+      "detail": "{'status': 'ok'}"
+    },
+    {
+      "name": "connection.connected",
+      "ok": true,
+      "detail": "user=96571013"
+    },
+    {
+      "name": "connection.quote_ready",
+      "ok": true,
+      "detail": "quote_connected=1"
+    },
+    {
+      "name": "connection.quote_subscribed",
+      "ok": true,
+      "detail": "{'product_code': 'TMF00', 'last_price': None, 'bid': None, 'ask': None, 'volume': None, 'updated_at': ''}"
+    },
+    {
+      "name": "trading.accounts",
+      "ok": true,
+      "detail": "['918u0344848', 'F0200006921941']"
+    },
+    {
+      "name": "trading.messages_3003",
+      "ok": false,
+      "detail": "messages=50"
+    },
+    {
+      "name": "refresh.equity",
+      "ok": false,
+      "detail": "equity=None"
+    },
+    {
+      "name": "account.connected",
+      "ok": true,
+      "detail": "account=F0200006921941"
+    },
+    {
+      "name": "ticker.live_price",
+      "ok": false,
+      "detail": "非交易時段可能無成交；見 ticker_samples 最後一筆"
+    }
+  ]
+}

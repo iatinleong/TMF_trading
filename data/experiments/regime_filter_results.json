@@ -1,0 +1,266 @@
+{
+  "generated_at": "2026-07-05T12:50:56.796354+08:00",
+  "dataset_meta": {
+    "start": "2026-05-22 16:00:00",
+    "end": "2026-07-03 13:45:00",
+    "bars_per_symbol": 551
+  },
+  "sample_size_caveat": "樣本期間僅約 30 個交易日、每個商品 baseline 只有 24 筆交易；任何濾網造成的勝率、Sharpe 與同棒停損比例改善，都可能受小樣本影響。",
+  "pure_luck_sharpe_threshold": {
+    "value": 4.178,
+    "source": "data/experiments/proper_evaluation_with_dsr.md"
+  },
+  "variants": [
+    {
+      "key": "baseline",
+      "label": "A. Baseline",
+      "description": "原始 breakout 訊號，無 regime filter。",
+      "min_adx": null,
+      "require_atr_expansion": false
+    },
+    {
+      "key": "adx_gt_20",
+      "label": "B. ADX(14) > 20",
+      "description": "僅在訊號棒 ADX(14) > 20 時保留 MA crossover。",
+      "min_adx": 20.0,
+      "require_atr_expansion": false
+    },
+    {
+      "key": "adx_gt_25",
+      "label": "C. ADX(14) > 25",
+      "description": "僅在訊號棒 ADX(14) > 25 時保留 MA crossover。",
+      "min_adx": 25.0,
+      "require_atr_expansion": false
+    },
+    {
+      "key": "atr_expansion",
+      "label": "D. ATR 擴張",
+      "description": "僅在訊號棒 ATR(14) > ATR(14) 自身 60 根 rolling median 時保留訊號。",
+      "min_adx": null,
+      "require_atr_expansion": true
+    },
+    {
+      "key": "adx_gt_20_and_atr_expansion",
+      "label": "E. ADX>20 且 ATR 擴張",
+      "description": "同時要求 ADX(14) > 20 與 ATR(14) 高於自身 60 根 rolling median。",
+      "min_adx": 20.0,
+      "require_atr_expansion": true
+    }
+  ],
+  "results": {
+    "MTX": {
+      "baseline": {
+        "variant_key": "baseline",
+        "variant_label": "A. Baseline",
+        "description": "原始 breakout 訊號，無 regime filter。",
+        "metrics": {
+          "n_trades": 24,
+          "win_rate": 0.20833333333333334,
+          "profit_factor": 0.8337352246722424,
+          "profit_factor_display": null,
+          "losing_trades": 19,
+          "same_bar_stop_loss_loser_count": 15,
+          "same_bar_stop_loss_pct_of_losers": 0.7894736842105263,
+          "total_net_pnl_ntd": -24785.252,
+          "total_return_pct": -1.0900956258678838,
+          "sharpe_ratio": -1.099074252597627,
+          "sharpe_flag": null,
+          "sharpe_display": "-1.10",
+          "max_drawdown_pct": 2.523552357109711,
+          "trades_per_year_extrapolated": 209.18120805369128
+        }
+      },
+      "adx_gt_20": {
+        "variant_key": "adx_gt_20",
+        "variant_label": "B. ADX(14) > 20",
+        "description": "僅在訊號棒 ADX(14) > 20 時保留 MA crossover。",
+        "metrics": {
+          "n_trades": 18,
+          "win_rate": 0.16666666666666666,
+          "profit_factor": 0.6292629939493429,
+          "profit_factor_display": null,
+          "losing_trades": 15,
+          "same_bar_stop_loss_loser_count": 13,
+          "same_bar_stop_loss_pct_of_losers": 0.8666666666666667,
+          "total_net_pnl_ntd": -43933.876000000004,
+          "total_return_pct": -1.932283200308877,
+          "sharpe_ratio": -2.4273047922329636,
+          "sharpe_flag": null,
+          "sharpe_display": "-2.43",
+          "max_drawdown_pct": 2.523552357109711,
+          "trades_per_year_extrapolated": 156.88590604026845
+        }
+      },
+      "adx_gt_25": {
+        "variant_key": "adx_gt_25",
+        "variant_label": "C. ADX(14) > 25",
+        "description": "僅在訊號棒 ADX(14) > 25 時保留 MA crossover。",
+        "metrics": {
+          "n_trades": 10,
+          "win_rate": 0.2,
+          "profit_factor": 0.7646216256355417,
+          "profit_factor_display": null,
+          "losing_trades": 8,
+          "same_bar_stop_loss_loser_count": 5,
+          "same_bar_stop_loss_pct_of_losers": 0.625,
+          "total_net_pnl_ntd": -15303.592,
+          "total_return_pct": -0.6730768240430537,
+          "sharpe_ratio": -1.0234280528052229,
+          "sharpe_flag": null,
+          "sharpe_display": "-1.02",
+          "max_drawdown_pct": 1.5154726954537168,
+          "trades_per_year_extrapolated": 87.15883668903803
+        }
+      },
+      "atr_expansion": {
+        "variant_key": "atr_expansion",
+        "variant_label": "D. ATR 擴張",
+        "description": "僅在訊號棒 ATR(14) > ATR(14) 自身 60 根 rolling median 時保留訊號。",
+        "metrics": {
+          "n_trades": 12,
+          "win_rate": 0.16666666666666666,
+          "profit_factor": 0.6507640213519573,
+          "profit_factor_display": null,
+          "losing_trades": 10,
+          "same_bar_stop_loss_loser_count": 8,
+          "same_bar_stop_loss_pct_of_losers": 0.8,
+          "total_net_pnl_ntd": -26680.426000000003,
+          "total_return_pct": -1.1734484555126476,
+          "sharpe_ratio": -1.797533154503048,
+          "sharpe_flag": null,
+          "sharpe_display": "-1.80",
+          "max_drawdown_pct": 2.3520416174717034,
+          "trades_per_year_extrapolated": 104.59060402684564
+        }
+      },
+      "adx_gt_20_and_atr_expansion": {
+        "variant_key": "adx_gt_20_and_atr_expansion",
+        "variant_label": "E. ADX>20 且 ATR 擴張",
+        "description": "同時要求 ADX(14) > 20 與 ATR(14) 高於自身 60 根 rolling median。",
+        "metrics": {
+          "n_trades": 12,
+          "win_rate": 0.16666666666666666,
+          "profit_factor": 0.6507140231384798,
+          "profit_factor_display": null,
+          "losing_trades": 10,
+          "same_bar_stop_loss_loser_count": 9,
+          "same_bar_stop_loss_pct_of_losers": 0.9,
+          "total_net_pnl_ntd": -26686.296000000002,
+          "total_return_pct": -1.1737066276435522,
+          "sharpe_ratio": -1.7978961594718132,
+          "sharpe_flag": null,
+          "sharpe_display": "-1.80",
+          "max_drawdown_pct": 2.3522997896026085,
+          "trades_per_year_extrapolated": 104.59060402684564
+        }
+      }
+    },
+    "TX": {
+      "baseline": {
+        "variant_key": "baseline",
+        "variant_label": "A. Baseline",
+        "description": "原始 breakout 訊號，無 regime filter。",
+        "metrics": {
+          "n_trades": 24,
+          "win_rate": 0.20833333333333334,
+          "profit_factor": 0.8490181397608391,
+          "profit_factor_display": null,
+          "losing_trades": 19,
+          "same_bar_stop_loss_loser_count": 14,
+          "same_bar_stop_loss_pct_of_losers": 0.7368421052631579,
+          "total_net_pnl_ntd": -88540.892,
+          "total_return_pct": -0.9735493033577353,
+          "sharpe_ratio": -0.9854938583735676,
+          "sharpe_flag": null,
+          "sharpe_display": "-0.99",
+          "max_drawdown_pct": 2.4350538866954254,
+          "trades_per_year_extrapolated": 209.18120805369128
+        }
+      },
+      "adx_gt_20": {
+        "variant_key": "adx_gt_20",
+        "variant_label": "B. ADX(14) > 20",
+        "description": "僅在訊號棒 ADX(14) > 20 時保留 MA crossover。",
+        "metrics": {
+          "n_trades": 18,
+          "win_rate": 0.16666666666666666,
+          "profit_factor": 0.642755240424927,
+          "profit_factor_display": null,
+          "losing_trades": 15,
+          "same_bar_stop_loss_loser_count": 12,
+          "same_bar_stop_loss_pct_of_losers": 0.8,
+          "total_net_pnl_ntd": -166035.468,
+          "total_return_pct": -1.8256390979670225,
+          "sharpe_ratio": -2.3057330220155308,
+          "sharpe_flag": null,
+          "sharpe_display": "-2.31",
+          "max_drawdown_pct": 2.4350538866954254,
+          "trades_per_year_extrapolated": 156.88590604026845
+        }
+      },
+      "adx_gt_25": {
+        "variant_key": "adx_gt_25",
+        "variant_label": "C. ADX(14) > 25",
+        "description": "僅在訊號棒 ADX(14) > 25 時保留 MA crossover。",
+        "metrics": {
+          "n_trades": 10,
+          "win_rate": 0.2,
+          "profit_factor": 0.7907066669489309,
+          "profit_factor_display": null,
+          "losing_trades": 8,
+          "same_bar_stop_loss_loser_count": 5,
+          "same_bar_stop_loss_pct_of_losers": 0.625,
+          "total_net_pnl_ntd": -52714.28400000001,
+          "total_return_pct": -0.5796186745577605,
+          "sharpe_ratio": -0.8895376615827245,
+          "sharpe_flag": null,
+          "sharpe_display": "-0.89",
+          "max_drawdown_pct": 1.4319156239456017,
+          "trades_per_year_extrapolated": 87.15883668903803
+        }
+      },
+      "atr_expansion": {
+        "variant_key": "atr_expansion",
+        "variant_label": "D. ATR 擴張",
+        "description": "僅在訊號棒 ATR(14) > ATR(14) 自身 60 根 rolling median 時保留訊號。",
+        "metrics": {
+          "n_trades": 12,
+          "win_rate": 0.16666666666666666,
+          "profit_factor": 0.6549607715345886,
+          "profit_factor_display": null,
+          "losing_trades": 10,
+          "same_bar_stop_loss_loser_count": 8,
+          "same_bar_stop_loss_pct_of_losers": 0.8,
+          "total_net_pnl_ntd": -104921.712,
+          "total_return_pct": -1.1536642258438161,
+          "sharpe_ratio": -1.7672147664647877,
+          "sharpe_flag": null,
+          "sharpe_display": "-1.77",
+          "max_drawdown_pct": 2.340512712008154,
+          "trades_per_year_extrapolated": 104.59060402684564
+        }
+      },
+      "adx_gt_20_and_atr_expansion": {
+        "variant_key": "adx_gt_20_and_atr_expansion",
+        "variant_label": "E. ADX>20 且 ATR 擴張",
+        "description": "同時要求 ADX(14) > 20 與 ATR(14) 高於自身 60 根 rolling median。",
+        "metrics": {
+          "n_trades": 12,
+          "win_rate": 0.16666666666666666,
+          "profit_factor": 0.6549101854706327,
+          "profit_factor_display": null,
+          "losing_trades": 10,
+          "same_bar_stop_loss_loser_count": 9,
+          "same_bar_stop_loss_pct_of_losers": 0.9,
+          "total_net_pnl_ntd": -104945.20000000001,
+          "total_return_pct": -1.1539224875974619,
+          "sharpe_ratio": -1.7675784427359755,
+          "sharpe_flag": null,
+          "sharpe_display": "-1.77",
+          "max_drawdown_pct": 2.3407709737617997,
+          "trades_per_year_extrapolated": 104.59060402684564
+        }
+      }
+    }
+  }
+}

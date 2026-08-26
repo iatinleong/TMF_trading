@@ -1,0 +1,480 @@
+{
+  "elapsed_sec": 19.93,
+  "flow_summary": [
+    "SetLogPath → SetAuthority → Login",
+    "EnterMonitorLONG → 等 3003 → RequestStockList/RequestTicks",
+    "SKOrderLib_Initialize → ReadCertByID → GetUserAccount",
+    "RequestAgreement → refresh_live_snapshot"
+  ],
+  "steps": [
+    {
+      "step": "0_config",
+      "files": {
+        "project_root": "C:\\Users\\user\\Desktop\\專案\\台指期量化",
+        "env_file": "C:\\Users\\user\\Desktop\\專案\\台指期量化\\.env",
+        "skcom_dll": "C:\\Users\\user\\Desktop\\專案\\台指期量化\\CapitalAPI_2.13.58_PythonExample\\CapitalAPI_2.13.58_PythonExample\\PythonExampleV2\\Quote\\Quote\\SKCOM.dll",
+        "log_dir": "C:\\Users\\user\\Desktop\\專案\\台指期量化\\data\\capital_logs",
+        "python_entry": "C:\\Users\\user\\Desktop\\專案\\台指期量化\\scripts\\run_once_trace.py",
+        "broker_module": "C:\\Users\\user\\Desktop\\專案\\台指期量化\\backend\\broker\\capital_futures.py",
+        "trading_service": "C:\\Users\\user\\Desktop\\專案\\台指期量化\\backend\\trading_service.py"
+      },
+      "env": {
+        "CAPITAL_USER_ID": "96571013",
+        "CAPITAL_PASSWORD": "***",
+        "CAPITAL_ENVIRONMENT": 0,
+        "LIVE_PRODUCT_CODE": "TMFR1",
+        "CAPITAL_ACCOUNT": null
+      },
+      "product_mapping": {
+        "input": "TMFR1",
+        "quote_code": "TMF00",
+        "order_code": "TMFR1"
+      }
+    },
+    {
+      "step": "1_broker_init",
+      "return_value": 0,
+      "message": "CapitalFuturesBroker 建立完成",
+      "dll_used": "C:\\Users\\user\\Desktop\\專案\\台指期量化\\CapitalAPI_2.13.58_PythonExample\\CapitalAPI_2.13.58_PythonExample\\PythonExampleV2\\Quote\\Quote\\SKCOM.dll"
+    },
+    {
+      "step": "2_SKCenterLib_SetLogPath",
+      "api": "SKCenterLib_SetLogPath",
+      "args": {
+        "path": "C:\\Users\\user\\Desktop\\專案\\台指期量化\\data\\capital_logs"
+      },
+      "return_code": 0,
+      "return_message": "SK_SUCCESS"
+    },
+    {
+      "step": "3_SKCenterLib_SetAuthority",
+      "api": "SKCenterLib_SetAuthority",
+      "args": {
+        "environment": 0
+      },
+      "return_code": 0,
+      "return_message": "SK_SUCCESS"
+    },
+    {
+      "step": "4_SKCenterLib_Login",
+      "api": "SKCenterLib_Login",
+      "args": {
+        "user_id": "96571013"
+      },
+      "return_code": 0,
+      "return_message": "SK_SUCCESS"
+    },
+    {
+      "step": "5_SKQuoteLib_EnterMonitorLONG",
+      "api": "SKQuoteLib_EnterMonitorLONG",
+      "note": "對齊 PythonExampleV2：登入後先連報價，下單初始化延後",
+      "return_code": 0,
+      "return_message": "SK_SUCCESS"
+    },
+    {
+      "step": "6_wait_OnConnection_3003",
+      "api": "PumpWaitingMessages + OnConnection(3003)",
+      "timeout_sec": 120.0,
+      "quote_ready": true,
+      "elapsed_sec": 3.68,
+      "final_IsConnected": 1,
+      "quote_conn_events": [
+        {
+          "time": "2026-07-16 13:55:15",
+          "category": "quote_conn",
+          "text": "kind=3001(SK_SUBJECT_CONNECTION_CONNECTED) code=0(SK_SUCCESS)"
+        },
+        {
+          "time": "2026-07-16 13:55:19",
+          "category": "quote_conn",
+          "text": "kind=3003(SK_SUBJECT_CONNECTION_STOCKS_READY) code=0(SK_SUCCESS)"
+        },
+        {
+          "time": "2026-07-16 13:55:19",
+          "category": "quote_conn",
+          "text": "商品檔下載完成 (3003)"
+        }
+      ]
+    },
+    {
+      "step": "7_subscribe_quote",
+      "api": "RequestStockList(2) + RequestTicks",
+      "args": {
+        "quote_product": "TMF00"
+      },
+      "RequestStockList_return": 0,
+      "RequestStockList_message": "SK_SUCCESS",
+      "RequestTicks_return": 0,
+      "RequestTicks_message": "SK_SUCCESS",
+      "subscribe_ok": true
+    },
+    {
+      "step": "8_SKOrderLib_Initialize",
+      "api": "SKOrderLib_Initialize",
+      "return_code": 0,
+      "return_message": "SK_SUCCESS"
+    },
+    {
+      "step": "9_ReadCertByID",
+      "api": "ReadCertByID",
+      "args": {
+        "user_id": "96571013"
+      },
+      "return_code": 0,
+      "return_message": "SK_SUCCESS"
+    },
+    {
+      "step": "10_GetUserAccount",
+      "api": "GetUserAccount + PumpEvents(5s)",
+      "accounts": [
+        "918u0344848",
+        "F0200006921941"
+      ],
+      "active_account": "F0200006921941"
+    },
+    {
+      "step": "11_SKCenterLib_RequestAgreement",
+      "api": "SKCenterLib_RequestAgreement",
+      "args": {
+        "user_id": "96571013"
+      },
+      "return_code": 0,
+      "return_message": "SK_SUCCESS",
+      "agreements": [
+        "Cboe Options 簽署同意書,N,",
+        "CFE行情資訊之取得約定同意書,N,",
+        "CME Group 行情資訊服務同意書,N,",
+        "CME Group 行情資訊服務同意書,N,",
+        "CME Group 行情資訊服務同意書,N,",
+        "CME Group 行情資訊服務同意書,N,",
+        "ICE EU 簽署同意書,N,",
+        "ICE SG 簽署同意書,N,",
+        "ICE US 簽署同意書,N,",
+        "ICFT行情同意書,N,",
+        "KRX交易結算規則及行情資訊服務同意書,N,",
+        "LME授權行情資料訂閱同意書,N,",
+        "OSE行情資訊服務同意書,N,",
+        "TFX交易所風險告知暨客戶聲明書,Y,",
+        "期貨智慧單風險預告書,Y"
+      ],
+      "kline_api_ok": true,
+      "kline_api_block_reason": ""
+    },
+    {
+      "step": "12_refresh_live_snapshot",
+      "api": "GetOrderReport + GetFulfillReport + GetOpenInterestGW + GetFutureRights",
+      "active_account": "F0200006921941"
+    }
+  ],
+  "final_state": {
+    "connected": true,
+    "user_id": "96571013",
+    "environment": 0,
+    "accounts": [
+      "918u0344848",
+      "F0200006921941"
+    ],
+    "active_account": "F0200006921941",
+    "subscribed_product": "TMF00",
+    "quote": {
+      "product_code": "TMF00",
+      "last_price": null,
+      "bid": null,
+      "ask": null,
+      "volume": null,
+      "updated_at": ""
+    },
+    "positions": [
+      {
+        "raw": "##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+        "product": "",
+        "direction": "—",
+        "direction_key": "—",
+        "qty": "",
+        "price": ""
+      }
+    ],
+    "orders_raw": "M003",
+    "fulfills_raw": "M003",
+    "rights_raw": "##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+    "rights": {
+      "raw": ",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,",
+      "account_balance": null,
+      "floating_pl": null,
+      "realized_fee": null,
+      "transaction_tax": null,
+      "withheld_premium": null,
+      "premium_payment": null,
+      "equity": null,
+      "excess_margin": null,
+      "deposit_withdrawal": null,
+      "buyer_market_value": null,
+      "seller_market_value": null,
+      "futures_close_pl": null,
+      "intraday_unrealized": null,
+      "initial_margin": null,
+      "maintenance_margin": null,
+      "position_initial_margin": null,
+      "position_maintenance_margin": null,
+      "order_margin": null,
+      "excess_optimal_margin": null,
+      "total_premium_value": null,
+      "withheld_fee": null,
+      "original_initial_margin": null,
+      "yesterday_balance": null,
+      "option_combo_margin_flag": "",
+      "maintenance_rate": null,
+      "currency": "",
+      "full_initial_margin": null,
+      "full_maintenance_margin": null,
+      "full_available": null,
+      "offset_amount": null,
+      "securities_available": null,
+      "available_balance": null,
+      "full_cash_available": null,
+      "securities_value": null,
+      "risk_indicator": "",
+      "option_expiry_difference": null,
+      "option_expiry_pl": null,
+      "futures_expiry_pl": null,
+      "additional_margin": null,
+      "login_id": "",
+      "account_no": "",
+      "labels": {
+        "account_balance": "帳戶餘額",
+        "floating_pl": "浮動損益",
+        "equity": "權益數",
+        "available_balance": "可用餘額",
+        "maintenance_margin": "維持保證金",
+        "initial_margin": "原始保證金",
+        "intraday_unrealized": "盤中未實現",
+        "futures_close_pl": "期貨平倉損益",
+        "risk_indicator": "風險指標",
+        "maintenance_rate": "維持率"
+      }
+    },
+    "agreements": [
+      "Cboe Options 簽署同意書,N,",
+      "CFE行情資訊之取得約定同意書,N,",
+      "CME Group 行情資訊服務同意書,N,",
+      "CME Group 行情資訊服務同意書,N,",
+      "CME Group 行情資訊服務同意書,N,",
+      "CME Group 行情資訊服務同意書,N,",
+      "ICE EU 簽署同意書,N,",
+      "ICE SG 簽署同意書,N,",
+      "ICE US 簽署同意書,N,",
+      "ICFT行情同意書,N,",
+      "KRX交易結算規則及行情資訊服務同意書,N,",
+      "LME授權行情資料訂閱同意書,N,",
+      "OSE行情資訊服務同意書,N,",
+      "TFX交易所風險告知暨客戶聲明書,Y,",
+      "期貨智慧單風險預告書,Y"
+    ],
+    "kline_api_ok": true,
+    "kline_api_block_reason": "",
+    "kline_loaded_products": [],
+    "quote_ready": true,
+    "order_product_code": "TMFR1",
+    "quote_connected": 1,
+    "messages": [
+      {
+        "time": "2026-07-16 13:55:13",
+        "category": "reply",
+        "text": "96571013: SKReplyLib_OnReplyMessage:Announcement callback."
+      },
+      {
+        "time": "2026-07-16 13:55:15",
+        "category": "quote_conn",
+        "text": "kind=3001(SK_SUBJECT_CONNECTION_CONNECTED) code=0(SK_SUCCESS)"
+      },
+      {
+        "time": "2026-07-16 13:55:19",
+        "category": "quote_conn",
+        "text": "kind=3003(SK_SUBJECT_CONNECTION_STOCKS_READY) code=0(SK_SUCCESS)"
+      },
+      {
+        "time": "2026-07-16 13:55:19",
+        "category": "quote_conn",
+        "text": "商品檔下載完成 (3003)"
+      },
+      {
+        "time": "2026-07-16 13:55:23",
+        "category": "account",
+        "text": "918u0344848"
+      },
+      {
+        "time": "2026-07-16 13:55:23",
+        "category": "account",
+        "text": "F0200006921941"
+      },
+      {
+        "time": "2026-07-16 13:55:23",
+        "category": "account",
+        "text": "F0200006921941"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "Cboe Options 簽署同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "CFE行情資訊之取得約定同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "CME Group 行情資訊服務同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "CME Group 行情資訊服務同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "CME Group 行情資訊服務同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "CME Group 行情資訊服務同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "ICE EU 簽署同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "ICE SG 簽署同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "ICE US 簽署同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "ICFT行情同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "KRX交易結算規則及行情資訊服務同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "LME授權行情資料訂閱同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "OSE行情資訊服務同意書,N,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "TFX交易所風險告知暨客戶聲明書,Y,"
+      },
+      {
+        "time": "2026-07-16 13:55:28",
+        "category": "agreement",
+        "text": "期貨智慧單風險預告書,Y"
+      },
+      {
+        "time": "2026-07-16 13:55:31",
+        "category": "position",
+        "text": "001,查無資料,F0200006921941"
+      },
+      {
+        "time": "2026-07-16 13:55:31",
+        "category": "rights",
+        "text": "96574,0,0,0,0,0,96574,96574,0,0,0,0,0,0,0,0,0,0,96574,96574,0,0,96574,Y,*********,NTD(基幣),0,0,96574,0,0,96574,96574,0,100,0,0,0,0,96571013,F0200006921941"
+      },
+      {
+        "time": "2026-07-16 13:55:31",
+        "category": "rights",
+        "text": "96574,0,0,0,0,0,96574,96574,0,0,0,0,0,0,0,0,0,0,96574,96574,0,0,96574,,*********,NTD,0,0,96574,0,0,96574,96574,0,*********,0,0,0,0,96571013,F0200006921941"
+      },
+      {
+        "time": "2026-07-16 13:55:31",
+        "category": "rights",
+        "text": "##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"
+      },
+      {
+        "time": "2026-07-16 13:55:31",
+        "category": "position",
+        "text": "##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"
+      }
+    ],
+    "last_error": ""
+  },
+  "log_files_written": [
+    {
+      "name": "20260716_Quote.log",
+      "mtime": "2026-07-16 13:55:32",
+      "size": 29938
+    },
+    {
+      "name": "20260716_Order.log",
+      "mtime": "2026-07-16 13:55:31",
+      "size": 1535
+    },
+    {
+      "name": "20260716_Capital.txt",
+      "mtime": "2026-07-16 13:55:31",
+      "size": 229869
+    },
+    {
+      "name": "20260716_Center.log",
+      "mtime": "2026-07-16 13:55:28",
+      "size": 3162
+    },
+    {
+      "name": "Order.log",
+      "mtime": "2026-07-16 13:55:23",
+      "size": 1238
+    },
+    {
+      "name": "Quote.log",
+      "mtime": "2026-07-16 13:55:15",
+      "size": 1233
+    },
+    {
+      "name": "20260716_Reply.log",
+      "mtime": "2026-07-16 13:55:15",
+      "size": 833
+    },
+    {
+      "name": "Center.log",
+      "mtime": "2026-07-16 13:55:15",
+      "size": 4131
+    },
+    {
+      "name": "20260715_Quote.log",
+      "mtime": "2026-07-15 17:24:36",
+      "size": 146476
+    },
+    {
+      "name": "20260715_Order.log",
+      "mtime": "2026-07-15 17:24:34",
+      "size": 96081
+    },
+    {
+      "name": "20260715_Capital.txt",
+      "mtime": "2026-07-15 17:24:34",
+      "size": 2448607
+    },
+    {
+      "name": "20260715_Center.log",
+      "mtime": "2026-07-15 16:49:02",
+      "size": 5866
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+name: Deploy to GCP VM
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT: massive-rock-501112-g0
+  GCP_BUCKET: massive-rock-501112-g0-tmf-deploy
+  GCP_ZONE: asia-east1-a
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Package release (exclude secrets and large raw data)
+        run: |
+          mkdir -p /tmp/tmf-stage
+          rsync -a ./ /tmp/tmf-stage/ \
+            --exclude .git \
+            --exclude .env \
+            --exclude .env.* \
+            --exclude __pycache__ \
+            --exclude .pytest_cache \
+            --exclude data/raw \
+            --exclude data/raw_tick \
+            --exclude terminals
+          cd /tmp/tmf-stage && zip -r /tmp/tmf-release.zip .
+
+      - name: Upload to GCS and write manifest
+        run: |
+          SHA="${{ github.sha }}"
+          gsutil cp /tmp/tmf-release.zip "gs://${{ env.GCP_BUCKET }}/releases/${SHA}.zip"
+          gsutil cp /tmp/tmf-release.zip "gs://${{ env.GCP_BUCKET }}/releases/latest.zip"
+          cat > /tmp/deploy-manifest.json <<EOF
+          {
+            "sha": "${SHA}",
+            "ref": "${{ github.ref_name }}",
+            "run_id": "${{ github.run_id }}",
+            "deployed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "actor": "${{ github.actor }}"
+          }
+          EOF
+          gsutil cp /tmp/deploy-manifest.json "gs://${{ env.GCP_BUCKET }}/deploy-manifest.json"
+          echo "Uploaded ${SHA} -> gs://${{ env.GCP_BUCKET }}/releases/latest.zip"

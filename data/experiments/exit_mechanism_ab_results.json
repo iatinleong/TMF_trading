@@ -1,0 +1,305 @@
+{
+  "metadata": {
+    "strategy": "breakout",
+    "data_note": "60分鐘真實資料，訊號於收盤確認、下一根開盤進場；不產生任何圖表。",
+    "sample_size_caveat": "樣本僅約 551 根 60 分 K（約 30 個交易日），baseline 每商品僅 24 筆交易；本結果僅供方向性探索，不足以作為穩健統計推論。",
+    "atr_method": "ATR 使用 14 bar 經典 true range 的簡單移動平均（SMA）。ATR 變體僅調整停損寬度，停利固定 500 點。",
+    "symbols": [
+      "MTX",
+      "TX"
+    ],
+    "date_ranges": {
+      "MTX": {
+        "start": "2026-05-22T16:00:00",
+        "end": "2026-07-03T13:45:00",
+        "bar_count": 551
+      },
+      "TX": {
+        "start": "2026-05-22T16:00:00",
+        "end": "2026-07-03T13:45:00",
+        "bar_count": 551
+      }
+    },
+    "variants": [
+      {
+        "variant_key": "baseline_sl150_tp500",
+        "variant_label": "A. Baseline SL150 / TP500",
+        "stop_loss_points": 150.0,
+        "take_profit_points": 500.0,
+        "atr_window": null,
+        "atr_multiple": null,
+        "notes": "控制組，對照既有 breakout 結果。"
+      },
+      {
+        "variant_key": "wider_sl250_tp500",
+        "variant_label": "B1. Wider SL250 / TP500",
+        "stop_loss_points": 250.0,
+        "take_profit_points": 500.0,
+        "atr_window": null,
+        "atr_multiple": null,
+        "notes": "放寬固定停損，觀察是否能穿過進場後雜訊。"
+      },
+      {
+        "variant_key": "wider_sl350_tp500",
+        "variant_label": "B2. Wider SL350 / TP500",
+        "stop_loss_points": 350.0,
+        "take_profit_points": 500.0,
+        "atr_window": null,
+        "atr_multiple": null,
+        "notes": "更寬的固定停損，測試『給更大呼吸空間』是否值得。"
+      },
+      {
+        "variant_key": "smaller_tp300_sl150",
+        "variant_label": "C1. SL150 / TP300",
+        "stop_loss_points": 150.0,
+        "take_profit_points": 300.0,
+        "atr_window": null,
+        "atr_multiple": null,
+        "notes": "降低停利門檻，測試較容易達標是否改善勝率。"
+      },
+      {
+        "variant_key": "smaller_tp250_sl150",
+        "variant_label": "C2. SL150 / TP250",
+        "stop_loss_points": 150.0,
+        "take_profit_points": 250.0,
+        "atr_window": null,
+        "atr_multiple": null,
+        "notes": "更平衡的報酬風險比，觀察勝率與 PF 是否改善。"
+      },
+      {
+        "variant_key": "atr14_sl1_5x_tp500",
+        "variant_label": "D1. ATR14 × 1.5 停損 / TP500",
+        "stop_loss_points": null,
+        "take_profit_points": 500.0,
+        "atr_window": 14,
+        "atr_multiple": 1.5,
+        "notes": "使用 14-bar true range SMA ATR，自適應停損；停利固定 500 點以隔離停損效果。"
+      },
+      {
+        "variant_key": "atr14_sl2_5x_tp500",
+        "variant_label": "D2. ATR14 × 2.5 停損 / TP500",
+        "stop_loss_points": null,
+        "take_profit_points": 500.0,
+        "atr_window": 14,
+        "atr_multiple": 2.5,
+        "notes": "較寬 ATR 停損倍數；停利固定 500 點。"
+      }
+    ]
+  },
+  "results_by_symbol": {
+    "MTX": [
+      {
+        "variant_key": "baseline_sl150_tp500",
+        "variant_label": "A. Baseline SL150 / TP500",
+        "symbol": "MTX",
+        "total_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "total_net_pnl_ntd": -24785.252,
+        "profit_factor": 0.8337352246722424,
+        "avg_win_pts": 500.0,
+        "avg_loss_pts": 154.10526315789474,
+        "avg_win_ntd": 24857.1444,
+        "avg_loss_ntd": 7845.840736842106,
+        "expectancy_per_trade_pts": -17.83333333333333,
+        "notes": "控制組，對照既有 breakout 結果。"
+      },
+      {
+        "variant_key": "wider_sl250_tp500",
+        "variant_label": "B1. Wider SL250 / TP500",
+        "symbol": "MTX",
+        "total_trades": 24,
+        "win_rate": 0.2916666666666667,
+        "total_net_pnl_ntd": -76086.266,
+        "profit_factor": 0.6957673852421363,
+        "avg_win_pts": 500.0,
+        "avg_loss_pts": 291.4117647058824,
+        "avg_win_ntd": 24858.019714285714,
+        "avg_loss_ntd": 14711.31788235294,
+        "expectancy_per_trade_pts": -60.583333333333314,
+        "notes": "放寬固定停損，觀察是否能穿過進場後雜訊。"
+      },
+      {
+        "variant_key": "wider_sl350_tp500",
+        "variant_label": "B2. Wider SL350 / TP500",
+        "symbol": "MTX",
+        "total_trades": 24,
+        "win_rate": 0.375,
+        "total_net_pnl_ntd": -67884.43000000001,
+        "profit_factor": 0.7672100003788592,
+        "avg_win_pts": 500.0,
+        "avg_loss_pts": 386.0,
+        "avg_win_ntd": 24858.653555555557,
+        "avg_loss_ntd": 19440.820800000005,
+        "expectancy_per_trade_pts": -53.75,
+        "notes": "更寬的固定停損，測試『給更大呼吸空間』是否值得。"
+      },
+      {
+        "variant_key": "smaller_tp300_sl150",
+        "variant_label": "C1. SL150 / TP300",
+        "symbol": "MTX",
+        "total_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "total_net_pnl_ntd": -74785.852,
+        "profit_factor": 0.4983204979931238,
+        "avg_win_pts": 300.0,
+        "avg_loss_pts": 154.10526315789474,
+        "avg_win_ntd": 14857.024399999998,
+        "avg_loss_ntd": 7845.840736842106,
+        "expectancy_per_trade_pts": -59.5,
+        "notes": "降低停利門檻，測試較容易達標是否改善勝率。"
+      },
+      {
+        "variant_key": "smaller_tp250_sl150",
+        "variant_label": "C2. SL150 / TP250",
+        "symbol": "MTX",
+        "total_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "total_net_pnl_ntd": -87286.002,
+        "profit_factor": 0.41446681632334414,
+        "avg_win_pts": 250.0,
+        "avg_loss_pts": 154.10526315789474,
+        "avg_win_ntd": 12356.9944,
+        "avg_loss_ntd": 7845.840736842106,
+        "expectancy_per_trade_pts": -69.91666666666666,
+        "notes": "更平衡的報酬風險比，觀察勝率與 PF 是否改善。"
+      },
+      {
+        "variant_key": "atr14_sl1_5x_tp500",
+        "variant_label": "D1. ATR14 × 1.5 停損 / TP500",
+        "symbol": "MTX",
+        "total_trades": 24,
+        "win_rate": 0.5,
+        "total_net_pnl_ntd": -19738.5362142853,
+        "profit_factor": 0.9379387396194483,
+        "avg_win_pts": 500.0,
+        "avg_loss_pts": 527.2559523809517,
+        "avg_win_ntd": 24859.224666666665,
+        "avg_loss_ntd": 26504.10268452378,
+        "expectancy_per_trade_pts": -13.627976190475863,
+        "notes": "使用 14-bar true range SMA ATR，自適應停損；停利固定 500 點以隔離停損效果。"
+      },
+      {
+        "variant_key": "atr14_sl2_5x_tp500",
+        "variant_label": "D2. ATR14 × 2.5 停損 / TP500",
+        "symbol": "MTX",
+        "total_trades": 23,
+        "win_rate": 0.6086956521739131,
+        "total_net_pnl_ntd": -3900.7446071429663,
+        "profit_factor": 0.9889505981830389,
+        "avg_win_pts": 501.57142857142856,
+        "avg_loss_pts": 781.6785714285717,
+        "avg_win_ntd": 24937.63771428572,
+        "avg_loss_ntd": 39225.296956349215,
+        "expectancy_per_trade_pts": -0.5698757763976232,
+        "notes": "較寬 ATR 停損倍數；停利固定 500 點。"
+      }
+    ],
+    "TX": [
+      {
+        "variant_key": "baseline_sl150_tp500",
+        "variant_label": "A. Baseline SL150 / TP500",
+        "symbol": "TX",
+        "total_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "total_net_pnl_ntd": -88540.892,
+        "profit_factor": 0.8490181397608391,
+        "avg_win_pts": 500.0,
+        "avg_loss_pts": 152.26315789473685,
+        "avg_win_ntd": 99578.616,
+        "avg_loss_ntd": 30864.94589473684,
+        "expectancy_per_trade_pts": -16.375,
+        "notes": "控制組，對照既有 breakout 結果。"
+      },
+      {
+        "variant_key": "wider_sl250_tp500",
+        "variant_label": "B1. Wider SL250 / TP500",
+        "symbol": "TX",
+        "total_trades": 24,
+        "win_rate": 0.2916666666666667,
+        "total_net_pnl_ntd": -305344.91599999997,
+        "profit_factor": 0.6953921436300584,
+        "avg_win_pts": 500.0,
+        "avg_loss_pts": 292.7647058823529,
+        "avg_win_ntd": 99582.112,
+        "avg_loss_ntd": 58965.86470588235,
+        "expectancy_per_trade_pts": -61.54166666666663,
+        "notes": "放寬固定停損，觀察是否能穿過進場後雜訊。"
+      },
+      {
+        "variant_key": "wider_sl350_tp500",
+        "variant_label": "B2. Wider SL350 / TP500",
+        "symbol": "TX",
+        "total_trades": 24,
+        "win_rate": 0.375,
+        "total_net_pnl_ntd": -265337.716,
+        "profit_factor": 0.7715755562439627,
+        "avg_win_pts": 500.0,
+        "avg_loss_pts": 385.1333333333333,
+        "avg_win_ntd": 99584.64088888888,
+        "avg_loss_ntd": 77439.9656,
+        "expectancy_per_trade_pts": -53.208333333333314,
+        "notes": "更寬的固定停損，測試『給更大呼吸空間』是否值得。"
+      },
+      {
+        "variant_key": "smaller_tp300_sl150",
+        "variant_label": "C1. SL150 / TP300",
+        "symbol": "TX",
+        "total_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "total_net_pnl_ntd": -288543.292,
+        "profit_factor": 0.5079696849486066,
+        "avg_win_pts": 300.0,
+        "avg_loss_pts": 152.26315789473685,
+        "avg_win_ntd": 59578.136,
+        "avg_loss_ntd": 30864.94589473684,
+        "expectancy_per_trade_pts": -58.04166666666667,
+        "notes": "降低停利門檻，測試較容易達標是否改善勝率。"
+      },
+      {
+        "variant_key": "smaller_tp250_sl150",
+        "variant_label": "C2. SL150 / TP250",
+        "symbol": "TX",
+        "total_trades": 24,
+        "win_rate": 0.20833333333333334,
+        "total_net_pnl_ntd": -338543.892,
+        "profit_factor": 0.4227075712455486,
+        "avg_win_pts": 250.0,
+        "avg_loss_pts": 152.26315789473685,
+        "avg_win_ntd": 49578.016,
+        "avg_loss_ntd": 30864.94589473684,
+        "expectancy_per_trade_pts": -68.45833333333334,
+        "notes": "更平衡的報酬風險比，觀察勝率與 PF 是否改善。"
+      },
+      {
+        "variant_key": "atr14_sl1_5x_tp500",
+        "variant_label": "D1. ATR14 × 1.5 停損 / TP500",
+        "symbol": "TX",
+        "total_trades": 24,
+        "win_rate": 0.5,
+        "total_net_pnl_ntd": -83918.17757142965,
+        "profit_factor": 0.93438567413663,
+        "avg_win_pts": 500.0,
+        "avg_loss_pts": 530.8244047619052,
+        "avg_win_ntd": 99586.91933333332,
+        "avg_loss_ntd": 106580.10079761915,
+        "expectancy_per_trade_pts": -15.412202380952579,
+        "notes": "使用 14-bar true range SMA ATR，自適應停損；停利固定 500 點以隔離停損效果。"
+      },
+      {
+        "variant_key": "atr14_sl2_5x_tp500",
+        "variant_label": "D2. ATR14 × 2.5 停損 / TP500",
+        "symbol": "TX",
+        "total_trades": 23,
+        "win_rate": 0.6086956521739131,
+        "total_net_pnl_ntd": -21988.48514285632,
+        "profit_factor": 0.9844867083774842,
+        "avg_win_pts": 500.42857142857144,
+        "avg_loss_pts": 785.3650793650789,
+        "avg_win_ntd": 99672.00057142858,
+        "avg_loss_ntd": 157488.49923809513,
+        "expectancy_per_trade_pts": -2.7080745341612555,
+        "notes": "較寬 ATR 停損倍數；停利固定 500 點。"
+      }
+    ]
+  }
+}

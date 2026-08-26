@@ -1,0 +1,443 @@
+{
+  "symbol": "TMF",
+  "point_value_ntd_per_point": 10.0,
+  "commission_per_side_ntd": 15.0,
+  "tax_rate": 2e-05,
+  "data_range": [
+    "2026-05-22 16:00:00",
+    "2026-07-03 13:45:00"
+  ],
+  "initial_capital_ntd": 100000.0,
+  "original_margin_ntd": 31800.0,
+  "maintenance_margin_ntd": 24400.0,
+  "results": {
+    "breakout": {
+      "trades": 24,
+      "win_rate_pct": 20.83,
+      "breakeven_win_rate_pct": 23.08,
+      "stop_loss_points": 150.0,
+      "take_profit_points": 500.0,
+      "same_bar_stopout_count": 15,
+      "same_bar_stopout_pct": 62.5,
+      "avg_holding_hours": 1.51,
+      "net_pnl_ntd": -5347.05,
+      "initial_capital_ntd": 100000.0,
+      "ending_capital_ntd": 94652.95,
+      "total_return_pct": -5.35,
+      "max_drawdown_pct": 11.53,
+      "breached_maintenance_margin": false,
+      "by_direction": {
+        "long": {
+          "trades": 12,
+          "win_rate_pct": 8.33,
+          "same_bar_stopout_pct": 58.33,
+          "net_pnl_ntd": -12078.99
+        },
+        "short": {
+          "trades": 12,
+          "win_rate_pct": 33.33,
+          "same_bar_stopout_pct": 66.67,
+          "net_pnl_ntd": 6731.94
+        }
+      }
+    },
+    "pullback": {
+      "trades": 15,
+      "win_rate_pct": 53.33,
+      "breakeven_win_rate_pct": 33.33,
+      "stop_loss_points": 150.0,
+      "take_profit_points": 300.0,
+      "same_bar_stopout_count": 9,
+      "same_bar_stopout_pct": 60.0,
+      "avg_holding_hours": 4.57,
+      "net_pnl_ntd": 20436.36,
+      "initial_capital_ntd": 100000.0,
+      "ending_capital_ntd": 120436.36,
+      "total_return_pct": 20.44,
+      "max_drawdown_pct": 4.65,
+      "breached_maintenance_margin": false,
+      "by_direction": {
+        "long": {
+          "trades": 9,
+          "win_rate_pct": 55.56,
+          "same_bar_stopout_pct": 55.56,
+          "net_pnl_ntd": 16225.13
+        },
+        "short": {
+          "trades": 6,
+          "win_rate_pct": 50.0,
+          "same_bar_stopout_pct": 66.67,
+          "net_pnl_ntd": 4211.23
+        }
+      }
+    },
+    "combined_system": {
+      "description": "突破/跌破 + 回測/回彈 兩策略合併，共用同一筆100,000元本金，依出場時間排序累加損益",
+      "total_trades": 39,
+      "win_rate_pct": 33.33,
+      "net_pnl_ntd": 15089.31,
+      "initial_capital_ntd": 100000.0,
+      "ending_capital_ntd": 115089.31,
+      "total_return_pct": 15.09,
+      "max_drawdown_pct": 14.62,
+      "profit_factor": 1.37,
+      "max_concurrent_positions": 2,
+      "required_margin_at_max_concurrency_ntd": 63600.0,
+      "required_maintenance_margin_at_max_concurrency_ntd": 48800.0,
+      "breached_maintenance_margin": false,
+      "trade_log": [
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-05-26 12:45:00",
+          "exit_time": "2026-05-26 16:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -2237.54,
+          "equity_after": 97762.46
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-05-26 23:00:00",
+          "exit_time": "2026-05-26 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1547.74,
+          "equity_after": 96214.72
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-05-28 00:00:00",
+          "exit_time": "2026-05-28 00:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1547.93,
+          "equity_after": 94666.78
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-05-28 12:45:00",
+          "exit_time": "2026-05-28 12:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1547.55,
+          "equity_after": 93119.24
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-05-29 02:00:00",
+          "exit_time": "2026-05-29 03:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1547.92,
+          "equity_after": 91571.32
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-05-30 03:00:00",
+          "exit_time": "2026-05-30 03:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.01,
+          "equity_after": 90023.31
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-01 11:45:00",
+          "exit_time": "2026-06-01 11:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.45,
+          "equity_after": 88474.86
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-02 12:45:00",
+          "exit_time": "2026-06-02 12:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.28,
+          "equity_after": 86926.58
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-02 23:00:00",
+          "exit_time": "2026-06-02 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.6,
+          "equity_after": 85377.98
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-02 20:00:00",
+          "exit_time": "2026-06-03 09:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4951.38,
+          "equity_after": 90329.36
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-03 23:00:00",
+          "exit_time": "2026-06-03 23:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.61,
+          "equity_after": 88780.74
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-05 01:00:00",
+          "exit_time": "2026-06-05 02:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.5,
+          "equity_after": 87232.24
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-05 04:00:00",
+          "exit_time": "2026-06-05 05:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.56,
+          "equity_after": 85683.68
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-05 11:45:00",
+          "exit_time": "2026-06-05 12:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4951.85,
+          "equity_after": 90635.53
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-08 21:00:00",
+          "exit_time": "2026-06-08 22:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1547.59,
+          "equity_after": 89087.94
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-10 01:00:00",
+          "exit_time": "2026-06-10 01:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1547.3,
+          "equity_after": 87540.63
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-10 10:45:00",
+          "exit_time": "2026-06-10 10:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2952.42,
+          "equity_after": 90493.05
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-11 10:45:00",
+          "exit_time": "2026-06-11 10:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2952.81,
+          "equity_after": 93445.86
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-11 17:00:00",
+          "exit_time": "2026-06-11 21:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1547.33,
+          "equity_after": 91898.53
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-12 17:00:00",
+          "exit_time": "2026-06-12 18:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2952.26,
+          "equity_after": 94850.79
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-12 23:00:00",
+          "exit_time": "2026-06-13 00:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2952.22,
+          "equity_after": 97803.01
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-13 02:00:00",
+          "exit_time": "2026-06-15 09:45:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 10611.93,
+          "equity_after": 108414.94
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-16 13:45:00",
+          "exit_time": "2026-06-16 23:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4951.77,
+          "equity_after": 113366.71
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-17 17:00:00",
+          "exit_time": "2026-06-17 17:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.51,
+          "equity_after": 111818.2
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-18 04:00:00",
+          "exit_time": "2026-06-18 04:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.54,
+          "equity_after": 110269.66
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-23 11:45:00",
+          "exit_time": "2026-06-23 11:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4950.83,
+          "equity_after": 115220.49
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-24 10:45:00",
+          "exit_time": "2026-06-24 10:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.63,
+          "equity_after": 113671.87
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-24 13:45:00",
+          "exit_time": "2026-06-24 13:45:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.61,
+          "equity_after": 112123.25
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-25 10:45:00",
+          "exit_time": "2026-06-25 10:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.61,
+          "equity_after": 110574.65
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-26 01:00:00",
+          "exit_time": "2026-06-26 01:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.38,
+          "equity_after": 109026.26
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-26 02:00:00",
+          "exit_time": "2026-06-26 09:45:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2951.74,
+          "equity_after": 111978.01
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-06-27 03:00:00",
+          "exit_time": "2026-06-27 03:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.03,
+          "equity_after": 110429.98
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-06-30 00:00:00",
+          "exit_time": "2026-06-30 00:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2951.62,
+          "equity_after": 113381.6
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-07-01 11:45:00",
+          "exit_time": "2026-07-01 11:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.88,
+          "equity_after": 111832.73
+        },
+        {
+          "strategy": "pullback",
+          "entry_time": "2026-07-01 17:00:00",
+          "exit_time": "2026-07-01 19:00:00",
+          "direction": "long",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 2951.05,
+          "equity_after": 114783.78
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-07-01 23:00:00",
+          "exit_time": "2026-07-02 01:00:00",
+          "direction": "short",
+          "exit_reason": "take_profit",
+          "net_pnl_ntd": 4951.32,
+          "equity_after": 119735.1
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-07-02 23:00:00",
+          "exit_time": "2026-07-02 23:00:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.86,
+          "equity_after": 118186.24
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-07-03 03:00:00",
+          "exit_time": "2026-07-03 03:00:00",
+          "direction": "short",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.15,
+          "equity_after": 116638.09
+        },
+        {
+          "strategy": "breakout",
+          "entry_time": "2026-07-03 13:45:00",
+          "exit_time": "2026-07-03 13:45:00",
+          "direction": "long",
+          "exit_reason": "stop_loss",
+          "net_pnl_ntd": -1548.78,
+          "equity_after": 115089.31
+        }
+      ]
+    }
+  }
+}

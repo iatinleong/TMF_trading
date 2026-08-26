@@ -1,0 +1,104 @@
+{
+  "MTX": {
+    "baseline (SL150/TP300 固定)": {
+      "total_trades": 16,
+      "win_rate": 0.5,
+      "total_net_pnl_ntd": 97025.216,
+      "profit_factor": 2.582920129968017,
+      "avg_win_ntd": 19790.037,
+      "avg_loss_ntd": -7661.885
+    },
+    "wider_tp (SL150固定/TP600固定)": {
+      "total_trades": 14,
+      "win_rate": 0.35714285714285715,
+      "total_net_pnl_ntd": 80245.268,
+      "profit_factor": 2.163660041345503,
+      "avg_win_ntd": 29840.928399999997,
+      "avg_loss_ntd": -7662.152666666666
+    },
+    "trailing_capped (SL150移動/TP600上限)": {
+      "total_trades": 16,
+      "win_rate": 0.0625,
+      "total_net_pnl_ntd": -11473.436,
+      "profit_factor": 0.3932236985452307,
+      "avg_win_ntd": 7435.404,
+      "avg_loss_ntd": -1260.5893333333333
+    },
+    "trailing_open (SL150移動/無TP上限)": {
+      "total_trades": 16,
+      "win_rate": 0.0625,
+      "total_net_pnl_ntd": -11473.436,
+      "profit_factor": 0.3932236985452307,
+      "avg_win_ntd": 7435.404,
+      "avg_loss_ntd": -1260.5893333333333
+    }
+  },
+  "TX": {
+    "baseline (SL150/TP300 固定)": {
+      "total_trades": 17,
+      "win_rate": 0.47058823529411764,
+      "total_net_pnl_ntd": 359968.148,
+      "profit_factor": 2.31187062539899,
+      "avg_win_ntd": 79295.1465,
+      "avg_loss_ntd": -30488.113777777777
+    },
+    "wider_tp (SL150固定/TP600固定)": {
+      "total_trades": 15,
+      "win_rate": 0.3333333333333333,
+      "total_net_pnl_ntd": 292728.368,
+      "profit_factor": 1.9601107052878153,
+      "avg_win_ntd": 119523.71839999998,
+      "avg_loss_ntd": -30489.022399999998
+    },
+    "trailing_capped (SL150移動/TP600上限)": {
+      "total_trades": 17,
+      "win_rate": 0.058823529411764705,
+      "total_net_pnl_ntd": -43225.9,
+      "profit_factor": 0.4088967251878404,
+      "avg_win_ntd": 29901.592,
+      "avg_loss_ntd": -4570.46825
+    },
+    "trailing_open (SL150移動/無TP上限)": {
+      "total_trades": 17,
+      "win_rate": 0.058823529411764705,
+      "total_net_pnl_ntd": -43225.9,
+      "profit_factor": 0.4088967251878404,
+      "avg_win_ntd": 29901.592,
+      "avg_loss_ntd": -4570.46825
+    }
+  },
+  "TMF": {
+    "baseline (SL150/TP300 固定)": {
+      "total_trades": 15,
+      "win_rate": 0.5333333333333333,
+      "total_net_pnl_ntd": 20436.362,
+      "profit_factor": 2.8853261198469036,
+      "avg_win_ntd": 3909.50725,
+      "avg_loss_ntd": -1548.528
+    },
+    "wider_tp (SL150固定/TP600固定)": {
+      "total_trades": 13,
+      "win_rate": 0.38461538461538464,
+      "total_net_pnl_ntd": 17372.368000000002,
+      "profit_factor": 2.402291870456936,
+      "avg_win_ntd": 5952.18432,
+      "avg_loss_ntd": -1548.5692
+    },
+    "trailing_capped (SL150移動/TP600上限)": {
+      "total_trades": 15,
+      "win_rate": 0.06666666666666667,
+      "total_net_pnl_ntd": -2343.4056,
+      "profit_factor": 0.3920317485585889,
+      "avg_win_ntd": 1511.0812,
+      "avg_loss_ntd": -275.3204857142857
+    },
+    "trailing_open (SL150移動/無TP上限)": {
+      "total_trades": 15,
+      "win_rate": 0.06666666666666667,
+      "total_net_pnl_ntd": -2343.4056,
+      "profit_factor": 0.3920317485585889,
+      "avg_win_ntd": 1511.0812,
+      "avg_loss_ntd": -275.3204857142857
+    }
+  }
+}
