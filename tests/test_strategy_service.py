@@ -8,6 +8,7 @@ from backend import strategy_service
 from backend.strategy_service import (
     StrategyState,
     _armed,
+    _canonical_position_product,
     _cancel_mit_order_for_state,
     _cancel_stop_order_for_state,
     _check_orphaned_fill,
@@ -365,6 +366,45 @@ def test_reconcile_after_manual_close_leaves_matching_strategy_alone(clean_armed
             ]
         }
         affected = reconcile_after_manual_close("TMFR1")
+
+    assert affected == []
+    assert state.held_qty == 1
+    assert state.stopped is False
+
+
+def test_canonical_position_product_strips_year_from_tmf_month_code():
+    assert _canonical_position_product("TM2609") == "TM09"
+
+
+def test_canonical_position_product_leaves_already_short_code_unchanged():
+    assert _canonical_position_product("TM09") == "TM09"
+
+
+def test_canonical_position_product_leaves_rolling_code_unchanged():
+    assert _canonical_position_product("TMFR1") == "TMFR1"
+
+
+def test_reconcile_after_manual_close_matches_broker_short_month_product_code(clean_armed):
+    """
+    2026-08-27 實盤事故：策略內部用 state.product_code="TM2609"（具體月份碼）
+    記帳，但群益 OnOpenInterest（GetOpenInterestGW）回報的 position["product"]
+    對同一張倉位卻是 "TM09"（不含年份的短碼）——見
+    backend/capital_parse.py::parse_open_interest_line。這個函式原本直接拿
+    兩邊字串比對，永遠對不起來，把一筆真實、完全對得上的持倉誤判成「內部
+    記錄超過券商實際回報」，觸發自動撤單（連已經成功掛上的真實 STP 停損智慧
+    單都被撤掉），留下裸倉。這裡驗證同一張倉位、只是產品代碼格式不同，不該
+    被誤判成不一致。
+    """
+    state = _open_long_state(strategy_id="pullback_long", product_code="TM2609")
+    _armed["pullback_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.status.return_value = {
+            "positions": [
+                {"product": "TM09", "direction_key": "long", "qty": "1"}
+            ]
+        }
+        affected = reconcile_after_manual_close("TM2609")
 
     assert affected == []
     assert state.held_qty == 1

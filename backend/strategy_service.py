@@ -199,6 +199,24 @@ def _check_orphaned_fill(
     return False
 
 
+def _canonical_position_product(product_code: str) -> str:
+    """
+    2026-08-27 實盤事故根因：策略內部用 state.product_code 記帳（TMF 具體
+    月份碼像 "TM2609"），但群益 OnOpenInterest（GetOpenInterestGW）回報同一張
+    持倉的 product 欄位卻是不含年份的短碼 "TM09"（見
+    backend/capital_parse.py::parse_open_interest_line）。reconcile_after_
+    manual_close() 原本直接拿兩邊字串比對 key，永遠對不起來，把明明對得上的
+    真實持倉誤判成「內部記錄超過券商實際回報」，觸發自動撤單——連已經成功
+    掛上的真實 STP 停損智慧單都被撤掉，留下裸倉超過半小時才被使用者發現。
+    這裡統一轉成券商回報用的短碼格式再比對，兩邊都過這個函式，不管哪一種
+    格式進來都能對上。非 TM 具體月份碼（TMFR1/TX00 等連續代碼）原樣返回。
+    """
+    match = re.fullmatch(r"TM\d{2}(\d{2})", product_code.strip().upper())
+    if match:
+        return f"TM{match.group(1)}"
+    return product_code.strip().upper()
+
+
 def _settlement_month_from_tmf_code(product_code: str) -> str | None:
     """
     從 "TM2609" 這類 TMF 具體月份碼推導 STP 智慧單要用的 YYYYMM（"202609"）。
@@ -708,7 +726,7 @@ def reconcile_after_manual_close(product_code: str | None = None) -> list[str]:
         direction_key = pos.get("direction_key")
         if direction_key not in {"long", "short"}:
             continue
-        prod = str(pos.get("product") or "")
+        prod = _canonical_position_product(str(pos.get("product") or ""))
         try:
             qty = int(float(str(pos.get("qty", "0")).replace(",", "")))
         except ValueError:
@@ -722,7 +740,7 @@ def reconcile_after_manual_close(product_code: str | None = None) -> list[str]:
             continue
         if product_code is not None and state.product_code != product_code:
             continue
-        key = (state.product_code, state.held_direction)
+        key = (_canonical_position_product(state.product_code), state.held_direction)
         groups.setdefault(key, []).append(state)
 
     affected: list[str] = []
