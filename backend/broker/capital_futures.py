@@ -277,7 +277,7 @@ def _position_audit_log_path() -> Path:
     return _find_default_log_path().parent / "position_audit.log"
 
 
-def _append_position_audit(*, raw: str, positions: list[dict[str, Any]]) -> None:
+def _append_position_audit(*, account: str, raw: str, positions: list[dict[str, Any]]) -> None:
     try:
         path = _position_audit_log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -285,7 +285,7 @@ def _append_position_audit(*, raw: str, positions: list[dict[str, Any]]) -> None
         summary = ";".join(
             f"{p.get('product')}/{p.get('direction_key')}x{p.get('qty')}" for p in positions
         )
-        line = f"{ts}\tcount={len(positions)}\tpositions={summary}\traw={raw}\n"
+        line = f"{ts}\taccount={account}\tcount={len(positions)}\tpositions={summary}\traw={raw}\n"
         with path.open("a", encoding="utf-8") as f:
             f.write(line)
     except Exception:  # noqa: BLE001 - 稽核 log 寫入失敗不該影響持倉更新主流程
@@ -1424,7 +1424,7 @@ class CapitalFuturesBroker:
         # 清空，畫面上的持倉表格會卡在最後一筆已經不存在的舊資料，直到重啟後端。
         rows = parse_open_interest_raw(raw)
         self.live.positions = rows
-        _append_position_audit(raw=raw, positions=rows)
+        _append_position_audit(account=self.user_id or "", raw=raw, positions=rows)
 
     def _parse_future_rights(self, raw: str) -> None:
         try:

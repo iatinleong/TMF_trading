@@ -199,3 +199,21 @@ def test_parse_open_interest_clears_on_empty_snapshot():
     broker._parse_open_interest("")
 
     assert broker.live.positions == []
+
+
+def test_position_audit_log_includes_account_tag(tmp_path):
+    """
+    2026-08-26：多帳號規劃第一步（見
+    docs/superpowers/plans/2026-08-26-per-account-worker-process.md）——
+    position_audit.log 原本沒有標記是哪個帳號的持倉，一個帳號一個 worker
+    行程之後，即使各自寫各自的行程還是同一個檔名慣例，加上帳號標記才好
+    事後對照是哪個帳號的紀錄。
+    """
+    audit_path = tmp_path / "position_audit.log"
+
+    broker = CapitalFuturesBroker()
+    broker.user_id = "test_user_123"
+    broker._parse_open_interest("TF,F0200006921941,TMFR1,B,2,0,21500")
+
+    content = audit_path.read_text(encoding="utf-8")
+    assert "account=test_user_123" in content
