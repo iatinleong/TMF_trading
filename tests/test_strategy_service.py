@@ -311,6 +311,18 @@ def clean_armed():
     _armed.clear()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_reconcile_audit_log(tmp_path, monkeypatch):
+    """
+    2026-08-27：reconcile_after_manual_close 每次評估都會寫稽核 log（見
+    _append_reconcile_audit），這裡隔離到 tmp_path，避免測試假資料混進
+    專案真實的 data/reconcile_audit.log。
+    """
+    monkeypatch.setattr(
+        strategy_service, "_reconcile_audit_log_path", lambda: tmp_path / "reconcile_audit.log"
+    )
+
+
 def test_stop_strategy_keeps_monitoring_when_holding_position(clean_armed):
     # 2026-08-21 修正：手上還有留倉時，手動關開關不能把策略整個從監控清單移除，
     # 否則停損停利保護會直接消失（沒有真正的券商端停損單在保護）。
@@ -416,6 +428,52 @@ def test_reconcile_after_manual_close_matches_broker_short_month_product_code(cl
     assert affected == []
     assert state.held_qty == 1
     assert state.stopped is False
+
+
+def test_reconcile_after_manual_close_writes_audit_log_on_mismatch(clean_armed, tmp_path):
+    """
+    2026-08-27：使用者質疑「為什麼你不把重要動作都 logging，就不用猜來猜去」
+    ——reconcile_after_manual_close 判定「內部記錄跟券商回報不一致」這麼關鍵
+    的決定，之前完全沒有留下任何看得到的紀錄（只能事後從 SKCOM 自己的原始
+    log 側面猜測，猜不準）。這裡驗證每次評估都要把實際比對的數字寫進稽核
+    log，下次再發生類似狀況能直接查到根因，不用再猜。
+    """
+    state = _open_long_state(strategy_id="breakout_long", product_code="TM2609")
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.status.return_value = {"positions": []}
+        reconcile_after_manual_close("TM2609")
+
+    log_path = tmp_path / "reconcile_audit.log"
+    assert log_path.exists()
+    content = log_path.read_text(encoding="utf-8")
+    assert "product=TM09" in content
+    assert "direction=long" in content
+    assert "internal_total=1" in content
+    assert "actual=0" in content
+    assert "mismatch=True" in content
+    assert "affected=breakout_long" in content
+
+
+def test_reconcile_after_manual_close_writes_audit_log_when_matching(clean_armed, tmp_path):
+    """對得起來的情況也要留紀錄（mismatch=False），才能證明「這一輪有查過、
+    沒問題」，而不是「這一輪根本沒查」。"""
+    state = _open_long_state(strategy_id="breakout_long", product_code="TM2609")
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.status.return_value = {
+            "positions": [{"product": "TM09", "direction_key": "long", "qty": "1"}]
+        }
+        reconcile_after_manual_close("TM2609")
+
+    log_path = tmp_path / "reconcile_audit.log"
+    assert log_path.exists()
+    content = log_path.read_text(encoding="utf-8")
+    assert "mismatch=False" in content
+    assert "internal_total=1" in content
+    assert "actual=1" in content
 
 
 def test_reconcile_after_manual_close_cancels_orphaned_smart_orders(clean_armed):

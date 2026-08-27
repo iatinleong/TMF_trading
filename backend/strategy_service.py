@@ -18,6 +18,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -651,6 +652,49 @@ def stop_strategy(strategy_id: str) -> dict[str, Any]:
     return strategy_status(strategy_id)
 
 
+def _reconcile_audit_log_path() -> Path:
+    """
+    reconcile_after_manual_close 稽核 log（持久化、只會 append），跟
+    broker/capital_futures.py 的 _order_audit_log_path()／
+    _position_audit_log_path() 同一個道理。
+
+    2026-08-27：使用者質疑「為什麼你不把重要動作都 logging，就不用猜來猜去」
+    ——這個函式判定「內部記錄跟券商回報不一致、要清空持倉並停止策略」是很
+    關鍵的決定，之前完全沒有把當下比對的數字（內部記幾口、券商回報幾口、
+    用的是哪份 broker 快照）寫進任何看得到的地方，事後只能從 SKCOM 自己的
+    原始 Order.log 側面猜測（而且那份 log 不記錄我們自己的比對邏輯，猜不
+    準）。這個檔案就是為了下次再發生類似狀況時，能直接查到當時真正比對的
+    數字，不用再猜。
+    """
+    return DATA_DIR / "reconcile_audit.log"
+
+
+def _append_reconcile_audit(
+    *,
+    product: str,
+    direction: str,
+    internal_total: int,
+    actual: int,
+    mismatch: bool,
+    affected_strategy_ids: list[str],
+    broker_positions_summary: str,
+) -> None:
+    try:
+        path = _reconcile_audit_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        line = (
+            f"{ts}\tproduct={product}\tdirection={direction}\t"
+            f"internal_total={internal_total}\tactual={actual}\tmismatch={mismatch}\t"
+            f"affected={','.join(affected_strategy_ids)}\t"
+            f"broker_positions={broker_positions_summary}\n"
+        )
+        with path.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:  # noqa: BLE001 - 稽核 log 寫入失敗不該影響 reconcile 主流程
+        logger.warning("寫入 reconcile 稽核 log 失敗", exc_info=True)
+
+
 def reconcile_after_manual_close(product_code: str | None = None) -> list[str]:
     """
     2026-08-21 實盤稽核發現：手動「平倉」/「一鍵平倉」會正確送出真實委託給券商，
@@ -692,11 +736,25 @@ def reconcile_after_manual_close(product_code: str | None = None) -> list[str]:
         key = (_canonical_position_product(state.product_code), state.held_direction)
         groups.setdefault(key, []).append(state)
 
+    broker_positions_summary = ";".join(
+        f"{p.get('product')}/{p.get('direction_key')}x{p.get('qty')}" for p in broker_positions
+    )
+
     affected: list[str] = []
     for (prod, direction), states in groups.items():
         internal_total = sum(s.held_qty for s in states)
         actual = broker_qty.get((prod, direction), 0)
-        if internal_total <= actual:
+        mismatch = internal_total > actual
+        _append_reconcile_audit(
+            product=prod,
+            direction=direction,
+            internal_total=internal_total,
+            actual=actual,
+            mismatch=mismatch,
+            affected_strategy_ids=[s.strategy_id for s in states],
+            broker_positions_summary=broker_positions_summary,
+        )
+        if not mismatch:
             continue
         for s in states:
             s.held_qty = 0
