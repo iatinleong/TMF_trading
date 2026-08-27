@@ -83,18 +83,20 @@ class StrategyState:
     held_qty: int = 0
     held_direction: str | None = None
     entry_price: float = 0.0
-    # 券商端 STP 停損智慧單追蹤（見 _place_stop_order_for_state）。有值代表這筆
-    # 留倉已經有真正掛在券商那邊的停損保護，_tick_one 的軟停損檢查會讓路給它，
-    # 不會兩邊搶著平倉。None 代表沒有真正保護（下單失敗或非 TMF 商品），
-    # 這種情況才會用軟停損頂著。
-    stop_order_smart_key: str | None = None
-    stop_order_seq_no: str = ""
-    stop_order_order_no: str = ""
-    # 券商端 MIT 停利智慧單追蹤，跟 stop_order_* 同樣的道理，只是保護的是停利
-    # 那一邊（見 _place_mit_order_for_state）。
-    tp_order_smart_key: str | None = None
-    tp_order_seq_no: str = ""
-    tp_order_order_no: str = ""
+    # 券商端 OCO（二擇一）保護單追蹤（見 _place_oco_protection_for_state）。
+    # 有值代表這筆留倉已經有真正掛在券商那邊的停損＋停利保護（單一委託同時
+    # 帶兩支腿），_tick_one 的軟停損／軟停利檢查都會讓路給它，不會兩邊搶著
+    # 平倉。None 代表沒有真正保護（下單失敗或非 TMF 商品），這種情況才會用
+    # 軟停損停利頂著。
+    #
+    # 2026-08-27：原本分開追蹤 stop_order_*／tp_order_* 兩組欄位（對應分開送
+    # STP+MIT 兩張獨立平倉智慧單），但那個做法會被券商拒絕第二張（[999]
+    # 勾選平倉而留倉部位不足——兩張各自向券商聲請同一口的平倉額度）。改用
+    # SendFutureOCOOrderV1 一次委託帶兩支腿之後，停損停利已經是同一張智慧單，
+    # 只需要一組欄位追蹤、撤單也只需要撤一次。
+    protection_order_smart_key: str | None = None
+    protection_order_seq_no: str = ""
+    protection_order_order_no: str = ""
     last_signal_key: str | None = None
     last_checked_at: float | None = None
     last_signal: dict[str, Any] | None = None
@@ -231,163 +233,110 @@ def _settlement_month_from_tmf_code(product_code: str) -> str | None:
     return f"20{yy}{mm}"
 
 
-def _place_stop_order_for_state(state: StrategyState, svc: TradingService) -> None:
+def _place_oco_protection_for_state(state: StrategyState, svc: TradingService) -> None:
     """
-    進場成交後呼叫：嘗試在券商端掛一張真正的 STP 停損智慧單保護這筆留倉。
-    失敗（或非 TMF 商品）就放著 stop_order_smart_key=None，_tick_one 的軟停損
-    檢查會接手頂著，不是「這筆單完全沒保護」。
+    進場成交後呼叫：用單一 OCO（二擇一）智慧單，一次委託同時掛停損＋停利兩支
+    腿保護這筆留倉。失敗（或非 TMF 商品）就放著 protection_order_smart_key=
+    None，_tick_one 的軟停損停利檢查會接手頂著，不是「這筆單完全沒保護」。
+
+    2026-08-27 實盤事故根因：原本分開送 STP+MIT 兩張獨立平倉智慧單，第二張
+    被券商拒絕（[999] 勾選平倉而留倉部位不足）——兩張各自向券商聲請同一口
+    的平倉額度，只能滿足其中一張。改用 SendFutureOCOOrderV1 一次委託帶兩支
+    腿，用真實帳號驗證過不會再被拒（正式環境+遠離市價不會觸發的限價驗證，
+    見 docs/order_execution_logic.md 第 8 節）。
+
+    實測驗證過兩個官方文件沒寫清楚的規則：
+    1. OCO 第一腳觸發價必須比第二腳高（[999]「OCO第二隻腳觸發價不能大於等於
+       第一隻腳」），是純數值大小排序，不是「哪一腳是停損/停利」的語意順序
+       ——多單空單哪一邊比較高會互換，所以這裡照數值排序、不是照方向指定。
+    2. order_price_type=3（範圍市價）配 "P" 在 ROD 下會被拒（[519] 需要
+       實際價差，格式未驗證過）；改用 order_price_type=2（限價）+ 實際數字
+       價格，跟原本 STP/MIT 已經驗證過能用的方式一致。
     """
     settlement_month = _settlement_month_from_tmf_code(state.product_code)
     if settlement_month is None:
-        state.last_action += "（非 TMF 具體月份碼，STP 智慧單略過，改用軟停損保護）"
+        state.last_action += "（非 TMF 具體月份碼，OCO 智慧單略過，改用軟停損停利保護）"
         return
 
     if state.held_direction == "long":
         side = "sell"
-        trigger_price = state.entry_price - abs(state.stop_loss_points)
+        stop_trigger = state.entry_price - abs(state.stop_loss_points)
+        take_profit_trigger = state.entry_price + abs(state.take_profit_points)
     else:
         side = "buy"
-        trigger_price = state.entry_price + abs(state.stop_loss_points)
+        stop_trigger = state.entry_price + abs(state.stop_loss_points)
+        take_profit_trigger = state.entry_price - abs(state.take_profit_points)
+
+    high_trigger = max(stop_trigger, take_profit_trigger)
+    low_trigger = min(stop_trigger, take_profit_trigger)
 
     try:
-        result = svc.place_stop_order(
+        result = svc.place_oco_order(
             {
                 "stock_no": state.product_code,
                 "settlement_month": settlement_month,
-                "side": side,
                 "qty": state.held_qty,
-                "trigger_price": f"{trigger_price:.0f}",
-                "price": f"{trigger_price:.0f}",
-                "order_price_type": 2,  # 限價；範圍市價需要額外差值，尚未驗證過確切格式
-                "new_close": "close",
-            }
-        )
-        order_result = result.get("order_result") or {}
-        if not order_result.get("success"):
-            state.last_action += f"（STP 停損智慧單掛單失敗：{order_result.get('message') or '未知原因'}，改用軟停損保護）"
-            return
-        raw = str(order_result.get("raw") or "")
-        parts = [p.strip() for p in raw.split(",")]
-        # 回應格式（實測確認）：日期,訊息(含「條件單號：X」),書號,智慧單號,13碼序號
-        if len(parts) >= 5:
-            state.stop_order_order_no = parts[2]
-            state.stop_order_smart_key = parts[3]
-            state.stop_order_seq_no = parts[4]
-            state.last_action += "（已掛真實 STP 停損智慧單）"
-        else:
-            # 送單回報格式不如預期，寧可當作沒有真正保護、退回軟停損，也不要
-            # 記一個可能解析錯誤的智慧單號，之後撤單撤錯東西。
-            state.last_action += "（STP 送單成功但回應格式無法解析，改用軟停損保護，請人工核對）"
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("strategy_tick[%s] STP 停損智慧單掛單失敗: %s", state.strategy_id, exc)
-        state.last_action += f"（STP 停損智慧單掛單例外：{exc}，改用軟停損保護）"
-
-
-def _cancel_stop_order_for_state(state: StrategyState, svc: TradingService) -> None:
-    """
-    盡力撤掉這個策略名下掛著的 STP 停損智慧單（倉位已經用別的方式平掉，這張單
-    變成孤兒單）。撤單失敗就保留 smart_key，交給 reconcile_orphan_stop_orders()
-    下一輪重試，不要在這裡就清空——清空了等於永遠沒人知道要再撤。
-    """
-    if not state.stop_order_smart_key:
-        return
-    try:
-        result = svc.cancel_stop_order(
-            {
-                "smart_key": state.stop_order_smart_key,
-                "seq_no": state.stop_order_seq_no,
-                "order_no": state.stop_order_order_no,
-            }
-        )
-        cancel_result = result.get("cancel_result") or {}
-        if cancel_result.get("success"):
-            state.stop_order_smart_key = None
-            state.stop_order_seq_no = ""
-            state.stop_order_order_no = ""
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("strategy_tick[%s] STP 停損智慧單撤單失敗: %s", state.strategy_id, exc)
-
-
-def _place_mit_order_for_state(state: StrategyState, svc: TradingService) -> None:
-    """
-    進場成交後呼叫：嘗試在券商端掛一張真正的 MIT 觸價智慧單，當停利用。跟
-    _place_stop_order_for_state 邏輯一致，失敗或非 TMF 商品就退回軟停利頂著。
-
-    2026-08-21 實測發現：MIT 一定要給 bstrDealPrice，不給會被拒單
-    （SK_ERROR_STRATEGY_ORDER_MUST_GIVE_DEAL_PRICE），trading_service.py 的
-    _place_mit_order_impl 已經處理成沒給就用 price 頂著，這裡不用重複處理。
-    """
-    settlement_month = _settlement_month_from_tmf_code(state.product_code)
-    if settlement_month is None:
-        state.last_action += "（非 TMF 具體月份碼，MIT 停利智慧單略過，改用軟停利保護）"
-        return
-
-    if state.held_direction == "long":
-        side = "sell"
-        trigger_direction = "gte"
-        trigger_price = state.entry_price + abs(state.take_profit_points)
-    else:
-        side = "buy"
-        trigger_direction = "lte"
-        trigger_price = state.entry_price - abs(state.take_profit_points)
-
-    try:
-        result = svc.place_mit_order(
-            {
-                "stock_no": state.product_code,
-                "settlement_month": settlement_month,
                 "side": side,
-                "qty": state.held_qty,
-                "trigger_price": f"{trigger_price:.0f}",
-                "trigger_direction": trigger_direction,
-                "price": f"{trigger_price:.0f}",
+                "trigger_price": f"{high_trigger:.0f}",
+                "price": f"{high_trigger:.0f}",
+                "side2": side,
+                "trigger_price2": f"{low_trigger:.0f}",
+                "price2": f"{low_trigger:.0f}",
                 "order_price_type": 2,
                 "new_close": "close",
             }
         )
         order_result = result.get("order_result") or {}
         if not order_result.get("success"):
-            state.last_action += f"（MIT 停利智慧單掛單失敗：{order_result.get('message') or '未知原因'}，改用軟停利保護）"
+            state.last_action += f"（OCO 停損停利智慧單掛單失敗：{order_result.get('message') or '未知原因'}，改用軟停損停利保護）"
             return
         raw = str(order_result.get("raw") or "")
         parts = [p.strip() for p in raw.split(",")]
+        # 回應格式（實測確認，跟 STP/MIT 一致）：日期,訊息(含「條件單號：X」),書號,智慧單號,13碼序號
         if len(parts) >= 5:
-            state.tp_order_order_no = parts[2]
-            state.tp_order_smart_key = parts[3]
-            state.tp_order_seq_no = parts[4]
-            state.last_action += "（已掛真實 MIT 停利智慧單）"
+            state.protection_order_order_no = parts[2]
+            state.protection_order_smart_key = parts[3]
+            state.protection_order_seq_no = parts[4]
+            state.last_action += "（已掛真實 OCO 停損停利智慧單）"
         else:
-            state.last_action += "（MIT 送單成功但回應格式無法解析，改用軟停利保護，請人工核對）"
+            # 送單回報格式不如預期，寧可當作沒有真正保護、退回軟停損停利，也
+            # 不要記一個可能解析錯誤的智慧單號，之後撤單撤錯東西。
+            state.last_action += "（OCO 送單成功但回應格式無法解析，改用軟停損停利保護，請人工核對）"
     except Exception as exc:  # noqa: BLE001
-        logger.warning("strategy_tick[%s] MIT 停利智慧單掛單失敗: %s", state.strategy_id, exc)
-        state.last_action += f"（MIT 停利智慧單掛單例外：{exc}，改用軟停利保護）"
+        logger.warning("strategy_tick[%s] OCO 停損停利智慧單掛單失敗: %s", state.strategy_id, exc)
+        state.last_action += f"（OCO 停損停利智慧單掛單例外：{exc}，改用軟停損停利保護）"
 
 
-def _cancel_mit_order_for_state(state: StrategyState, svc: TradingService) -> None:
-    """盡力撤掉這個策略名下掛著的 MIT 停利智慧單，邏輯同 _cancel_stop_order_for_state。"""
-    if not state.tp_order_smart_key:
+def _cancel_protection_order_for_state(state: StrategyState, svc: TradingService) -> None:
+    """
+    盡力撤掉這個策略名下掛著的 OCO 停損停利保護單（倉位已經用別的方式平掉，
+    這張單變成孤兒單）。撤單失敗就保留 smart_key，交給
+    reconcile_orphan_stop_orders() 下一輪重試，不要在這裡就清空——清空了
+    等於永遠沒人知道要再撤。
+    """
+    if not state.protection_order_smart_key:
         return
     try:
         result = svc.cancel_stop_order(
             {
-                "smart_key": state.tp_order_smart_key,
-                "seq_no": state.tp_order_seq_no,
-                "order_no": state.tp_order_order_no,
-                "trade_kind": 8,  # MIT，見 SmartOrderKind.MIT
+                "smart_key": state.protection_order_smart_key,
+                "seq_no": state.protection_order_seq_no,
+                "order_no": state.protection_order_order_no,
+                "trade_kind": 3,  # OCO，見 SmartOrderKind.OCO
             }
         )
         cancel_result = result.get("cancel_result") or {}
         if cancel_result.get("success"):
-            state.tp_order_smart_key = None
-            state.tp_order_seq_no = ""
-            state.tp_order_order_no = ""
+            state.protection_order_smart_key = None
+            state.protection_order_seq_no = ""
+            state.protection_order_order_no = ""
     except Exception as exc:  # noqa: BLE001
-        logger.warning("strategy_tick[%s] MIT 停利智慧單撤單失敗: %s", state.strategy_id, exc)
+        logger.warning("strategy_tick[%s] OCO 保護單撤單失敗: %s", state.strategy_id, exc)
 
 
 def reconcile_orphan_stop_orders() -> list[str]:
     """
-    2026-08-21：每一輪策略檢查都順便清一次孤兒 STP／MIT 單——留倉已經是 0、但
+    2026-08-21：每一輪策略檢查都順便清一次孤兒 OCO 保護單——留倉已經是 0、但
     還記著智慧單號的策略，代表對應的委託平倉時撤單沒成功（或還沒來得及撤），
     這裡再試一次。用意是就算某一次撤單剛好失敗（網路、券商忙線），下一輪幾秒後
     也會被抓到，不會讓孤兒單一直掛著。
@@ -397,13 +346,10 @@ def reconcile_orphan_stop_orders() -> list[str]:
     for state in _armed.values():
         if state.held_qty != 0:
             continue
-        if not state.stop_order_smart_key and not state.tp_order_smart_key:
+        if not state.protection_order_smart_key:
             continue
-        if state.stop_order_smart_key:
-            _cancel_stop_order_for_state(state, svc)
-        if state.tp_order_smart_key:
-            _cancel_mit_order_for_state(state, svc)
-        if not state.stop_order_smart_key and not state.tp_order_smart_key:
+        _cancel_protection_order_for_state(state, svc)
+        if not state.protection_order_smart_key:
             cleaned.append(state.strategy_id)
     return cleaned
 
@@ -621,8 +567,11 @@ def _state_to_dict(state: StrategyState) -> dict[str, Any]:
         "qty": state.qty,
         "held_qty": state.held_qty,
         "held_direction": state.held_direction,
-        "has_broker_stop_order": state.stop_order_smart_key is not None,
-        "has_broker_take_profit_order": state.tp_order_smart_key is not None,
+        # 2026-08-27 起停損停利是同一張 OCO 保護單，兩個欄位都指向同一個
+        # protection_order_smart_key——保留兩個 key 是為了前端相容，不用改
+        # Dashboard 的顯示邏輯。
+        "has_broker_stop_order": state.protection_order_smart_key is not None,
+        "has_broker_take_profit_order": state.protection_order_smart_key is not None,
         "initial_capital_ntd": state.initial_capital_ntd,
         "realized_pnl_ntd": state.realized_pnl_ntd,
         "max_loss_ntd": state.max_loss_ntd,
@@ -754,11 +703,10 @@ def reconcile_after_manual_close(product_code: str | None = None) -> list[str]:
             s.held_direction = None
             s.entry_price = 0.0
             # 2026-08-21：這個函式現在也從 strategy_tick() 每輪呼叫（不只是手動
-            # 平倉按鈕），所以兜不起來的原因除了手動平倉，也可能是真正的 STP/MIT
-            # 智慧單在券商端自己觸發了——不管哪種情況，這筆倉位既然已經不在了，
-            # 掛著的另一張智慧單（沒觸發的那張）就變成孤兒單，要順手撤掉。
-            _cancel_stop_order_for_state(s, svc)
-            _cancel_mit_order_for_state(s, svc)
+            # 平倉按鈕），所以兜不起來的原因除了手動平倉，也可能是真正的 OCO
+            # 保護單在券商端自己觸發了——不管哪種情況，這筆倉位既然已經不在了，
+            # 掛著的保護單（沒觸發的那一腳）就變成孤兒單，要順手撤掉。
+            _cancel_protection_order_for_state(s, svc)
             _stop_with_reason(
                 s,
                 f"⚠ 偵測到 {prod} {direction} 部位跟券商實際回報不一致"
@@ -816,13 +764,13 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                 if state.held_direction == "long"
                 else state.entry_price - current_price
             )
-            if points <= -abs(state.stop_loss_points) and state.stop_order_smart_key is None:
-                # 有 stop_order_smart_key 代表券商端已經掛了真正的 STP 停損智慧單
-                # 頂著，軟停損讓路，不要兩邊搶著平倉（見 _place_stop_order_for_state）。
+            if points <= -abs(state.stop_loss_points) and state.protection_order_smart_key is None:
+                # 有 protection_order_smart_key 代表券商端已經掛了真正的 OCO
+                # 保護單頂著，軟停損讓路，不要兩邊搶著平倉（見
+                # _place_oco_protection_for_state）。
                 trigger_kind = "stop_loss"
-            elif points >= abs(state.take_profit_points) and state.tp_order_smart_key is None:
-                # 有 tp_order_smart_key 代表券商端已經掛了真正的 MIT 停利智慧單
-                # 頂著，軟停利同樣讓路（見 _place_mit_order_for_state）。
+            elif points >= abs(state.take_profit_points) and state.protection_order_smart_key is None:
+                # 軟停利同樣讓路給真實 OCO 保護單。
                 trigger_kind = "take_profit"
             elif floating_pnl is not None and state.loss_limit_hit(floating_pnl):
                 trigger_kind = "risk_stop"
@@ -870,8 +818,7 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     state.held_qty = 0
                     state.held_direction = None
                     state.entry_price = 0.0
-                    _cancel_stop_order_for_state(state, svc)
-                    _cancel_mit_order_for_state(state, svc)
+                    _cancel_protection_order_for_state(state, svc)
                 elif _check_orphaned_fill(
                     result.get("state") or {},
                     expected_side=("short" if close_side == "sell" else "long"),
@@ -885,13 +832,12 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     state.held_qty = 0
                     state.held_direction = None
                     state.entry_price = 0.0
-                    # 這裡也順手嘗試撤 STP／MIT 單：如果是其中一張自己觸發造成
-                    # 這筆成交，撤單會因為單已經不存在而失敗，無妨（見
+                    # 這裡也順手嘗試撤 OCO 保護單：如果是它自己觸發造成這筆
+                    # 成交，撤單會因為單已經不存在而失敗，無妨（見
                     # reconcile_orphan_stop_orders 的說明，不會造成安全風險，只是
                     # 浪費一次 API 呼叫）；如果是走別的路徑平倉、還掛著，這裡就能
                     # 正確把孤兒單清掉。
-                    _cancel_stop_order_for_state(state, svc)
-                    _cancel_mit_order_for_state(state, svc)
+                    _cancel_protection_order_for_state(state, svc)
                     _stop_with_reason(
                         state,
                         f"⚠ {reason_label}平倉委託回報失敗，但偵測到近期有相符的真實成交紀錄，"
@@ -1014,8 +960,7 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         price=state.entry_price,
                     )
                     if state.entry_price > 0:
-                        _place_stop_order_for_state(state, svc)
-                        _place_mit_order_for_state(state, svc)
+                        _place_oco_protection_for_state(state, svc)
             else:
                 state.last_action = f"已持倉 {target} x{state.held_qty}，同向訊號不動作"
         else:
@@ -1049,8 +994,7 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         state.held_qty = 0
                         state.held_direction = None
                         state.entry_price = 0.0
-                        _cancel_stop_order_for_state(state, svc)
-                        _cancel_mit_order_for_state(state, svc)
+                        _cancel_protection_order_for_state(state, svc)
                         _stop_with_reason(
                             state,
                             "⚠ 平倉委託回報失敗，但偵測到近期有相符的真實成交紀錄，"
@@ -1081,8 +1025,7 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     state.held_direction = None
                     state.entry_price = 0.0
                     state.last_signal_key = signal["key"]
-                    _cancel_stop_order_for_state(state, svc)
-                    _cancel_mit_order_for_state(state, svc)
+                    _cancel_protection_order_for_state(state, svc)
             else:
                 state.last_action = "空手，反向訊號不動作（本策略不做這個方向）"
         if state.loss_limit_hit():
