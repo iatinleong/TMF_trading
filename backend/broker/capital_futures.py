@@ -290,8 +290,6 @@ def _append_position_audit(*, account: str, raw: str, positions: list[dict[str, 
             f.write(line)
     except Exception:  # noqa: BLE001 - 稽核 log 寫入失敗不該影響持倉更新主流程
         logger.warning("寫入持倉稽核 log 失敗", exc_info=True)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("寫入下單稽核 log 失敗: %s", exc)
 
 
 @dataclass
