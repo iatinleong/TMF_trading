@@ -18,6 +18,7 @@ from typing import Any
 from dotenv import load_dotenv
 
 from .broker.capital_futures import Environment
+from .broker_credentials_store import get_broker_credentials
 from .capital_parse import (
     parse_future_rights_raw,
     parse_open_interest_raw,
@@ -50,6 +51,28 @@ def _load_project_env() -> None:
         load_remote_secrets()
     except Exception as exc:  # noqa: BLE001 - 遠端密鑰失敗不該擋開機
         logger.warning("套用 Supabase 密鑰時發生例外，忽略並使用本機 .env: %s", exc)
+
+
+def _is_worker_mode() -> bool:
+    """WORKER_MODE=1 代表這個行程是某個帳號自己的 worker，不是共用的主行程
+    ——差別見 docs/superpowers/plans/2026-08-26-per-account-worker-process.md。"""
+    return os.getenv("WORKER_MODE", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _apply_worker_account_credentials() -> None:
+    """ACCOUNT_USER_ID 有設的話，用那個帳號自己的群益帳密覆蓋
+    CAPITAL_USER_ID/CAPITAL_PASSWORD；沒設、或那個帳號還沒被設定過帳密，
+    就維持原本的值不變（安靜跳過，不中止開機——跟其他遠端密鑰的失敗處理
+    方式一致）。"""
+    account_user_id = os.getenv("ACCOUNT_USER_ID", "").strip()
+    if not account_user_id:
+        return
+    creds = get_broker_credentials(account_user_id)
+    if not creds:
+        logger.warning("ACCOUNT_USER_ID=%s 還沒有設定群益帳密，維持原本的值", account_user_id)
+        return
+    os.environ["CAPITAL_USER_ID"] = creds["capital_user_id"]
+    os.environ["CAPITAL_PASSWORD"] = creds["capital_password"]
 
 
 _load_project_env()
@@ -96,6 +119,7 @@ def auto_connect_on_startup() -> None:
     """部署啟動時自動連線（讀 .env，不需手動按連線）。"""
     global _connect_error, current_product
     _load_project_env()
+    _apply_worker_account_credentials()
     if os.getenv("AUTO_CONNECT", "1").strip().lower() in {"0", "false", "no"}:
         logger.info("AUTO_CONNECT 已關閉，跳過自動連線")
         return
@@ -276,7 +300,11 @@ async def poll_once() -> dict[str, Any] | None:
 
     quote_product = resolve_quote_product_code(product)
     loaded = st.get("kline_loaded_products") or []
-    if st.get("quote_ready") and quote_product not in loaded:
+    # 2026-08-26：K 線只由共用的主行程負責讀寫（見
+    # docs/superpowers/plans/2026-08-26-per-account-worker-process.md）——
+    # worker 行程（WORKER_MODE=1）不做群益歷史 K 線回補，避免多個帳號的
+    # worker 同時搶著寫同一個商品代碼的 K 線快取檔案。
+    if not _is_worker_mode() and st.get("quote_ready") and quote_product not in loaded:
         bar_limit = int(os.getenv("CAPITAL_KLINE_BAR_LIMIT", "500"))
         try:
             ok = await asyncio.to_thread(
@@ -304,7 +332,7 @@ async def poll_once() -> dict[str, Any] | None:
     # 上面那個分支整輪都不會進來，Shioaji 這個安全網也就永遠沒機會執行。
     # Shioaji 是獨立的第三方連線，不需要等群益報價「就緒」。
     now = time.time()
-    if _should_attempt_periodic_shioaji_backfill(now, _last_shioaji_backfill_attempt):
+    if not _is_worker_mode() and _should_attempt_periodic_shioaji_backfill(now, _last_shioaji_backfill_attempt):
         _last_shioaji_backfill_attempt = now
         try:
             from .shioaji_backfill import backfill_via_shioaji
