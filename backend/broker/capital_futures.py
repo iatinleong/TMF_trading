@@ -891,6 +891,87 @@ class CapitalFuturesBroker:
         )
         return OrderResult(success=(code == 0), code=code, message=self._msg(code), raw=message)
 
+    def send_future_oco_order(
+        self,
+        account: str,
+        stock_no: str,
+        settlement_month: str,
+        qty: int,
+        side: str | int,
+        trigger_price: str,
+        price: str,
+        side2: str | int,
+        trigger_price2: str,
+        price2: str,
+        new_close: int = NewClose.CLOSE,
+        trade_type: int = SmartOrderTradeType.ROD,
+        day_trade: int = 0,
+        order_price_type: int = SmartOrderPriceType.RANGE_MARKET,
+        reserved: int = Reserved.INTRADAY,
+        is_async: bool = False,
+    ) -> OrderResult:
+        """
+        送出期貨 OCO（二擇一）智慧單——一次委託同時掛「兩支腿」（例如停損+停利），
+        由券商主機當成一組配對好的條件單管理：其中一支腿觸發成交後，另一支腿
+        自動失效，不會像分開送兩張獨立的 STP+MIT 那樣，各自向券商聲請同一口
+        部位的平倉額度而互相打架。
+
+        2026-08-27 實盤事故：`_place_stop_order_for_state`/`_place_mit_order_for_state`
+        分開送出兩張獨立的平倉智慧單，第二張被拒單（[999] 勾選平倉而留倉部位
+        不足）——因為兩張各自聲請同一口的平倉額度，券商只能滿足其中一張。
+        群益官方範例（TFStrategyOrder.py::buttonSendFutureOCOOrderV1_Click）用
+        SendFutureOCOOrderV1 一次委託帶兩支腿（bstrTrigger/bstrPrice 跟
+        bstrTrigger2/bstrPrice2），才是券商設計給這個情境用的正規做法。
+
+        stock_no/settlement_month: 跟 STP/MIT 一樣，用根代碼＋YYYYMM 分開指定。
+        side/trigger_price/price: 第一支腿（例如停損）。
+        side2/trigger_price2/price2: 第二支腿（例如停利）。
+        price/price2: "P" = 範圍市價（配合 order_price_type=3，官方文件範例
+                      這樣用）；order_price_type=2（限價）才需要填實際限價數字。
+        """
+        self._require_ready()
+        order = self._sk.FUTUREORDER()
+        order.bstrFullAccount = account
+        order.bstrStockNo = stock_no
+        order.bstrSettlementMonth = settlement_month
+        order.sTradeType = trade_type
+        order.sBuySell = side
+        order.sBuySell2 = side2
+        order.sDayTrade = day_trade
+        order.sNewClose = new_close
+        order.nQty = int(qty)
+        order.bstrTrigger = str(trigger_price)
+        order.bstrPrice = str(price)
+        order.bstrTrigger2 = str(trigger_price2)
+        order.bstrPrice2 = str(price2)
+        order.sReserved = reserved
+        order.nOrderPriceType = order_price_type
+        # 長效單相關欄位：跟 STP 一樣固定不啟用長效單。
+        order.nLongActionFlag = 0
+        order.bstrLongEndDate = ""
+        order.nLAType = 1
+        order.nTimeFlag = 1
+
+        # 跟 STP/MIT 一樣：官方範例是 `bstrMessage,nCode=
+        # m_pSKOrder.SendFutureOCOOrderV1(...)`——message 在前、code 在後。
+        message, code = self.order.SendFutureOCOOrderV1(self.user_id, is_async, order)
+        _append_order_audit(
+            account=account,
+            product_code=f"{stock_no}/{settlement_month}",
+            side=side,
+            qty=qty,
+            price=(
+                f"trigger={trigger_price} price={price} / "
+                f"trigger2={trigger_price2} price2={price2}"
+            ),
+            trade_type=trade_type,
+            new_close=new_close,
+            code=code,
+            message=self._msg(code),
+            raw=message,
+        )
+        return OrderResult(success=(code == 0), code=code, message=self._msg(code), raw=message)
+
     def cancel_stp_order(
         self,
         account: str,

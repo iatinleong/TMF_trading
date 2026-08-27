@@ -145,6 +145,68 @@ def test_correct_price_by_seqno_uses_message_first_order():
     assert result.success is True
 
 
+def test_send_future_oco_order_success_builds_both_legs():
+    """
+    2026-08-27 實盤事故根因：原本分開送 STP + MIT 兩張獨立平倉智慧單，第二張
+    被券商拒絕（[999] 勾選平倉而留倉部位不足），因為兩張各自向券商聲請同一口
+    的平倉額度。群益官方範例（TFStrategyOrder.py::buttonSendFutureOCOOrderV1_Click）
+    有專門的 SendFutureOCOOrderV1，一次委託把兩支腿（bstrTrigger/bstrPrice 跟
+    bstrTrigger2/bstrPrice2）都帶上，讓券商當成一組配對好的二擇一單處理，不是
+    兩張互相搶額度的獨立委託。這裡驗證 wrapper 把兩支腿的參數都正確放進
+    FUTUREORDER 物件、且跟其他智慧單一樣是 message 在前、code 在後。
+    """
+    broker = _ready_broker()
+    broker.order.SendFutureOCOOrderV1.return_value = ("20260827,二擇一委託已送出 條件單號：26999999,x1234,26999999,1688200000001", 0)
+
+    result = broker.send_future_oco_order(
+        account="F0200006921941",
+        stock_no="TMF",
+        settlement_month="202609",
+        qty=1,
+        side=1,  # 停損腿：賣出
+        trigger_price="45850",
+        price="P",
+        side2=1,  # 停利腿：賣出
+        trigger_price2="46650",
+        price2="P",
+        new_close=1,
+    )
+
+    assert result.success is True
+    sent_order = broker.order.SendFutureOCOOrderV1.call_args[0][2]
+    assert sent_order.bstrTrigger == "45850"
+    assert sent_order.bstrPrice == "P"
+    assert sent_order.sBuySell == 1
+    assert sent_order.bstrTrigger2 == "46650"
+    assert sent_order.bstrPrice2 == "P"
+    assert sent_order.sBuySell2 == 1
+    assert sent_order.nQty == 1
+    assert sent_order.bstrStockNo == "TMF"
+    assert sent_order.bstrSettlementMonth == "202609"
+    assert sent_order.sNewClose == 1
+
+
+def test_send_future_oco_order_failure_when_code_is_nonzero():
+    broker = _ready_broker()
+    broker.order.SendFutureOCOOrderV1.return_value = ("[999] 額度不足", 999)
+
+    result = broker.send_future_oco_order(
+        account="F0200006921941",
+        stock_no="TMF",
+        settlement_month="202609",
+        qty=1,
+        side=1,
+        trigger_price="45850",
+        price="P",
+        side2=1,
+        trigger_price2="46650",
+        price2="P",
+    )
+
+    assert result.success is False
+    assert result.code == 999
+
+
 def test_on_tick_for_kline_polling_path_uses_taipei_tz_not_system_clock():
     """
     2026-08-25 實測抓到的 bug：request_stocks() 輪詢路徑用 n_date=0 呼叫

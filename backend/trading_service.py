@@ -744,6 +744,61 @@ class TradingService:
                 "state": broker.get_live_state(),
             }
 
+    def place_oco_order(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """
+        送出真正的券商端 OCO（二擇一）智慧單——一次委託同時掛停損＋停利兩支腿
+        （見 broker/capital_futures.py 的 send_future_oco_order 說明）。
+        2026-08-27 起取代分開送 STP+MIT 兩張獨立平倉智慧單的做法——分開送會
+        被券商拒絕第二張（[999] 勾選平倉而留倉部位不足，兩張各自向券商聲請
+        同一口的平倉額度）。
+        """
+        _require_trading_enabled()
+        return self._run_com(lambda: self._place_oco_order_impl(payload))
+
+    def _place_oco_order_impl(self, payload: dict[str, Any]) -> dict[str, Any]:
+        with self._lock:
+            if not self._broker:
+                raise RuntimeError("尚未連線")
+            broker = self._broker
+            raw_account = payload.get("account") or broker.live.active_account
+            if not raw_account:
+                raise ValueError("請指定交易帳號")
+            account = str(raw_account)
+
+            side_key = str(payload.get("side", "sell")).lower()
+            side = BuySell.BUY if side_key == "buy" else BuySell.SELL
+            side2_key = str(payload.get("side2", "sell")).lower()
+            side2 = BuySell.BUY if side2_key == "buy" else BuySell.SELL
+            new_close_key = str(payload.get("new_close", "close")).lower()
+            new_close = NewClose.CLOSE if new_close_key == "close" else NewClose.NEW
+
+            result = broker.send_future_oco_order(
+                account=account,
+                stock_no=str(payload.get("stock_no") or "TMF"),
+                settlement_month=str(payload.get("settlement_month") or ""),
+                qty=int(payload.get("qty") or 1),
+                side=side,
+                trigger_price=str(payload.get("trigger_price") or ""),
+                price=str(payload.get("price") or "P"),
+                side2=side2,
+                trigger_price2=str(payload.get("trigger_price2") or ""),
+                price2=str(payload.get("price2") or "P"),
+                new_close=new_close,
+                trade_type=int(payload.get("trade_type", SmartOrderTradeType.ROD)),
+                order_price_type=int(payload.get("order_price_type", SmartOrderPriceType.RANGE_MARKET)),
+            )
+            broker.pump_events(2.0)
+            broker.refresh_live_snapshot(account)
+            return {
+                "order_result": {
+                    "success": result.success,
+                    "code": result.code,
+                    "message": result.message,
+                    "raw": result.raw,
+                },
+                "state": broker.get_live_state(),
+            }
+
     def cancel_stop_order(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._run_com(lambda: self._cancel_stop_order_impl(payload))
 
