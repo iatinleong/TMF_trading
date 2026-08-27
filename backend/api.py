@@ -94,10 +94,38 @@ async def strategy_loop() -> None:
         await asyncio.sleep(60)
 
 
+def _auto_arm_bound_strategies() -> None:
+    """worker 行程專屬：啟動時把這個帳號已經綁定且 enabled=true 的策略自動
+    arm 起來（見 docs/superpowers/plans/2026-08-26-per-account-worker-process.md）。
+    一般共用行程（沒設 WORKER_MODE）完全不做這件事——現有單一共用帳號的
+    行為不受影響。"""
+    from .live_service import _is_worker_mode
+
+    if not _is_worker_mode():
+        return
+    account_user_id = os.getenv("ACCOUNT_USER_ID", "").strip()
+    if not account_user_id:
+        return
+    for row in list_user_strategy_configs(account_user_id):
+        if not row.get("enabled"):
+            continue
+        start_strategy(row["strategy_id"], row["product_code"], qty=row.get("qty"))
+
+
+def _connect_then_auto_arm() -> None:
+    """_auto_arm_bound_strategies() 依賴 TradingService 已經連線完成才能拿到
+    真實權益數（見 strategy_service._fetch_equity_basis()）；跟
+    auto_connect_on_startup() 各自獨立丟進背景 task 的話，两者執行順序不定，
+    可能連線都還沒完成就先 arm，risk-control 的本金基準會退回 .env 的固定
+    預設值，不是真的權益數。這裡在同一個背景執行緒裡照順序執行，不平行。"""
+    auto_connect_on_startup()
+    _auto_arm_bound_strategies()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """部署啟動時於背景自動連線群益 API，不阻塞 uvicorn 啟動與網頁服務。"""
-    asyncio.create_task(asyncio.to_thread(auto_connect_on_startup))
+    asyncio.create_task(asyncio.to_thread(_connect_then_auto_arm))
     poll_task = asyncio.create_task(poll_loop())
     strat_task = asyncio.create_task(strategy_loop())
     yield
