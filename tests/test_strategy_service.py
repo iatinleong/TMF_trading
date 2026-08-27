@@ -18,6 +18,7 @@ from backend.strategy_service import (
     _tick_one,
     reconcile_after_manual_close,
     reconcile_orphan_stop_orders,
+    strategy_config_defaults,
     stop_strategy,
 )
 
@@ -154,7 +155,7 @@ def test_tick_one_forces_close_on_stop_loss_points():
 
 
 def test_tick_one_forces_close_on_take_profit_points():
-    # entry_price=20000，預設 take_profit_points=300，報價漲到 20400（漲400點）超過門檻，應強制停利平倉。
+    # entry_price=20000，預設 take_profit_points=250，報價漲到 20400（漲400點）超過門檻，應強制停利平倉。
     state = _open_long_state()
     svc = MagicMock()
     svc.place_order.return_value = {"order_result": {"success": True}}
@@ -370,6 +371,14 @@ def test_reconcile_after_manual_close_leaves_matching_strategy_alone(clean_armed
     assert affected == []
     assert state.held_qty == 1
     assert state.stopped is False
+
+
+def test_strategy_config_defaults_use_confirmed_stop_take_points():
+    # 2026-08-27：跟使用者核對過的正式規格是 -100 停損／+250 停利（不是程式碼
+    # 原本寫死的 300）——這裡鎖住這組數字，避免以後改動又不小心跑掉。
+    defaults = strategy_config_defaults("breakout_long")
+    assert defaults["stop_loss_points"] == 100.0
+    assert defaults["take_profit_points"] == 250.0
 
 
 def test_canonical_position_product_strips_year_from_tmf_month_code():
@@ -789,7 +798,7 @@ def test_tick_one_skips_soft_take_profit_when_broker_mit_order_exists(clean_arme
     # 有真正的 MIT 停利單頂著時，軟停利檢查要讓路，不要兩邊搶著平倉。
     state = _open_long_state(product_code="TM2609", tp_order_smart_key="26466668")
     svc = MagicMock()
-    st = {"quote": {"last_price": 20350.0}}  # 進場價 20000 + 350 > 預設 take_profit_points=300
+    st = {"quote": {"last_price": 20350.0}}  # 進場價 20000 + 350 > 預設 take_profit_points=250
 
     _tick_one(state, svc, st)
 

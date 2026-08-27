@@ -78,7 +78,7 @@ class StrategyState:
     max_loss_ntd: float = 10_000.0
     max_loss_pct: float = 0.10
     stop_loss_points: float = 100.0
-    take_profit_points: float = 300.0
+    take_profit_points: float = 250.0
     realized_pnl_ntd: float = 0.0
     held_qty: int = 0
     held_direction: str | None = None
@@ -603,7 +603,7 @@ def strategy_config_defaults(strategy_id: str | None = None) -> dict[str, Any]:
         "max_loss_ntd": _env_float("STRATEGY_MAX_LOSS_NTD", 10_000.0),
         "max_loss_pct": _env_float("STRATEGY_MAX_LOSS_PCT", 0.10),
         "stop_loss_points": _env_float("STRATEGY_STOP_LOSS_POINTS", 100.0),
-        "take_profit_points": _env_float("STRATEGY_TAKE_PROFIT_POINTS", 300.0),
+        "take_profit_points": _env_float("STRATEGY_TAKE_PROFIT_POINTS", 250.0),
     }
 
 

@@ -58,10 +58,11 @@ svc.place_order({
 | 智慧單 | 用途 | 觸發條件 | 對應函式 |
 |---|---|---|---|
 | **STP** | 停損 | 多單：進場價 − 100 點；空單：進場價 + 100 點 | `_place_stop_order_for_state` |
-| **MIT** | 停利 | 多單：進場價 + 300 點；空單：進場價 − 300 點 | `_place_mit_order_for_state` |
+| **MIT** | 停利 | 多單：進場價 + 250 點；空單：進場價 − 250 點 | `_place_mit_order_for_state` |
 
-（`stop_loss_points=100.0`、`take_profit_points=300.0` 是 `StrategyState` 的
-預設值，`backend/strategy_service.py` 第 80-81 行）
+（`stop_loss_points=100.0`、`take_profit_points=250.0` 是 `StrategyState` 的
+預設值，`backend/strategy_service.py` 第 80-81 行；2026-08-27 跟使用者核對過
+正式規格改為 -100/+250，原本寫死是 -100/+300）
 
 - 兩張都是**限價智慧單**（`order_price_type: 2`），觸發後以指定價格試圖成交。
 - 智慧單掛在**券商端**，跟我們的後端程式是否還在跑無關——就算 `tmf-backend.exe`
