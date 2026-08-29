@@ -892,6 +892,72 @@ def test_reconcile_orphan_stop_orders_cleans_up_after_grace_period_expires(clean
     assert state.protection_order_smart_key is None
 
 
+def test_reconcile_orphan_stop_orders_respects_held_qty_cleared_grace_period(clean_armed):
+    """
+    2026-08-29 Gemini review 抓到的漏洞：reconcile_after_manual_close 只有在
+    entry_recorded_at 的寬限期已經過了才會清零 held_qty，所以走到這裡時，
+    entry_recorded_at 算出來的寬限期一定也已經過期——如果這裡沿用同一個
+    時間戳，形同沒有寬限期，同一輪就會立刻撤單，寬限期完全沒發揮作用。
+    這裡驗證：就算 entry_recorded_at 早就過了寬限期，只要 held_qty 是
+    「剛剛」才被清零的（held_qty_cleared_at 在寬限期內），還是要跳過撤單。
+    """
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        held_qty=0,
+        held_direction=None,
+        protection_order_smart_key="26564233",
+        entry_recorded_at=time.time() - 60.0,  # 進場寬限期早就過了
+        held_qty_cleared_at=time.time(),  # 但 held_qty 是剛剛才被清零的
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        cleaned = reconcile_orphan_stop_orders()
+        mock_get.return_value.cancel_stop_order.assert_not_called()
+
+    assert cleaned == []
+    assert state.protection_order_smart_key == "26564233"
+
+
+def test_reconcile_orphan_stop_orders_cleans_up_after_cleared_grace_period_expires(
+    clean_armed,
+):
+    """held_qty 被清零之後，寬限期真的過了，孤兒單還是要清掉。"""
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        held_qty=0,
+        held_direction=None,
+        protection_order_smart_key="26564233",
+        entry_recorded_at=time.time() - 60.0,
+        held_qty_cleared_at=time.time() - 31.0,  # 清零後的寬限期也過了
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.cancel_stop_order.return_value = {
+            "cancel_result": {"success": True}
+        }
+        cleaned = reconcile_orphan_stop_orders()
+
+    assert cleaned == ["breakout_long"]
+    assert state.protection_order_smart_key is None
+
+
+def test_reconcile_after_manual_close_sets_held_qty_cleared_at(clean_armed):
+    """reconcile_after_manual_close 清零時要記下時間戳，給 reconcile_orphan_stop_orders 起算獨立寬限期用。"""
+    state = _open_long_state(strategy_id="breakout_long")
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.status.return_value = {"positions": []}
+        before = time.time()
+        reconcile_after_manual_close("TMFR1")
+        after = time.time()
+
+    assert state.held_qty_cleared_at is not None
+    assert before <= state.held_qty_cleared_at <= after
+
+
 def test_tick_one_skips_soft_take_profit_when_broker_protection_order_exists(clean_armed):
     # 有真正的 OCO 停損停利保護單頂著時，軟停利檢查要讓路，不要兩邊搶著平倉。
     state = _open_long_state(product_code="TM2609", protection_order_smart_key="26564233")

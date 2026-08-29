@@ -102,6 +102,15 @@ class StrategyState:
     # 說明。None 代表不知道進場時間（例如測試手動建構、或程式重啟後遺留的
     # 舊狀態），一律當作寬限期已過，照舊立即核對。
     entry_recorded_at: float | None = None
+    # 2026-08-29 Gemini review 抓到的漏洞：reconcile_orphan_stop_orders 原本
+    # 也是拿 entry_recorded_at 去算寬限期——但 reconcile_after_manual_close
+    # 只有在寬限期「已經過了」才會清零 held_qty，代表走到 reconcile_orphan_
+    # stop_orders 時，用同一個 entry_recorded_at 算出來的寬限期一定也已經
+    # 過了，形同沒有寬限期，同一輪就會立刻撤單。這個欄位記下「held_qty 是
+    # 什麼時候被 reconcile_after_manual_close 清零的」，讓 reconcile_orphan_
+    # stop_orders 從這個時間點重新起算一段獨立的寬限期，而不是沿用已經
+    # 過期的舊時鐘。
+    held_qty_cleared_at: float | None = None
     # 券商端 OCO（二擇一）保護單追蹤（見 _place_oco_protection_for_state）。
     # 有值代表這筆留倉已經有真正掛在券商那邊的停損＋停利保護（單一委託同時
     # 帶兩支腿），_tick_one 的軟停損／軟停利檢查都會讓路給它，不會兩邊搶著
@@ -361,10 +370,17 @@ def reconcile_orphan_stop_orders() -> list[str]:
     也會被抓到，不會讓孤兒單一直掛著。
 
     2026-08-29 實盤事故：held_qty==0 不保證這筆倉位真的已經不在了——如果是
-    reconcile_after_manual_close 在寬限期內誤判清空的（見該函式），
-    entry_recorded_at 還是剛剛的時間，這裡如果照樣撤單，等於繞過寬限期，
-    讓 reconcile_after_manual_close 拿掉自動撤單的修復完全白做。所以這裡
-    也要跳過還在寬限期內的策略，等寬限期過了、held_qty 還是 0，才真的動手撤。
+    reconcile_after_manual_close 誤判清空的（見該函式），這裡如果照樣立刻
+    撤單，等於讓那邊拿掉自動撤單的修復完全白做。所以這裡也要有寬限期。
+
+    2026-08-29 Gemini review 抓到的漏洞：寬限期原本沿用 entry_recorded_at
+    （進場時間），但 reconcile_after_manual_close 只有在「entry_recorded_at
+    的寬限期已經過了」才會清零 held_qty——代表走到這裡時，用同一個時間戳
+    算出來的寬限期一定也已經過期，形同沒有寬限期，同一輪就會立刻補刀撤單。
+    改成優先看 held_qty_cleared_at（held_qty 被清零的那一刻，見
+    reconcile_after_manual_close），從那個時間點重新起算一段獨立的 30 秒，
+    沒有這個欄位（例如舊資料、或不是被那個函式清零的）才退回用
+    entry_recorded_at 當備援判斷依據。
     """
     svc = TradingService.get()
     now = time.time()
@@ -374,10 +390,12 @@ def reconcile_orphan_stop_orders() -> list[str]:
             continue
         if not state.protection_order_smart_key:
             continue
-        if (
-            state.entry_recorded_at is not None
-            and now - state.entry_recorded_at < RECONCILE_ENTRY_GRACE_SECONDS
-        ):
+        grace_anchor = (
+            state.held_qty_cleared_at
+            if state.held_qty_cleared_at is not None
+            else state.entry_recorded_at
+        )
+        if grace_anchor is not None and now - grace_anchor < RECONCILE_ENTRY_GRACE_SECONDS:
             continue
         _cancel_protection_order_for_state(state, svc)
         if not state.protection_order_smart_key:
@@ -809,6 +827,7 @@ def reconcile_after_manual_close(product_code: str | None = None) -> list[str]:
             s.held_qty = 0
             s.held_direction = None
             s.entry_price = 0.0
+            s.held_qty_cleared_at = now
             # 2026-08-29 實盤事故 + 事後討論：這裡原本會順手撤保護單、還會
             # 停止策略要求人工重啟。兩者都拿掉了：
             # 1. 撤保護單——那次事故證明這個比對可能建立在過期快照上，撤單
