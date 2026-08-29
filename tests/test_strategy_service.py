@@ -349,9 +349,17 @@ def test_stop_strategy_removes_when_flat(clean_armed):
     assert result["armed"] is False
 
 
-def test_reconcile_after_manual_close_stops_mismatched_strategy(clean_armed):
-    # 手動平倉之後，內部記錄的口數總和（1）超過券商實際回報的淨部位（0），
-    # 代表這筆持倉剛才被外部（手動平倉）關掉了，策略自己不知道。
+def test_reconcile_after_manual_close_syncs_mismatched_strategy_without_stopping(clean_armed):
+    """
+    手動平倉之後，內部記錄的口數總和（1）超過券商實際回報的淨部位（0），
+    代表這筆持倉剛才被外部（手動平倉，或真實保護單觸發）關掉了，策略自己
+    不知道，要同步內部記帳。
+
+    2026-08-29 事後討論：原本這裡還會停止策略、要求人工重啟——但確認過
+    這個專案實務上不會多策略共用同一商品同一方向，且券商本身不允許同一
+    商品雙向持倉，走到這裡的成因只剩手動平倉／保護單觸發，都是正常事件，
+    不該停止監控。broker 才是唯一真相，這裡只是同步，不是「出事了」。
+    """
     state = _open_long_state(strategy_id="breakout_long")
     _armed["breakout_long"] = state
 
@@ -362,8 +370,8 @@ def test_reconcile_after_manual_close_stops_mismatched_strategy(clean_armed):
     assert affected == ["breakout_long"]
     assert state.held_qty == 0
     assert state.held_direction is None
-    assert state.stopped is True
-    assert "不一致" in state.stop_reason
+    assert state.stopped is False
+    assert "不一致" in state.last_action
 
 
 def test_reconcile_after_manual_close_leaves_matching_strategy_alone(clean_armed):
@@ -525,7 +533,7 @@ def test_reconcile_after_manual_close_still_reconciles_after_grace_period_expire
 
     assert affected == ["breakout_long"]
     assert state.held_qty == 0
-    assert state.stopped is True
+    assert state.stopped is False
 
 
 def test_reconcile_after_manual_close_does_not_cancel_protection_order(clean_armed):
@@ -533,11 +541,11 @@ def test_reconcile_after_manual_close_does_not_cancel_protection_order(clean_arm
     2026-08-29 實盤事故：這裡原本會順手撤掉「看起來變成孤兒」的保護單——但
     那次事故證明這個比對可能建立在過期快照上，一旦誤判，撤單是不可逆的，
     會把一筆其實還在的真實部位的保護整個拿掉（22:00:19 進場、22:00:26
-    OCO 就被這個機制撤掉，部位裸奔超過 18 小時）。改成：清空內部記帳、
-    停止策略維持立即執行（低風險、可自我修正），但完全不碰券商端的保護
-    單——就算這次判斷是誤判，保護單不受影響，真正的部位依然受到保護。
-    真正孤兒的保護單交給 reconcile_orphan_stop_orders 處理（那裡對剛進場
-    的部位也有寬限期保護，見該函式）。
+    OCO 就被這個機制撤掉，部位裸奔超過 18 小時）。改成：清空內部記帳同步
+    現實，繼續正常監控（不停止策略、也不碰券商端的保護單）——就算這次
+    判斷是誤判，保護單不受影響，真正的部位依然受到保護。真正孤兒的保護
+    單交給 reconcile_orphan_stop_orders 處理（那裡對剛進場的部位也有寬限
+    期保護，見該函式）。
     """
     state = _open_long_state(
         strategy_id="breakout_long",
@@ -551,7 +559,7 @@ def test_reconcile_after_manual_close_does_not_cancel_protection_order(clean_arm
 
     assert affected == ["breakout_long"]
     assert state.held_qty == 0
-    assert state.stopped is True
+    assert state.stopped is False
     # 保護單完全沒被動到——這是這次修復的核心：清帳跟撤單分開，不可逆的
     # 動作不再由這個比對直接觸發。
     assert state.protection_order_smart_key == "26462382"
