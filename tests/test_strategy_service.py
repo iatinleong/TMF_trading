@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
@@ -476,11 +477,68 @@ def test_reconcile_after_manual_close_writes_audit_log_when_matching(clean_armed
     assert "actual=1" in content
 
 
-def test_reconcile_after_manual_close_cancels_orphaned_smart_orders(clean_armed):
-    # 2026-08-21：這個場景現在也代表「真實 OCO 保護單在券商端自己觸發了」
-    # ——不管哪種原因，倉位沒了之後，還掛著的保護單要順手撤掉，不然會變成
-    # 孤兒單一直掛著，等下一輪的孤兒單清理才會處理（而那個清理要
-    # held_qty==0 才會跑，這裡剛好順便一次做完）。
+def test_reconcile_after_manual_close_skips_freshly_entered_state(clean_armed, tmp_path):
+    """
+    2026-08-29 實盤事故：22:00:23 掛好的真實 OCO 保護單，22:00:26（只隔 3 秒）
+    就被 reconcile_after_manual_close 誤判撤掉，部位裸奔超過 14 小時。根因是
+    svc.status() 讀的是快取（by OnOpenInterest 事件被動更新），不是重新查詢——
+    剛進場那一刻，快取還沒跟上這筆新單，reconcile 立刻拿這份過期快照去比對，
+    一定會誤判「內部有、券商沒有」。改成呼叫 svc.refresh() 逼它重查也救不了，
+    因為下單流程自己也會呼叫 refresh_live_snapshot()，而那個函式有群益 M999
+    限制的 5 秒節流，3 秒內的重查請求會被節流擋掉、一樣拿到過期資料。
+
+    真正的修法：剛進場（entry_recorded_at 在 30 秒內）的部位，先跳過這一輪
+    的核對，留給 broker 端的快照時間跟上，不要立刻拿去比對。
+    """
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        entry_recorded_at=time.time(),  # 剛剛才進場
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        # 券商快照還沒跟上，回報空倉——如果沒有寬限期保護，會被誤判成不一致。
+        mock_get.return_value.status.return_value = {"positions": []}
+        affected = reconcile_after_manual_close("TM2609")
+
+    assert affected == []
+    assert state.held_qty == 1
+    assert state.held_direction == "long"
+    assert state.stopped is False
+
+
+def test_reconcile_after_manual_close_still_reconciles_after_grace_period_expires(
+    clean_armed, tmp_path
+):
+    """寬限期過了之後，該抓的不一致還是要抓——寬限期是延後核對，不是永久跳過。"""
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        entry_recorded_at=time.time() - 31.0,  # 31 秒前進場，寬限期（30 秒）已過
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.status.return_value = {"positions": []}
+        affected = reconcile_after_manual_close("TM2609")
+
+    assert affected == ["breakout_long"]
+    assert state.held_qty == 0
+    assert state.stopped is True
+
+
+def test_reconcile_after_manual_close_does_not_cancel_protection_order(clean_armed):
+    """
+    2026-08-29 實盤事故：這裡原本會順手撤掉「看起來變成孤兒」的保護單——但
+    那次事故證明這個比對可能建立在過期快照上，一旦誤判，撤單是不可逆的，
+    會把一筆其實還在的真實部位的保護整個拿掉（22:00:19 進場、22:00:26
+    OCO 就被這個機制撤掉，部位裸奔超過 18 小時）。改成：清空內部記帳、
+    停止策略維持立即執行（低風險、可自我修正），但完全不碰券商端的保護
+    單——就算這次判斷是誤判，保護單不受影響，真正的部位依然受到保護。
+    真正孤兒的保護單交給 reconcile_orphan_stop_orders 處理（那裡對剛進場
+    的部位也有寬限期保護，見該函式）。
+    """
     state = _open_long_state(
         strategy_id="breakout_long",
         protection_order_smart_key="26462382",
@@ -489,14 +547,15 @@ def test_reconcile_after_manual_close_cancels_orphaned_smart_orders(clean_armed)
 
     with patch.object(strategy_service.TradingService, "get") as mock_get:
         mock_get.return_value.status.return_value = {"positions": []}
-        mock_get.return_value.cancel_stop_order.return_value = {
-            "cancel_result": {"success": True}
-        }
         affected = reconcile_after_manual_close("TMFR1")
 
     assert affected == ["breakout_long"]
-    assert state.protection_order_smart_key is None
-    assert mock_get.return_value.cancel_stop_order.call_count == 1
+    assert state.held_qty == 0
+    assert state.stopped is True
+    # 保護單完全沒被動到——這是這次修復的核心：清帳跟撤單分開，不可逆的
+    # 動作不再由這個比對直接觸發。
+    assert state.protection_order_smart_key == "26462382"
+    mock_get.return_value.cancel_stop_order.assert_not_called()
 
 
 def test_strategy_tick_runs_position_reconciliation_every_cycle(clean_armed):
@@ -778,6 +837,51 @@ def test_reconcile_orphan_stop_orders_ignores_held_positions(clean_armed):
 
     assert cleaned == []
     assert state.protection_order_smart_key == "26564233"
+
+
+def test_reconcile_orphan_stop_orders_respects_entry_grace_period(clean_armed):
+    """
+    2026-08-29：如果 held_qty==0 是 reconcile_after_manual_close 在寬限期內
+    誤判清空的，entry_recorded_at 還是剛剛的時間——這裡如果照樣撤單，等於
+    繞過寬限期，讓那邊拿掉自動撤單的修復完全白做。確認寬限期內即使
+    held_qty==0 也不會撤。
+    """
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        held_qty=0,
+        held_direction=None,
+        protection_order_smart_key="26564233",
+        entry_recorded_at=time.time(),  # 剛剛才進場（後來被誤判清空）
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        cleaned = reconcile_orphan_stop_orders()
+        mock_get.return_value.cancel_stop_order.assert_not_called()
+
+    assert cleaned == []
+    assert state.protection_order_smart_key == "26564233"
+
+
+def test_reconcile_orphan_stop_orders_cleans_up_after_grace_period_expires(clean_armed):
+    """寬限期過了之後，真正的孤兒單還是要清掉——寬限期是延後，不是永久跳過。"""
+    state = _open_long_state(
+        strategy_id="breakout_long",
+        held_qty=0,
+        held_direction=None,
+        protection_order_smart_key="26564233",
+        entry_recorded_at=time.time() - 31.0,  # 寬限期（30 秒）已過
+    )
+    _armed["breakout_long"] = state
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get:
+        mock_get.return_value.cancel_stop_order.return_value = {
+            "cancel_result": {"success": True}
+        }
+        cleaned = reconcile_orphan_stop_orders()
+
+    assert cleaned == ["breakout_long"]
+    assert state.protection_order_smart_key is None
 
 
 def test_tick_one_skips_soft_take_profit_when_broker_protection_order_exists(clean_armed):

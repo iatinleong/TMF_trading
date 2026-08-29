@@ -333,6 +333,12 @@ class BrokerLiveState:
     stop_loss_raw: str = ""
     orders_raw: str = ""
     fulfills_raw: str = ""
+    # 2026-08-29 事故調查：發現官方文件其實有一個專門回報「這次未平倉查詢到底
+    # 成功還是失敗」的事件 OnOpenInterestGWStatus，我們一直只監聽有資料才會
+    # 觸發的 OnOpenInterest，從沒監聽這個狀態事件——導致「查詢其實失敗」跟
+    # 「查詢成功但真的沒資料」這兩種完全不同的情況，在我們的畫面/log 上看起來
+    # 一模一樣，沒辦法分辨。這個欄位記下最後一次查詢狀態，供診斷用。
+    open_interest_query_status: str = ""
     rights_raw: str = ""
     rights: dict[str, Any] = field(default_factory=dict)
     agreements: list[str] = field(default_factory=list)
@@ -503,6 +509,15 @@ class CapitalFuturesBroker:
                     broker._parse_open_interest(bstrData)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("OnOpenInterest parse failed: %s", exc)
+
+            def OnOpenInterestGWStatus(self, nQueryStatus, bstrErrorMsg):  # noqa: N802,N803
+                # 2026-08-29：官方文件記載的查詢狀態回報事件（0:成功 1:失敗+錯誤
+                # 訊息），我們一直沒監聽——沒有這個，沒辦法分辨「查詢真的失敗」
+                # 跟「查詢成功但剛好沒資料」，這次事故調查才發現這個缺口。
+                text = f"status={nQueryStatus} msg={bstrErrorMsg}"
+                logger.info("[OnOpenInterestGWStatus] %s", text)
+                broker.live.open_interest_query_status = text
+                broker.live.add_message("open_interest_status", text)
 
             def OnStopLossReport(self, bstrData):  # noqa: N802
                 # 新版期貨智慧單(停損單/移動停損/OCO/觸價單)被動回報，透過呼叫
@@ -1421,12 +1436,21 @@ class CapitalFuturesBroker:
         return int(self.order.GetFutureRights(self.user_id, account, int(coin_type)))
 
     def refresh_live_snapshot(self, account: str | None = None, *, force: bool = False) -> None:
-        """刷新委託/成交/持倉/權益快照（群益 M999：查詢間隔至少 5 秒）。"""
+        """
+        刷新委託/成交/持倉/權益快照。
+        2026-08-29 實測驗證（3 輪、每輪 12 次、每秒查一次 GetOpenInterestGW，
+        結果完全一致）：查太快會拿到同步錯誤碼 1019，成功查詢之間的間隔穩定
+        是 6 秒，不是舊註解寫的「M999：至少 5 秒」——那句話是這個專案第一次
+        `git init` 之前就存在的舊假設，沒有查到出處、也沒人驗證過，而且原本
+        用 5.0 當節流門檻，比實測的 6 秒還短，代表舊邏輯偶爾還是會踩到
+        1019（提早 1 秒重查）。改用 6.5（實測值 + 0.5 秒安全邊際）。如果之後
+        要調緊，記得先跑一次一樣的實測，不要再憑舊註解猜。
+        """
         account = account or self.live.active_account
         if not account:
             return
         now = time.time()
-        if not force and now - self._last_snapshot_query_at < 5.0:
+        if not force and now - self._last_snapshot_query_at < 6.5:
             self._pump_events(0.3)
             return
         self._last_snapshot_query_at = now
@@ -1454,6 +1478,7 @@ class CapitalFuturesBroker:
             },
             "positions": list(self.live.positions),
             "positions_raw": self.live.positions_raw,
+            "open_interest_query_status": self.live.open_interest_query_status,
             "orders_raw": self.live.orders_raw,
             "fulfills_raw": self.live.fulfills_raw,
             "rights_raw": self.live.rights_raw,

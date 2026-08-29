@@ -51,6 +51,15 @@ STRATEGY_DEFS: dict[str, dict[str, str]] = {
 # 連續下單失敗達此次數就自動停止該策略（見 _tick_one）。
 MAX_CONSECUTIVE_FAILURES = 3
 
+# 2026-08-29 實盤事故：22:00:19 進場，broker 持倉快照要到 22:00:34 才第一次
+# 真正更新（15 秒空窗期，已用 position_audit.log 實測數字確認），
+# reconcile_after_manual_close 剛好在這個空窗期內跑，拿到還沒更新的舊快照
+# 誤判「內部有、券商沒有」，22:00:26 把剛掛好的真實 OCO 保護單撤掉，部位
+# 裸奔超過 18 小時。30 秒是這個實測空窗期的兩倍，留出充分餘裕。剛進場
+# （entry_recorded_at 在這個時間內）的部位，reconcile 一律先跳過，不比對、
+# 不清空、不撤單，見 reconcile_after_manual_close／reconcile_orphan_stop_orders。
+RECONCILE_ENTRY_GRACE_SECONDS = 30.0
+
 
 def _env_float(name: str, default: float) -> float:
     try:
@@ -84,6 +93,15 @@ class StrategyState:
     held_qty: int = 0
     held_direction: str | None = None
     entry_price: float = 0.0
+    # 2026-08-29 實盤事故：22:00:23 掛好的真實 OCO 保護單，22:00:26（只隔 3
+    # 秒）就被 reconcile_after_manual_close 誤判「內部有、券商沒有」撤掉，部位
+    # 裸奔超過 14 小時——根因是 svc.status() 讀的是快取（靠 OnOpenInterest 事件
+    # 被動更新），剛進場那一刻快取還沒跟上，reconcile 立刻拿過期快照去比對，
+    # 一定會誤判。這個欄位記下「這筆倉位是什麼時候記進來的」，
+    # reconcile_after_manual_close 靠它跳過剛進場、寬限期內的部位，見該函式
+    # 說明。None 代表不知道進場時間（例如測試手動建構、或程式重啟後遺留的
+    # 舊狀態），一律當作寬限期已過，照舊立即核對。
+    entry_recorded_at: float | None = None
     # 券商端 OCO（二擇一）保護單追蹤（見 _place_oco_protection_for_state）。
     # 有值代表這筆留倉已經有真正掛在券商那邊的停損＋停利保護（單一委託同時
     # 帶兩支腿），_tick_one 的軟停損／軟停利檢查都會讓路給它，不會兩邊搶著
@@ -341,13 +359,25 @@ def reconcile_orphan_stop_orders() -> list[str]:
     還記著智慧單號的策略，代表對應的委託平倉時撤單沒成功（或還沒來得及撤），
     這裡再試一次。用意是就算某一次撤單剛好失敗（網路、券商忙線），下一輪幾秒後
     也會被抓到，不會讓孤兒單一直掛著。
+
+    2026-08-29 實盤事故：held_qty==0 不保證這筆倉位真的已經不在了——如果是
+    reconcile_after_manual_close 在寬限期內誤判清空的（見該函式），
+    entry_recorded_at 還是剛剛的時間，這裡如果照樣撤單，等於繞過寬限期，
+    讓 reconcile_after_manual_close 拿掉自動撤單的修復完全白做。所以這裡
+    也要跳過還在寬限期內的策略，等寬限期過了、held_qty 還是 0，才真的動手撤。
     """
     svc = TradingService.get()
+    now = time.time()
     cleaned: list[str] = []
     for state in _armed.values():
         if state.held_qty != 0:
             continue
         if not state.protection_order_smart_key:
+            continue
+        if (
+            state.entry_recorded_at is not None
+            and now - state.entry_recorded_at < RECONCILE_ENTRY_GRACE_SECONDS
+        ):
             continue
         _cancel_protection_order_for_state(state, svc)
         if not state.protection_order_smart_key:
@@ -727,11 +757,30 @@ def reconcile_after_manual_close(product_code: str | None = None) -> list[str]:
         key = (prod, direction_key)
         broker_qty[key] = broker_qty.get(key, 0) + qty
 
+    now = time.time()
     groups: dict[tuple[str, str], list[StrategyState]] = {}
     for state in _armed.values():
         if state.held_qty <= 0 or not state.held_direction:
             continue
         if product_code is not None and state.product_code != product_code:
+            continue
+        if (
+            state.entry_recorded_at is not None
+            and now - state.entry_recorded_at < RECONCILE_ENTRY_GRACE_SECONDS
+        ):
+            # 剛進場、還在寬限期內——broker 持倉快照很可能還沒跟上，這一輪
+            # 先跳過這個策略，不拿它去跟 broker 比對（也不記進 groups，避免
+            # 拖累同組其他策略的比對）。稽核 log 留一筆紀錄，不是沒查，是
+            # 主動選擇先不查。
+            _append_reconcile_audit(
+                product=_canonical_position_product(state.product_code),
+                direction=state.held_direction,
+                internal_total=state.held_qty,
+                actual=-1,
+                mismatch=False,
+                affected_strategy_ids=[state.strategy_id],
+                broker_positions_summary="SKIPPED_ENTRY_GRACE_PERIOD",
+            )
             continue
         key = (_canonical_position_product(state.product_code), state.held_direction)
         groups.setdefault(key, []).append(state)
@@ -760,18 +809,23 @@ def reconcile_after_manual_close(product_code: str | None = None) -> list[str]:
             s.held_qty = 0
             s.held_direction = None
             s.entry_price = 0.0
-            # 2026-08-21：這個函式現在也從 strategy_tick() 每輪呼叫（不只是手動
-            # 平倉按鈕），所以兜不起來的原因除了手動平倉，也可能是真正的 OCO
-            # 保護單在券商端自己觸發了——不管哪種情況，這筆倉位既然已經不在了，
-            # 掛著的保護單（沒觸發的那一腳）就變成孤兒單，要順手撤掉。
-            _cancel_protection_order_for_state(s, svc)
+            # 2026-08-29 實盤事故：這裡原本會順手呼叫
+            # _cancel_protection_order_for_state 清掉「看起來變成孤兒」的保護
+            # 單——但那次事故證明這個比對本身可能建立在過期快照上，一旦誤判，
+            # 撤單這個動作是不可逆的，會把一筆其實還在的真實部位的保護整個
+            # 拿掉。清空內部記帳、停止策略是低風險、可自我修正的動作，維持
+            # 立即執行；但撤智慧單這個高風險、不可逆的動作，不再讓這裡的比對
+            # 結果直接觸發——真正孤兒的保護單交給 reconcile_orphan_stop_orders
+            # 處理，那裡對「剛進場」的部位一樣有寬限期保護（見該函式）。就算
+            # 這次判斷是誤判，保護單完全沒被動到，真正的部位依然受到保護。
             _stop_with_reason(
                 s,
                 f"⚠ 偵測到 {prod} {direction} 部位跟券商實際回報不一致"
                 f"（本策略記錄 {internal_total} 口，券商實際回報 {actual} 口，"
-                "可能是手動平倉／一鍵平倉，或真實 STP/MIT 智慧單已在券商端觸發"
+                "可能是手動平倉／一鍵平倉，或真實 OCO 保護單已在券商端觸發"
                 "自動平倉），已自動停止並清空本策略持倉記錄，請務必人工核對"
-                "實際帳戶損益！",
+                "實際帳戶損益！（券商端的保護單這裡不會主動撤掉，如果這筆"
+                "倉位其實還在，保護依然有效）",
             )
             affected.append(s.strategy_id)
     return affected
@@ -1007,6 +1061,7 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     state.held_qty = state.qty
                     state.held_direction = target
                     state.entry_price = entry_px
+                    state.entry_recorded_at = time.time()
                     state.last_action = f"訊號進場 {target} x{state.qty}"
                     state.last_signal_key = signal["key"]
                     state.consecutive_failures = 0
