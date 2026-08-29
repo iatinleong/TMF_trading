@@ -389,6 +389,13 @@ class CapitalFuturesBroker:
         self._quote_monitoring = False
         self._stocks_ready = False
         self._last_snapshot_query_at: float = 0.0
+        # 2026-08-30 實盤事故：OnOpenInterest 對「一次查詢」的回應，實際上是
+        # 分成好幾次獨立事件呼叫送過來的（一筆部位資料一次呼叫，接著幾毫秒
+        # 後再一次呼叫送「##,,,,...」查詢結束終止符），不是文件字面上看起來
+        # 的「每次推送都是完整快照」。這個緩衝區用來累積同一次查詢裡收到的
+        # 部位資料列，只有在收到終止符時才正式提交進 self.live.positions，
+        # 見 _parse_open_interest。
+        self._open_interest_buffer: list[dict[str, Any]] = []
         self.on_order_reply: Optional[Callable[[str, str], None]] = None
         self.live = BrokerLiveState(environment=environment)
         self._kline_loaded: set[str] = set()
@@ -1522,12 +1529,28 @@ class CapitalFuturesBroker:
         except ImportError:
             from capital_parse import parse_open_interest_raw  # type: ignore
 
-        # OnOpenInterest 每次推送的都是完整快照（positions_raw 同一行也是無條件
-        # 整段覆寫，不是逐筆累加），所以這裡也要無條件覆寫，包含空清單。之前用
-        # `if rows:` 只在非空時才更新，代表帳戶平倉回到空手時，這裡永遠不會被
-        # 清空，畫面上的持倉表格會卡在最後一筆已經不存在的舊資料，直到重啟後端。
+        # 2026-08-30 實盤事故：這裡原本假設「OnOpenInterest 每次推送的都是
+        # 完整快照」，每次呼叫都無條件覆寫 self.live.positions——但用真實
+        # position_audit.log 逐筆核對過，群益對「一次查詢」的回應其實是分成
+        # 好幾次獨立事件呼叫送過來的：一筆真正的部位資料先送一次，接著幾
+        # 毫秒後再送一次「##,,,,...」查詢結束終止符。舊邏輯每次都覆寫，
+        # 代表終止符那次呼叫（解析不出任何部位）會把剛剛才寫進去、真正
+        # 存在的部位資料整個蓋掉，導致 self.live.positions 有極高比例的時間
+        # 都是空的——不管是持倉表格畫面、還是 reconcile_after_manual_close
+        # 讀到的，都可能是這個「假空倉」，不是真的空倉。
+        #
+        # 改成緩衝＋提交：每次呼叫先把這次解析到的部位列（可能是 0 筆或多筆）
+        # 累加進緩衝區，只有在收到終止符（"##" 開頭）或空字串時，才把緩衝區
+        # 的內容正式提交進 self.live.positions、並清空緩衝區給下一次查詢用。
+        # 稽核 log 維持每次呼叫都記一筆（記這次呼叫本身解析到的內容，不是
+        # 提交後的值），保留完整的原始封包歷史，方便事後逐筆核對。
+        text = raw.strip()
         rows = parse_open_interest_raw(raw)
-        self.live.positions = rows
+        self._open_interest_buffer.extend(rows)
+        is_terminator = not text or text.startswith("##")
+        if is_terminator:
+            self.live.positions = list(self._open_interest_buffer)
+            self._open_interest_buffer.clear()
         _append_position_audit(account=self.user_id or "", raw=raw, positions=rows)
 
     def _parse_future_rights(self, raw: str) -> None:

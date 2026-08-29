@@ -244,9 +244,31 @@ def test_on_tick_for_kline_polling_path_uses_taipei_tz_not_system_clock():
     assert bar_time.hour in (8, 9, 10, 11, 12, 13)
 
 
-def test_parse_open_interest_updates_on_non_empty():
+def test_parse_open_interest_does_not_commit_before_terminator():
+    """
+    2026-08-30 實盤事故：群益 OnOpenInterest 對「一次查詢」的回應，實際上是
+    分成好幾個獨立的事件呼叫送過來的——一筆真正的部位資料一次呼叫，接著
+    幾毫秒後再一次呼叫送「##,,,,...」這個查詢結束終止符（用真實
+    position_audit.log 逐筆核對過，永遠成對出現）。舊版程式碼每次呼叫都
+    無條件覆寫 self.live.positions，導致終止符那次呼叫（解析不出任何部位）
+    把剛剛才寫進去、真正存在的部位資料整個蓋掉，變成 self.live.positions
+    有 99% 的時間都是空的——這也是為什麼獨立連線去查詢時，即使券商查詢
+    狀態明確回報成功，看到的還是空倉。
+
+    這裡驗證：只送一筆資料列、還沒收到終止符之前，不該直接寫進
+    self.live.positions（要先緩衝、等終止符才正式提交）。
+    """
     broker = CapitalFuturesBroker()
     broker._parse_open_interest("TF,F0200006921941,TMFR1,B,2,0,21500")
+    assert broker.live.positions == []
+
+
+def test_parse_open_interest_commits_buffered_rows_on_terminator():
+    """資料列 + 終止符（真實 SDK 的實際兩段式回應）送完之後，才正式提交進 self.live.positions。"""
+    broker = CapitalFuturesBroker()
+    broker._parse_open_interest("TF,F0200006921941,TMFR1,B,2,0,21500")
+    broker._parse_open_interest("##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,")
+
     assert len(broker.live.positions) == 1
     assert broker.live.positions[0]["product"] == "TMFR1"
 
@@ -254,8 +276,23 @@ def test_parse_open_interest_updates_on_non_empty():
 def test_parse_open_interest_clears_on_empty_snapshot():
     # 2026-08-21 修正：帳戶回到空手時，OnOpenInterest 推送的空快照也要能清空
     # self.live.positions，不然畫面上的持倉表格會卡在最後一筆已經不存在的舊資料。
+    # 2026-08-30：改用真實的兩段式回應（查無資料 + 終止符）模擬空倉查詢。
     broker = CapitalFuturesBroker()
     broker._parse_open_interest("TF,F0200006921941,TMFR1,B,2,0,21500")
+    broker._parse_open_interest("##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,")
+    assert broker.live.positions
+
+    broker._parse_open_interest("001,查無資料,F0200006921941")
+    broker._parse_open_interest("##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,")
+
+    assert broker.live.positions == []
+
+
+def test_parse_open_interest_bare_empty_string_still_commits_empty():
+    """空字串（非真實終止符格式，但當年舊測試假設過的邊界情況）也要能觸發提交清空，向下相容。"""
+    broker = CapitalFuturesBroker()
+    broker._parse_open_interest("TF,F0200006921941,TMFR1,B,2,0,21500")
+    broker._parse_open_interest("##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,")
     assert broker.live.positions
 
     broker._parse_open_interest("")
