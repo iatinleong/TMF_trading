@@ -176,3 +176,25 @@ def test_merge_missing_bars_does_not_overwrite_existing(tmp_path, monkeypatch):
     assert added == 1
     assert store._bars[1000]["close"] == 1.0  # 既有資料沒被覆蓋
     assert store._bars[2000]["close"] == 2.0  # 真的缺的補上了
+
+
+def test_resample_ticks_to_bars_sorts_unsorted_ticks():
+    """驗證 Shioaji 回傳亂序 tick 時，_resample_ticks_to_bars 會先按時間排序，確保 open/close 正確。"""
+    from backend.shioaji_backfill import _resample_ticks_to_bars
+
+    # 構造 10:00 的 tick，故意把 10:15 的 tick 放前面（close=21600），10:01 的放後面（close=21500）
+    df = pd.DataFrame(
+        [
+            {"ts": "2026-08-25 10:15:00", "close": 21600.0, "volume": 10},
+            {"ts": "2026-08-25 10:01:00", "close": 21500.0, "volume": 5},
+            {"ts": "2026-08-25 10:40:00", "close": 21700.0, "volume": 20},
+        ]
+    )
+    bars = _resample_ticks_to_bars(df)
+    assert len(bars) == 1
+    # 排序後 10:01 是 open (21500)，10:40 是 close (21700)
+    assert bars[0]["open"] == 21500.0
+    assert bars[0]["close"] == 21700.0
+    assert bars[0]["high"] == 21700.0
+    assert bars[0]["low"] == 21500.0
+    assert bars[0]["volume"] == 35

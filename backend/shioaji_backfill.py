@@ -29,7 +29,7 @@ from dotenv import load_dotenv
 from .config import app_base_dir
 from .kline_engine import bar_close_time_from_ts, get_store
 from .secrets_store import load_remote_secrets
-from .timeutil import to_unix_seconds
+from .timeutil import TAIPEI_TZ, to_unix_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +127,10 @@ def find_missing_bars(
     store = get_store(product_code)
     existing = {int(b["time"]) for b in store.get_klines(limit=0)}
 
-    now = pd.Timestamp.now()
+    # 2026-08-30 修正：使用台北時間（Naive Asia/Taipei），不能用裸 pd.Timestamp.now()
+    # 否則在 UTC 系統時區的 VM 上，now 會慢 8 小時，導致當天白天的 K 棒全被
+    # 誤判成「未來的時間」而漏補。
+    now = pd.Timestamp.now(TAIPEI_TZ).tz_localize(None)
     missing: list[tuple[str, pd.Timestamp]] = []
     for delta in range(lookback_days, -1, -1):
         day = now.normalize() - pd.Timedelta(days=delta)
@@ -143,6 +146,8 @@ def find_missing_bars(
 def _resample_ticks_to_bars(df: pd.DataFrame) -> list[dict]:
     df = df.copy()
     df["ts"] = pd.to_datetime(df["ts"])
+    # 2026-08-30 修正：按時間排序，避免 API 回傳亂序時 open/close 抓錯第一筆/最後一筆
+    df = df.sort_values("ts")
     df["bar_close"] = df["ts"].apply(bar_close_time_from_ts)
     df = df.dropna(subset=["bar_close"])
     if df.empty:
