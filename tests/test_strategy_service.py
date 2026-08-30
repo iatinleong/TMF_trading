@@ -2,6 +2,7 @@ import time
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 from backend.capital_parse import parse_open_interest_line, parse_order_report_line
@@ -606,6 +607,42 @@ def test_settlement_month_from_tmf_code_rejects_non_month_codes():
     assert _settlement_month_from_tmf_code("MXFR1") is None
 
 
+def test_bars_from_kline_store_uses_taipei_local_time_not_utc():
+    """
+    2026-08-30 code review 抓到的第 4 次「naive 時間戳被當成 UTC」bug（前三次
+    見 docs/vm_deployment_gotchas.md 第 5 節）：`get_store().get_klines()` 存的
+    `"time"` 是用 `timeutil.to_unix_seconds()` 算出來的真正 UTC 秒數（已經正確
+    處理過台北時區），但 `_bars_from_kline_store` 用
+    `pd.to_datetime(frame["time"], unit="s")` 直接還原，沒有再轉回 Asia/Taipei，
+    等於把台北時間 13:45 的 K 棒標成 05:45（差 8 小時）——已用真實計算驗證過：
+    ``to_unix_seconds(pd.Timestamp('2026-08-28 13:45:00'))`` 算出來的 epoch，
+    拿去 ``pd.to_datetime(epoch, unit='s')`` 還原出來是 05:45:00，不是 13:45:00。
+    這裡驗證修好之後，還原出來的索引時間要跟原始台北時間一致。
+    """
+    from backend.timeutil import to_unix_seconds
+
+    taipei_close_time = pd.Timestamp("2026-08-28 13:45:00")
+    epoch = to_unix_seconds(taipei_close_time)
+    fake_klines = [
+        {
+            "time": epoch,
+            "open": 46300.0,
+            "high": 46360.0,
+            "low": 46250.0,
+            "close": 46300.0,
+            "volume": 100,
+        }
+    ]
+
+    fake_store = MagicMock()
+    fake_store.get_klines.return_value = fake_klines
+
+    with patch.object(strategy_service, "get_store", return_value=fake_store):
+        bars = strategy_service._bars_from_kline_store("TM2609")
+
+    assert bars.index[0] == taipei_close_time
+
+
 def _oco_success_response() -> dict:
     return {
         "order_result": {
@@ -758,6 +795,52 @@ def test_tick_one_entry_places_oco_protection(clean_armed):
     assert state.held_qty == 1
     svc.place_oco_order.assert_called_once()
     assert state.protection_order_smart_key == "26564233"
+
+
+def test_tick_one_entry_falls_back_to_bar_close_when_quote_missing(clean_armed):
+    """
+    2026-08-30 code review 抓到的隱患：進場成交那一刻，如果即時報價剛好缺失
+    （`st["quote"]["last_price"]` 是 None，過去實測過的 3003 報價連線問題就
+    可能造成這種情況），原本的寫法 `entry_px = float(quote) if quote else 0.0`
+    會直接把 entry_price 設成 0.0——因為 `_place_oco_protection_for_state` 只在
+    `state.entry_price > 0` 才會呼叫，這會讓真正的 OCO 保護單完全被跳過，
+    軟停損停利也會因為 entry_price=0 算不出正確點數而失效，變成整筆進場
+    完全沒有任何保護。這裡驗證：報價缺失時要退回用最新收盤 K 棒的收盤價
+    當進場價估計值，而不是直接放棄成 0。
+    """
+    state = _open_long_state(
+        product_code="TM2609", held_qty=0, held_direction=None, entry_price=0.0
+    )
+    state.last_signal_key = None
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    svc.place_oco_order.return_value = _oco_success_response()
+    st = {"quote": {"last_price": None}}  # 即時報價缺失
+
+    # _tick_one 進場前會檢查 len(bars) >= DEFAULT_STRATEGY.ma_slow + 2，這裡湊
+    # 足夠的根數，只有最後一根（最新收盤）的收盤價 20200.0 是這個測試在意的。
+    bar_count = strategy_service.DEFAULT_STRATEGY.ma_slow + 2
+    fake_bars = pd.DataFrame(
+        {
+            "open": [20000.0] * bar_count,
+            "high": [20050.0] * bar_count,
+            "low": [19950.0] * bar_count,
+            "close": [20000.0] * (bar_count - 1) + [20200.0],
+        }
+    )
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-08-21T09:45:00", "direction": "long", "key": "k1"},
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    assert state.held_qty == 1
+    assert state.entry_price == 20200.0  # 退回用最新收盤價，不是 0
+    svc.place_oco_order.assert_called_once()  # 有 entry_price > 0，OCO 保護單才會真的掛上
 
 
 def test_tick_one_entry_records_estimated_trade_on_orphaned_fill(clean_armed):

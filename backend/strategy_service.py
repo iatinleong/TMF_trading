@@ -28,6 +28,7 @@ from .config import DEFAULT_STRATEGY, ContractSpec, app_base_dir
 from .kline_engine import get_store
 from .indicators import add_moving_averages, resample_to_60min
 from .signals import generate_breakout_signals, generate_pullback_signals
+from .timeutil import TAIPEI_TZ
 from .trading_service import TradingService
 
 logger = logging.getLogger(__name__)
@@ -432,7 +433,15 @@ def _bars_from_kline_store(product_code: str) -> pd.DataFrame:
     if not klines:
         return pd.DataFrame()
     frame = pd.DataFrame(klines)
-    frame["datetime"] = pd.to_datetime(frame["time"], unit="s")
+    # 2026-08-30 code review 抓到的第 4 次「naive 時間戳被當成 UTC」bug（前三次
+    # 見 docs/vm_deployment_gotchas.md 第 5 節）：`get_klines()` 的 "time" 是用
+    # `timeutil.to_unix_seconds()` 算出來的正確 UTC 秒數（已經把台北本地時間
+    # 轉換過），但這裡原本直接 `pd.to_datetime(frame["time"], unit="s")` 還原，
+    # 沒有再轉回 Asia/Taipei，等於把台北時間 13:45 的 K 棒標成 05:45（差 8
+    # 小時）——導致跟 CSV 歷史資料（本來就是 naive 台北時間）合併時對不齊。
+    frame["datetime"] = (
+        pd.to_datetime(frame["time"], unit="s", utc=True).dt.tz_convert(TAIPEI_TZ).dt.tz_localize(None)
+    )
     bars = frame.set_index("datetime")[["open", "high", "low", "close", "volume"]].sort_index()
     return add_moving_averages(
         bars,
@@ -1077,6 +1086,27 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         entry_px = float(quote) if quote else 0.0
                     except (ValueError, TypeError):
                         entry_px = 0.0
+                    if entry_px <= 0:
+                        # 2026-08-30 加固：即時報價缺失時，優先從下單後刷新的 broker positions
+                        # 快照裡讀取真實成交均價（GetOpenInterestGW 回報的實際成本），
+                        # 讀不到才退回用最新收盤 K 棒的收盤價當估計值。避免 entry_price=0
+                        # 導致 OCO 保護單漏掛與軟停損失效。
+                        try:
+                            post_state = result.get("state") or st or {}
+                            for pos in post_state.get("positions") or []:
+                                pos_prod = _canonical_position_product(str(pos.get("product") or ""))
+                                if pos_prod == _canonical_position_product(state.product_code) and pos.get("price"):
+                                    entry_px = float(str(pos.get("price")).replace(",", ""))
+                                    if entry_px > 0:
+                                        break
+                        except Exception:  # noqa: BLE001
+                            pass
+                    if entry_px <= 0:
+                        try:
+                            if not bars.empty:
+                                entry_px = float(bars.iloc[-1]["close"])
+                        except (ValueError, TypeError, KeyError, IndexError):
+                            entry_px = 0.0
                     state.held_qty = state.qty
                     state.held_direction = target
                     state.entry_price = entry_px
