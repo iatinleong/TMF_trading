@@ -36,19 +36,28 @@ def _cache_path(product_code: str) -> Path:
 
 
 def bar_close_time_from_ts(ts: pd.Timestamp) -> pd.Timestamp | None:
-    """台指期交易時段內，將時間對齊到 60 分 K 棒收盤時間。"""
+    """台指期交易時段內，將時間對齊到 60 分 K 棒收盤時間。
+    過濾週末與非交易時段：
+    1. 日盤 (08:45 ~ 13:45): 週一(0) ~ 週五(4)
+    2. 夜盤 (15:00 ~ 05:00): 週一(0) 15:00 到週六(5) 05:00 結束
+    週六 05:00 以後、週日全天、週一 08:45 以前為休市時段。
+    """
     ts = pd.Timestamp(ts)
     if ts.tzinfo is not None:
         ts = ts.tz_localize(None)
 
+    weekday = ts.dayofweek  # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
     t = ts.time()
-    is_day = time(8, 45) <= t <= time(13, 45)
-    is_night = t >= time(15, 0) or t <= time(5, 0)
-    if not (is_day or is_night):
+
+    is_day = (0 <= weekday <= 4) and (time(8, 45) <= t <= time(13, 45))
+    is_night_evening = (0 <= weekday <= 4) and (t >= time(15, 0))  # 週一至週五 15:00 ~ 23:59
+    is_night_morning = (1 <= weekday <= 5) and (t <= time(5, 0))   # 週二至週六 00:00 ~ 05:00 (屬於前一交易日夜盤)
+
+    if not (is_day or is_night_evening or is_night_morning):
         return None
 
     trade_date = ts.normalize()
-    if t <= time(5, 0):
+    if is_night_morning:
         trade_date = trade_date - pd.Timedelta(days=1)
 
     if is_day:

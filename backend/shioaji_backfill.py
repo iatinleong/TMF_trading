@@ -101,18 +101,28 @@ def _session_query_dates(day: pd.Timestamp) -> list[tuple[str, pd.Timestamp]]:
     """
     回傳 (Shioaji 查詢用的交易日字串, 收盤標籤) 清單，涵蓋 day 這個日曆日的
     日盤+夜盤全部理論收盤時間點。
+    排除週末休市（週六與週日無當日開市的日盤與夜盤）。
 
     2026-08-25 實測驗證：Shioaji 的 ticks(date=X) 是「交易日」制，X 涵蓋
     「X 當天日盤 + X 前一天夜盤」；反過來說，某天日曆日的夜盤（15:00~次日
     05:00），要用「隔天」的日期去查才拿得到。日盤則直接用當天日期查即可。
     """
     result: list[tuple[str, pd.Timestamp]] = []
-    day_query = day.strftime("%Y-%m-%d")
-    for label in _expected_day_session_labels(day):
-        result.append((day_query, label))
-    night_query = (day + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-    for label in _expected_night_session_labels(day):
-        result.append((night_query, label))
+    weekday = day.dayofweek  # 0=Mon .. 4=Fri, 5=Sat, 6=Sun
+
+    # 只有週一至週五 (0..4) 才有日盤 (08:45 ~ 13:45)
+    if 0 <= weekday <= 4:
+        day_query = day.strftime("%Y-%m-%d")
+        for label in _expected_day_session_labels(day):
+            result.append((day_query, label))
+
+    # 只有週一至週五 (0..4) 才有當天開出的夜盤 (15:00 ~ 次日05:00)
+    # (週五夜盤開在週五 15:00，跨到週六 05:00 結束，查詢日是週六)
+    if 0 <= weekday <= 4:
+        night_query = (day + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        for label in _expected_night_session_labels(day):
+            result.append((night_query, label))
+
     return result
 
 

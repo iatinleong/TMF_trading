@@ -118,6 +118,37 @@ def test_session_query_dates_night_session_queries_next_day():
     assert night_pairs[0][0] == "2026-08-26"
 
 
+def test_session_query_dates_excludes_weekends():
+    """週末（週六與週日）沒有當日開盤的日盤與夜盤，不應產生查詢日期，避免誤判缺口。"""
+    saturday_pairs = _session_query_dates(pd.Timestamp("2026-08-29"))  # 週六
+    sunday_pairs = _session_query_dates(pd.Timestamp("2026-08-30"))    # 週日
+
+    assert saturday_pairs == []
+    assert sunday_pairs == []
+
+
+def test_bar_close_time_from_ts_excludes_weekends():
+    """驗證週六早上 05:00 之後與週日全天，bar_close_time_from_ts 均回傳 None。"""
+    from backend.kline_engine import bar_close_time_from_ts
+
+    # 週五夜盤在週六 05:00 收盤（合法）
+    assert bar_close_time_from_ts(pd.Timestamp("2026-08-29 04:30:00")) == pd.Timestamp("2026-08-29 05:00:00")
+
+    # 週六 05:00 以後（休市）
+    assert bar_close_time_from_ts(pd.Timestamp("2026-08-29 05:01:00")) is None
+    assert bar_close_time_from_ts(pd.Timestamp("2026-08-29 17:00:00")) is None
+
+    # 週日全天（休市）
+    assert bar_close_time_from_ts(pd.Timestamp("2026-08-30 00:00:00")) is None
+    assert bar_close_time_from_ts(pd.Timestamp("2026-08-30 11:45:00")) is None
+
+    # 週一開盤前 08:45 以前（休市）
+    assert bar_close_time_from_ts(pd.Timestamp("2026-08-31 08:00:00")) is None
+
+    # 週一 08:45 開盤後（合法）
+    assert bar_close_time_from_ts(pd.Timestamp("2026-08-31 08:46:00")) == pd.Timestamp("2026-08-31 09:45:00")
+
+
 def test_find_missing_bars_detects_gap_in_closed_session(monkeypatch):
     """
     只放 5 天前那個交易日日盤的其中 4 根（缺 11:45 那根），驗證能準確抓出
