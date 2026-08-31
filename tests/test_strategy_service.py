@@ -1241,3 +1241,33 @@ def test_start_strategy_accepts_custom_risk_parameters(clean_armed):
     assert state.take_profit_points == 200.0
     assert state.max_loss_ntd == 5000.0
     assert state.max_loss_pct == 0.05
+
+
+def test_start_strategy_applies_layer_toggle_overrides(clean_armed):
+    from backend.strategy_service import start_strategy, _armed
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
+        start_strategy(
+            "breakout_long", "TM2609",
+            oco_enabled=False, soft_stop_enabled=False,
+            risk_insurance_enabled=True, reverse_signal_exit_enabled=False,
+        )
+
+    state = _armed["breakout_long"]
+    assert state.oco_enabled is False
+    assert state.soft_stop_enabled is False
+    assert state.risk_insurance_enabled is True
+    assert state.reverse_signal_exit_enabled is False
+
+
+def test_start_strategy_defaults_all_toggles_true_when_omitted(clean_armed):
+    from backend.strategy_service import start_strategy, _armed
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
+        start_strategy("breakout_long", "TM2609")
+
+    state = _armed["breakout_long"]
+    assert state.oco_enabled is True
+    assert state.soft_stop_enabled is True
+    assert state.risk_insurance_enabled is True
+    assert state.reverse_signal_exit_enabled is True

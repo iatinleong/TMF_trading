@@ -683,6 +683,10 @@ def start_strategy(
     initial_capital_ntd: float | None = None,
     max_loss_ntd: float | None = None,
     max_loss_pct: float | None = None,
+    oco_enabled: bool | None = None,
+    soft_stop_enabled: bool | None = None,
+    risk_insurance_enabled: bool | None = None,
+    reverse_signal_exit_enabled: bool | None = None,
 ) -> dict[str, Any]:
     if strategy_id not in STRATEGY_DEFS:
         raise ValueError(f"未知的策略 id: {strategy_id}（可用：{', '.join(STRATEGY_DEFS)}）")
@@ -699,6 +703,10 @@ def start_strategy(
         max_loss_pct=float(max_loss_pct if max_loss_pct is not None else defaults["max_loss_pct"]),
         stop_loss_points=float(stop_loss_points if stop_loss_points is not None else defaults["stop_loss_points"]),
         take_profit_points=float(take_profit_points if take_profit_points is not None else defaults["take_profit_points"]),
+        oco_enabled=bool(oco_enabled if oco_enabled is not None else defaults["oco_enabled"]),
+        soft_stop_enabled=bool(soft_stop_enabled if soft_stop_enabled is not None else defaults["soft_stop_enabled"]),
+        risk_insurance_enabled=bool(risk_insurance_enabled if risk_insurance_enabled is not None else defaults["risk_insurance_enabled"]),
+        reverse_signal_exit_enabled=bool(reverse_signal_exit_enabled if reverse_signal_exit_enabled is not None else defaults["reverse_signal_exit_enabled"]),
     )
 
     # 啟動當下把「已經存在的舊訊號」預先標記為已消費，避免把啟動前就已成立的
