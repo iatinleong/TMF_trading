@@ -1146,7 +1146,7 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         direction=target,
                         price=state.entry_price,
                     )
-                    if state.entry_price > 0:
+                    if state.entry_price > 0 and state.oco_enabled:
                         _place_oco_protection_for_state(state, svc)
             else:
                 state.last_action = f"已持倉 {target} x{state.held_qty}，同向訊號不動作"
