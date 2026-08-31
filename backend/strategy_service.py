@@ -132,6 +132,17 @@ class StrategyState:
     stop_reason: str = ""
     last_action: str = ""
     consecutive_failures: int = 0
+    # 2026-08-31：四道出場防護網（Layer 1 OCO／Layer 2 軟停損停利／Layer 3
+    # 金額比例硬停損／Layer 4 反向訊號出場）各自獨立的開關，可依帳號/策略
+    # 客製化關閉。刻意用 4 個獨立布林欄位而不是單一字串列舉——今天稍早用
+    # exit_mode 字串列舉時，兩組不同用途的字串值互相撞名，導致某些帳號被
+    # 靜默關掉不該關的防護層（見 docs/superpowers/specs/2026-08-31-
+    # per-layer-protection-toggles-design.md）。四層完全對等，預設全部
+    # True（開啟），任何既有呼叫不傳這 4 個參數時行為與過去完全一致。
+    oco_enabled: bool = True
+    soft_stop_enabled: bool = True
+    risk_insurance_enabled: bool = True
+    reverse_signal_exit_enabled: bool = True
 
     def loss_limit_hit(self, pnl_ntd: float | None = None) -> bool:
         pnl = self.realized_pnl_ntd if pnl_ntd is None else pnl_ntd
@@ -606,6 +617,10 @@ def strategy_config_defaults(strategy_id: str | None = None) -> dict[str, Any]:
         "max_loss_pct": _env_float("STRATEGY_MAX_LOSS_PCT", 0.10),
         "stop_loss_points": _env_float("STRATEGY_STOP_LOSS_POINTS", 100.0),
         "take_profit_points": _env_float("STRATEGY_TAKE_PROFIT_POINTS", 250.0),
+        "oco_enabled": True,
+        "soft_stop_enabled": True,
+        "risk_insurance_enabled": True,
+        "reverse_signal_exit_enabled": True,
     }
 
 
@@ -633,6 +648,10 @@ def _state_to_dict(state: StrategyState) -> dict[str, Any]:
         "max_loss_pct": state.max_loss_pct,
         "stop_loss_points": state.stop_loss_points,
         "take_profit_points": state.take_profit_points,
+        "oco_enabled": state.oco_enabled,
+        "soft_stop_enabled": state.soft_stop_enabled,
+        "risk_insurance_enabled": state.risk_insurance_enabled,
+        "reverse_signal_exit_enabled": state.reverse_signal_exit_enabled,
         "last_signal_key": state.last_signal_key,
         "last_checked_at": state.last_checked_at,
         "last_signal": state.last_signal,

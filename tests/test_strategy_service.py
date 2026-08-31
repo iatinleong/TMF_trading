@@ -114,6 +114,31 @@ def test_strategy_loss_limit():
     assert not st2.loss_limit_hit()
 
 
+def test_strategy_state_layer_toggles_default_to_true():
+    state = _open_long_state()
+    assert state.oco_enabled is True
+    assert state.soft_stop_enabled is True
+    assert state.risk_insurance_enabled is True
+    assert state.reverse_signal_exit_enabled is True
+
+
+def test_strategy_config_defaults_includes_layer_toggles():
+    defaults = strategy_config_defaults("breakout_long")
+    assert defaults["oco_enabled"] is True
+    assert defaults["soft_stop_enabled"] is True
+    assert defaults["risk_insurance_enabled"] is True
+    assert defaults["reverse_signal_exit_enabled"] is True
+
+
+def test_state_to_dict_includes_layer_toggles():
+    state = _open_long_state(oco_enabled=False, reverse_signal_exit_enabled=False)
+    result = strategy_service._state_to_dict(state)
+    assert result["oco_enabled"] is False
+    assert result["soft_stop_enabled"] is True
+    assert result["risk_insurance_enabled"] is True
+    assert result["reverse_signal_exit_enabled"] is False
+
+
 def _open_long_state(**overrides) -> StrategyState:
     defaults = dict(
         strategy_id="test",
