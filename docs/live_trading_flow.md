@@ -33,6 +33,18 @@
 2. **獨立 Worker 行程 (`WORKER_MODE=1`)**：
    - 每個帳號由獨立的後端行程（Worker Process）單獨運行，透過環境變數 `ACCOUNT_USER_ID=<UUID>` 綁定特定使用者。
    - 每個 Worker 擁有獨立的群益 COM API 元件實例與獨立的記憶體狀態，不同使用者之間**資金、持倉、下單與風控完全物理隔離，互不干擾**。
+   - **`ACCOUNT_USER_ID` 是什麼**：它是 **Supabase 登入帳號（`auth.users`）的 UUID，不是群益期貨帳號**。跟客戶登入 Dashboard 網頁、JWT 解出來的 `request.state.user_id` 是同一個值，也是 `user_strategy_configs.user_id` 用的同一套識別碼——系統裡「這是哪個客戶」全部共用這一個 UUID 空間，不需要維護兩套對照表。真正的群益帳密（`capital_user_id`/`capital_password`）另外存在 `user_broker_credentials` 表，`ACCOUNT_USER_ID` 只是拿去查這張表的鑰匙：
+     ```
+     ACCOUNT_USER_ID（Supabase 登入帳號 UUID）
+             │ get_broker_credentials() 查 user_broker_credentials 表
+             ▼
+     {capital_user_id, capital_password}（真正的群益期貨帳號登入 ID + 密碼）
+             │ 覆蓋進 os.environ（_apply_worker_account_credentials）
+             ▼
+     CAPITAL_USER_ID / CAPITAL_PASSWORD（實際拿去登入群益 SKCOM 用的值）
+     ```
+   - **這個值怎麼設定**：`WORKER_MODE`/`ACCOUNT_USER_ID`/`TMF_PORT`（各 Worker 監聽的 port，預設 8765）都是**作業系統環境變數**，在啟動 Python 行程之前由部署操作者手動設定（例如 PowerShell `$env:ACCOUNT_USER_ID="<uuid>"`，見 `docs/worker_process_manual_test.md`），**不是終端使用者在網頁上輸入的東西**，客戶本人完全不會看到這串 UUID。操作者要去 Supabase Dashboard 的 Authentication → Users 用 email 找到對應客戶，複製他的 user UUID 填入。
+   - **⚠️ 目前實際部署狀態（2026-08-31）**：這套 Worker 隔離機制**程式碼已完成並手動驗證過雙開可行**，但**尚未接進真正的 VM/客戶端安裝流程**——`installer/post_install.ps1` 註冊的 Task Scheduler 開機任務目前完全沒有設定這三個環境變數，所以現在所有透過 Setup.exe 部署出去的行程，一律以「共用主行程」模式啟動（`WORKER_MODE` 未設，`ACCOUNT_USER_ID` 未設），帳密來源退回本機 `.env` 或 `app_secrets` 共用表。目前只有一個帳號在實際運行，這個落差還沒有影響；等真的要讓第二個不同客戶用他自己的帳號跑之前，需要先補上安裝流程依客戶寫入這三個環境變數的那一步。
 3. **行情資料源與交易下單分離（Data Feed vs Execution Broker）**：
    - **行情與 K 線（Data Feed）**：全市場公開數據，由永豐 Shioaji API（讀取 `app_secrets` 的共用金鑰）與群益主報價連線負責 60 分 K 棒合成與歷史補缺，供全系統策略共享，不消耗各客戶的報價配額。
    - **下單與帳務（Order Execution）**：各 Worker 開機時從 `user_broker_credentials` 資料表載入該帳號專屬的 `CAPITAL_USER_ID / PASSWORD`；系統保證 `_load_project_env()` 與連線時 Worker 專屬帳密具有最高覆蓋優先權，絕不覆蓋回共用主帳號，確保真金白銀 100% 下在客戶自己的帳戶上。
