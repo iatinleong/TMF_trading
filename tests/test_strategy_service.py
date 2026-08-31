@@ -1051,3 +1051,28 @@ def test_tick_one_skips_soft_take_profit_when_broker_protection_order_exists(cle
 
     svc.place_order.assert_not_called()
     assert state.held_qty == 1
+
+
+def test_start_strategy_accepts_custom_risk_parameters(clean_armed):
+    """驗證 start_strategy 能正確套用依帳號/策略客製化的風控參數。"""
+    from backend.strategy_service import start_strategy, _armed
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
+        res = start_strategy(
+            "breakout_long",
+            "TM2609",
+            qty=2,
+            stop_loss_points=80.0,
+            take_profit_points=200.0,
+            max_loss_ntd=5000.0,
+            max_loss_pct=0.05,
+            exit_mode="trailing_stop",
+        )
+
+    state = _armed["breakout_long"]
+    assert state.qty == 2
+    assert state.stop_loss_points == 80.0
+    assert state.take_profit_points == 200.0
+    assert state.max_loss_ntd == 5000.0
+    assert state.max_loss_pct == 0.05
+    assert state.exit_mode == "trailing_stop"

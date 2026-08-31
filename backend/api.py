@@ -109,7 +109,16 @@ def _auto_arm_bound_strategies() -> None:
     for row in list_user_strategy_configs(account_user_id):
         if not row.get("enabled"):
             continue
-        start_strategy(row["strategy_id"], row["product_code"], qty=row.get("qty"))
+        start_strategy(
+            row["strategy_id"],
+            row["product_code"],
+            qty=row.get("qty"),
+            stop_loss_points=row.get("stop_loss_points"),
+            take_profit_points=row.get("take_profit_points"),
+            max_loss_ntd=row.get("max_loss_ntd"),
+            max_loss_pct=row.get("max_loss_pct"),
+            exit_mode=row.get("exit_mode"),
+        )
 
 
 def _connect_then_auto_arm() -> None:
@@ -233,6 +242,11 @@ class StrategyStartRequest(BaseModel):
     strategy_id: str
     product_code: str = "TM2608"
     qty: int | None = None
+    stop_loss_points: float | None = None
+    take_profit_points: float | None = None
+    max_loss_ntd: float | None = None
+    max_loss_pct: float | None = None
+    exit_mode: str | None = None
 
 
 class StrategyStopRequest(BaseModel):
@@ -551,7 +565,16 @@ def live_strategy_status() -> dict[str, object]:
 @app.post("/api/strategy/start")
 def live_strategy_start(request: StrategyStartRequest) -> dict[str, object]:
     try:
-        return start_strategy(request.strategy_id, request.product_code, qty=request.qty)
+        return start_strategy(
+            request.strategy_id,
+            request.product_code,
+            qty=request.qty,
+            stop_loss_points=request.stop_loss_points,
+            take_profit_points=request.take_profit_points,
+            max_loss_ntd=request.max_loss_ntd,
+            max_loss_pct=request.max_loss_pct,
+            exit_mode=request.exit_mode,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

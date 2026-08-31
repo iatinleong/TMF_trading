@@ -81,3 +81,42 @@ def test_admin_upsert_posts_correct_payload_and_returns_row(monkeypatch):
         "enabled": False,
     }
     assert mock_post.call_args.kwargs["params"]["on_conflict"] == "user_id,strategy_id"
+
+
+def test_admin_upsert_posts_risk_parameters(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
+
+    fake_response = MagicMock()
+    fake_response.json.return_value = [
+        {"strategy_id": "breakout_long", "user_id": "user-456", "enabled": True}
+    ]
+    fake_response.raise_for_status.return_value = None
+
+    with patch("backend.strategy_config_store.requests.post", return_value=fake_response) as mock_post:
+        row = admin_upsert_strategy_config(
+            "user-456",
+            "breakout_long",
+            product_code="TM2609",
+            qty=1,
+            enabled=True,
+            stop_loss_points=80.0,
+            take_profit_points=200.0,
+            max_loss_ntd=5000.0,
+            max_loss_pct=0.05,
+            exit_mode="trailing_stop",
+        )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload == {
+        "user_id": "user-456",
+        "strategy_id": "breakout_long",
+        "product_code": "TM2609",
+        "qty": 1,
+        "enabled": True,
+        "stop_loss_points": 80.0,
+        "take_profit_points": 200.0,
+        "max_loss_ntd": 5000.0,
+        "max_loss_pct": 0.05,
+        "exit_mode": "trailing_stop",
+    }

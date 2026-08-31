@@ -66,8 +66,13 @@ def admin_upsert_strategy_config(
     strategy_id: str,
     *,
     product_code: str,
-    qty: int | None,
-    enabled: bool,
+    qty: int | None = None,
+    enabled: bool = False,
+    stop_loss_points: float | None = None,
+    take_profit_points: float | None = None,
+    max_loss_ntd: float | None = None,
+    max_loss_pct: float | None = None,
+    exit_mode: str | None = None,
     timeout: float = 10.0,
 ) -> dict:
     """把某個策略客製化綁定給某個帳號（新增），或更新已經綁定過的參數；靠
@@ -78,13 +83,24 @@ def admin_upsert_strategy_config(
     if not _configured():
         raise RuntimeError("SUPABASE_URL/SUPABASE_SECRET_KEY 未設定，無法儲存策略設定")
 
-    payload = {
+    payload: dict[str, object] = {
         "user_id": user_id,
         "strategy_id": strategy_id,
         "product_code": product_code,
         "qty": qty,
         "enabled": enabled,
     }
+    if stop_loss_points is not None:
+        payload["stop_loss_points"] = float(stop_loss_points)
+    if take_profit_points is not None:
+        payload["take_profit_points"] = float(take_profit_points)
+    if max_loss_ntd is not None:
+        payload["max_loss_ntd"] = float(max_loss_ntd)
+    if max_loss_pct is not None:
+        payload["max_loss_pct"] = float(max_loss_pct)
+    if exit_mode is not None:
+        payload["exit_mode"] = str(exit_mode)
+
     headers = _headers()
     headers["Prefer"] = "resolution=merge-duplicates,return=representation"
     resp = requests.post(

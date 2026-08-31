@@ -32,7 +32,17 @@ def test_arms_only_enabled_bound_strategies(monkeypatch):
     monkeypatch.setenv("ACCOUNT_USER_ID", "user-123")
 
     rows = [
-        {"strategy_id": "breakout_long", "product_code": "TM2609", "qty": 2, "enabled": True},
+        {
+            "strategy_id": "breakout_long",
+            "product_code": "TM2609",
+            "qty": 2,
+            "enabled": True,
+            "stop_loss_points": 80.0,
+            "take_profit_points": 200.0,
+            "max_loss_ntd": 5000.0,
+            "max_loss_pct": 0.05,
+            "exit_mode": "trailing_stop",
+        },
         {"strategy_id": "breakout_short", "product_code": "TM2609", "qty": 1, "enabled": False},
     ]
     with patch("backend.api.list_user_strategy_configs", return_value=rows) as mock_list, \
@@ -40,4 +50,13 @@ def test_arms_only_enabled_bound_strategies(monkeypatch):
         _auto_arm_bound_strategies()
 
     mock_list.assert_called_once_with("user-123")
-    mock_start.assert_called_once_with("breakout_long", "TM2609", qty=2)
+    mock_start.assert_called_once_with(
+        "breakout_long",
+        "TM2609",
+        qty=2,
+        stop_loss_points=80.0,
+        take_profit_points=200.0,
+        max_loss_ntd=5000.0,
+        max_loss_pct=0.05,
+        exit_mode="trailing_stop",
+    )

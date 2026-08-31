@@ -657,7 +657,18 @@ def strategy_status(strategy_id: str | None = None) -> dict[str, Any]:
     return {sid: strategy_status(sid) for sid in STRATEGY_DEFS}
 
 
-def start_strategy(strategy_id: str, product_code: str, *, qty: int | None = None) -> dict[str, Any]:
+def start_strategy(
+    strategy_id: str,
+    product_code: str,
+    *,
+    qty: int | None = None,
+    stop_loss_points: float | None = None,
+    take_profit_points: float | None = None,
+    initial_capital_ntd: float | None = None,
+    max_loss_ntd: float | None = None,
+    max_loss_pct: float | None = None,
+    exit_mode: str | None = None,
+) -> dict[str, Any]:
     if strategy_id not in STRATEGY_DEFS:
         raise ValueError(f"未知的策略 id: {strategy_id}（可用：{', '.join(STRATEGY_DEFS)}）")
     defaults = strategy_config_defaults(strategy_id)
@@ -667,13 +678,13 @@ def start_strategy(strategy_id: str, product_code: str, *, qty: int | None = Non
         strategy=str(defaults["strategy"]),
         direction_limit=str(defaults["direction_limit"]),
         label=str(defaults["label"]),
-        exit_mode=str(defaults["exit_mode"]),
+        exit_mode=str(exit_mode if exit_mode is not None else defaults["exit_mode"]),
         qty=int(qty if qty is not None else defaults["qty"]),
-        initial_capital_ntd=float(defaults["initial_capital_ntd"]),
-        max_loss_ntd=float(defaults["max_loss_ntd"]),
-        max_loss_pct=float(defaults["max_loss_pct"]),
-        stop_loss_points=float(defaults["stop_loss_points"]),
-        take_profit_points=float(defaults["take_profit_points"]),
+        initial_capital_ntd=float(initial_capital_ntd if initial_capital_ntd is not None else defaults["initial_capital_ntd"]),
+        max_loss_ntd=float(max_loss_ntd if max_loss_ntd is not None else defaults["max_loss_ntd"]),
+        max_loss_pct=float(max_loss_pct if max_loss_pct is not None else defaults["max_loss_pct"]),
+        stop_loss_points=float(stop_loss_points if stop_loss_points is not None else defaults["stop_loss_points"]),
+        take_profit_points=float(take_profit_points if take_profit_points is not None else defaults["take_profit_points"]),
     )
 
     # 啟動當下把「已經存在的舊訊號」預先標記為已消費，避免把啟動前就已成立的
