@@ -64,14 +64,15 @@ elif state.risk_insurance_enabled and floating_pnl is not None and state.loss_li
 
 `soft_stop_enabled=False` 時兩個點數條件都不會成立，`risk_insurance_enabled=False` 時風控保險條件不會成立——兩個開關各自只影響自己控制的條件，`elif` 鏈的優先順序不受影響，不需要拆成三段獨立 if。
 
-**Layer 4（反向訊號出場）**——第 1134-1198 行「方向限定策略：出現反向訊號只平倉出場」整段，外層包一個開關：
+**Layer 4（反向訊號出場）**——第 1134-1198 行「方向限定策略：出現反向訊號只平倉出場」整段，開關判斷放在 `held_qty > 0` 分支內側（而不是包在最外層），這樣空手時看到反向訊號仍然正確顯示「空手不動作」，不會被誤導成「已關閉反向出場」：
 
 ```python
-elif not state.reverse_signal_exit_enabled:
-    state.last_action = "偵測到反向訊號，但本策略已關閉反向訊號出場，不動作"
 else:
     if state.held_qty > 0:
-        ...（原本的平倉邏輯不變）
+        if not state.reverse_signal_exit_enabled:
+            state.last_action = f"已持倉 {state.held_direction} x{state.held_qty}，已關閉反向訊號出場，持倉不動"
+        else:
+            ...（原本的平倉邏輯不變）
     else:
         state.last_action = "空手，反向訊號不動作（本策略不做這個方向）"
 ```
@@ -98,6 +99,8 @@ else:
 
 4. **`_auto_arm_bound_strategies()`**（`backend/api.py`）呼叫 `start_strategy` 時多傳 4 個 `row.get(...)`。
 
+4b. **`StrategyStartRequest`**（`backend/api.py:240`）與 `/api/strategy/start`（`backend/api.py:563`）也要同步補上這 4 個 `bool | None = None` 欄位並傳給 `start_strategy`——不然透過 REST API（例如 Dashboard 未來要加開關按鈕、或其他外部呼叫）啟動策略時沒辦法指定，只有 `_auto_arm_bound_strategies` 這條走 DB 綁定的路徑能用到。
+
 5. **`scripts/bind_strategy.py`** CLI 新增 4 個 flag，用 `argparse.BooleanOptionalAction`（例如 `--oco-enabled` / `--no-oco-enabled`），預設 `None`（不覆寫，沿用資料庫預設的 `True`），跟現有 `--stop-loss-points` 等參數的「不指定就不覆寫」語意一致。
 
 6. **`_state_to_dict()`**：新增 4 個 key，讓 Dashboard 前端未來要顯示/切換這幾個開關時，資料已經在 `/api/strategy/status` 回傳裡。這次不做前端 UI（使用者只要求後端邏輯與 CLI／DB 綁定，前端開關按鈕留待之後有需要再做）。
@@ -115,7 +118,7 @@ else:
 - `test_tick_one_places_oco_when_oco_enabled` / `test_tick_one_skips_oco_when_oco_disabled`
 - `test_tick_one_soft_stop_triggers_when_enabled` / `test_tick_one_soft_stop_skipped_when_disabled`
 - `test_tick_one_risk_insurance_triggers_when_enabled` / `test_tick_one_risk_insurance_skipped_when_disabled`
-- `test_tick_one_reverse_signal_exit_closes_when_enabled` / `test_tick_one_reverse_signal_exit_skipped_when_disabled`
+- `test_tick_one_reverse_signal_exit_closes_when_enabled` / `test_tick_one_reverse_signal_exit_skipped_when_disabled`（後者順便驗證空手時的 `last_action` 不受這個開關影響，仍是「空手不動作」）
 
 加上管線傳遞測試：`start_strategy` 傳入非預設值時 `StrategyState` 欄位確實被覆寫；`admin_upsert_strategy_config` payload 組裝測試（比照現有 `stop_loss_points` 那組測試）。
 
