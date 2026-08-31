@@ -479,6 +479,7 @@ function renderStrategyRows(statusMap) {
   strategyDefs.forEach((def) => {
     const sid = def.strategy_id;
     const st = statusMap[sid] || { armed: false };
+    const cfg = myStrategyConfigs[sid] || {};
     const row = document.createElement('div');
     row.className = 'strategy-row';
     row.dataset.strategyId = sid;
@@ -510,12 +511,44 @@ function renderStrategyRows(statusMap) {
     head.appendChild(label);
     head.appendChild(switchWrap);
 
+    // 專屬風控與商品規格摘要 (從 Supabase 取得)
+    const meta = document.createElement('div');
+    meta.className = 'strategy-meta-line';
+    const prod = cfg.product_code || currentProduct;
+    const qty = cfg.qty || 1;
+    const sl = cfg.stop_loss_points != null ? `${cfg.stop_loss_points}點` : '預設';
+    const tp = cfg.take_profit_points != null ? `${cfg.take_profit_points}點` : '預設';
+    const maxLoss = cfg.max_loss_ntd != null ? `-${Number(cfg.max_loss_ntd).toLocaleString()}元` : '預設';
+    meta.innerHTML = `<span>${prod} x${qty}口</span><span>停損:${sl} · 停利:${tp} · 上限:${maxLoss}</span>`;
+
+    // 4 道防護網狀態徽章
+    const badges = document.createElement('div');
+    badges.className = 'strategy-badges';
+    badges.id = `strategy-badges-${sid}`;
+
+    const layers = [
+      { key: 'oco_enabled', label: '1.OCO智慧單' },
+      { key: 'soft_stop_enabled', label: '2.本地軟停損' },
+      { key: 'risk_insurance_enabled', label: '3.風控保險' },
+      { key: 'reverse_signal_exit_enabled', label: '4.反向平倉' },
+    ];
+    layers.forEach((l) => {
+      const badge = document.createElement('span');
+      const enabled = (st[l.key] !== undefined) ? (st[l.key] !== false) : (cfg[l.key] !== false);
+      badge.className = `layer-badge ${enabled ? 'active' : 'inactive'}`;
+      badge.textContent = `${enabled ? '✓' : '✗'} ${l.label}`;
+      badge.title = `${l.label}: ${enabled ? '已開啟' : '已關閉'}`;
+      badges.appendChild(badge);
+    });
+
     const detail = document.createElement('div');
     detail.id = `strategy-detail-${sid}`;
     detail.className = 'strategy-row-detail' + (st.stopped ? ' stopped' : '');
     detail.textContent = strategyDetailText(st);
 
     row.appendChild(head);
+    row.appendChild(meta);
+    row.appendChild(badges);
     row.appendChild(detail);
     container.appendChild(row);
   });
@@ -553,12 +586,32 @@ async function refreshStrategyStatus() {
       const box = document.getElementById(`strategy-toggle-${sid}`);
       const detail = document.getElementById(`strategy-detail-${sid}`);
       const dot = document.getElementById(`strategy-dot-${sid}`);
+      const badges = document.getElementById(`strategy-badges-${sid}`);
+      const cfg = myStrategyConfigs[sid] || {};
       if (!box || !detail) return;
       const st = statusMap[sid] || { armed: false };
       box.checked = !!st.armed;
       detail.className = 'strategy-row-detail' + (st.stopped ? ' stopped' : '');
       detail.textContent = strategyDetailText(st);
       if (dot) dot.className = 'strategy-status-dot' + (st.armed ? ' armed' : st.stopped ? ' stopped' : '');
+
+      if (badges) {
+        const layers = [
+          { key: 'oco_enabled', label: '1.OCO智慧單' },
+          { key: 'soft_stop_enabled', label: '2.本地軟停損' },
+          { key: 'risk_insurance_enabled', label: '3.風控保險' },
+          { key: 'reverse_signal_exit_enabled', label: '4.反向平倉' },
+        ];
+        badges.innerHTML = '';
+        layers.forEach((l) => {
+          const badge = document.createElement('span');
+          const enabled = (st[l.key] !== undefined) ? (st[l.key] !== false) : (cfg[l.key] !== false);
+          badge.className = `layer-badge ${enabled ? 'active' : 'inactive'}`;
+          badge.textContent = `${enabled ? '✓' : '✗'} ${l.label}`;
+          badge.title = `${l.label}: ${enabled ? '已開啟' : '已關閉'}`;
+          badges.appendChild(badge);
+        });
+      }
     });
   } catch (_) { /* ignore */ }
 }
@@ -573,11 +626,24 @@ async function onStrategyToggle(strategyId, checked) {
         body: JSON.stringify({ strategy_id: strategyId }),
       });
     } else {
-      const qty = Number(document.getElementById('strategy-qty').value || 1);
+      const cfg = myStrategyConfigs[strategyId] || {};
+      const payload = {
+        strategy_id: strategyId,
+        product_code: cfg.product_code || currentProduct,
+        qty: cfg.qty != null ? Number(cfg.qty) : 1,
+        stop_loss_points: cfg.stop_loss_points != null ? Number(cfg.stop_loss_points) : undefined,
+        take_profit_points: cfg.take_profit_points != null ? Number(cfg.take_profit_points) : undefined,
+        max_loss_ntd: cfg.max_loss_ntd != null ? Number(cfg.max_loss_ntd) : undefined,
+        max_loss_pct: cfg.max_loss_pct != null ? Number(cfg.max_loss_pct) : undefined,
+        oco_enabled: cfg.oco_enabled !== false,
+        soft_stop_enabled: cfg.soft_stop_enabled !== false,
+        risk_insurance_enabled: cfg.risk_insurance_enabled !== false,
+        reverse_signal_exit_enabled: cfg.reverse_signal_exit_enabled !== false,
+      };
       const res = await apiFetch(`${API}/api/strategy/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ strategy_id: strategyId, product_code: currentProduct, qty }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || '啟動失敗');

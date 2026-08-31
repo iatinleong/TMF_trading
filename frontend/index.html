@@ -52,16 +52,7 @@
       </div>
 
       <div class="panel">
-        <div class="panel-header"><span>自動策略（單邊限定，訊號進場/反向出場不反手）</span></div>
-        <div class="form-row">
-          <label>每筆口數</label>
-          <input type="number" id="strategy-qty" value="1" min="1" step="1" />
-        </div>
-        <div style="font-size:10px;color:#8b949e;margin-bottom:8px">
-          MA 週期固定 5/20/60。風控依目前帳戶「權益數」自動計算：持倉浮動損益達 -10% 或
-          -1 萬元會立刻強制市價平倉並停止該策略；空手時累計已實現虧損達同樣門檻則停止開新倉。
-          可同時勾選多個策略同時運行，各自獨立記帳、獨立風控。
-        </div>
+        <div class="panel-header"><span>自動策略（依帳號綁定，獨立記帳與風控）</span></div>
         <div id="strategy-list" class="strategy-list">載入中…</div>
         <div id="strategy-list-empty" class="hidden" style="font-size:11px;color:var(--muted);padding:8px 0">
           目前還沒有任何策略綁定給這個帳號。

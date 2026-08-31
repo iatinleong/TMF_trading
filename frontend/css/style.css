@@ -247,6 +247,30 @@ input:focus { border-color: var(--blue); }
 }
 .strategy-row-detail.stopped { color: var(--red); }
 
+.strategy-meta-line {
+  font-size: 10px; color: #8b949e; margin-top: 4px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.strategy-badges {
+  display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap;
+}
+.layer-badge {
+  font-size: 9px; padding: 1px 5px; border-radius: 3px;
+  border: 1px solid var(--border); background: var(--bg2);
+  color: var(--muted); user-select: none;
+}
+.layer-badge.active {
+  border-color: rgba(14, 203, 129, 0.4);
+  background: rgba(14, 203, 129, 0.12);
+  color: var(--green);
+}
+.layer-badge.inactive {
+  border-color: rgba(246, 70, 93, 0.25);
+  background: rgba(246, 70, 93, 0.08);
+  color: #8b949e;
+  text-decoration: line-through;
+}
+
 .hidden { display: none !important; }
 
 .params-box { font-size: 11px; color: var(--muted); line-height: 1.5; max-height: 160px; overflow-y: auto; }
