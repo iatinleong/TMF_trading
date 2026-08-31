@@ -125,8 +125,8 @@ function initChart() {
   });
 
   candleSeries = chart.addCandlestickSeries({
-    upColor: '#26a69a', downColor: '#ef5350',
-    borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350',
+    upColor: '#ef4444', downColor: '#22c55e',
+    borderVisible: false, wickUpColor: '#ef4444', wickDownColor: '#22c55e',
   });
 
   maFastSeries = chart.addLineSeries({ color: '#e6b800', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'MA5' });
@@ -410,12 +410,12 @@ async function refreshOrders() {
     const allRows = await res.json();
     const tbody = document.getElementById('orders-body');
     if (!allRows || !allRows.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">無委託</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty">無委託</td></tr>';
       return;
     }
     const rows = allRows.filter(r => currentOrderTab === 'active' ? r.is_active !== false : r.is_active === false);
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="7" class="empty">${currentOrderTab === 'active' ? '無有效委託' : '無歷史委託'}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty">${currentOrderTab === 'active' ? '無有效委託' : '無歷史委託'}</td></tr>`;
       return;
     }
     // 時間欄位是 "YYYY-MM-DD HH:MM:SS" 字串格式，字串排序等同時間排序；最新的排最上面。
@@ -425,11 +425,36 @@ async function refreshOrders() {
       const cancelBtn = (r.is_active && seq)
         ? `<button class="action-btn danger" type="button" onclick="cancelOrder('${escHtml(seq)}')">撤單</button>`
         : '—';
+
+      // 1. 性質 (新倉/平倉/當沖/自動)
+      let flagBadge = '—';
+      const flag = String(r.new_close_flag || '').toUpperCase();
+      if (flag === 'N') flagBadge = '<span class="badge-flag new">新倉</span>';
+      else if (flag === 'O') flagBadge = '<span class="badge-flag close">平倉</span>';
+      else if (flag === 'Y') flagBadge = '<span class="badge-flag daytrade">當沖</span>';
+      else if (flag === 'A') flagBadge = '<span class="badge-flag auto">自動</span>';
+      else if (flag) flagBadge = `<span class="badge-flag auto">${escHtml(flag)}</span>`;
+
+      // 2. 買賣方向 (紅多 / 綠空)
+      let dirHtml = escHtml(r.direction || '—');
+      if (r.direction === '多' || r.direction_key === 'long') dirHtml = '<span class="text-long">多</span>';
+      else if (r.direction === '空' || r.direction_key === 'short') dirHtml = '<span class="text-short">空</span>';
+
+      // 3. 口數 (已成交 / 委託口數)
+      const filled = (r.filled_qty !== undefined && r.filled_qty !== '') ? r.filled_qty : (r.is_active ? '0' : (r.qty || '0'));
+      const total = r.orig_qty || r.qty || '—';
+      const qtyHtml = `<span class="qty-highlight">${escHtml(String(filled))}</span> <span class="qty-dim">/ ${escHtml(String(total))}</span>`;
+
+      // 4. 序號/書號
+      const orderIdHtml = `<span class="seq-mono">${escHtml(r.book_no || r.seq_no || '—')}</span>`;
+
       return `<tr>
         <td>${escHtml(r.time || '—')}</td>
+        <td>${orderIdHtml}</td>
         <td>${escHtml(r.product || '—')}</td>
-        <td>${escHtml(r.direction || '—')}</td>
-        <td>${escHtml(r.qty || '—')}</td>
+        <td>${flagBadge}</td>
+        <td>${dirHtml}</td>
+        <td>${qtyHtml}</td>
         <td>${escHtml(r.price || '—')}</td>
         <td>${escHtml(r.status || '—')}</td>
         <td>${cancelBtn}</td>
