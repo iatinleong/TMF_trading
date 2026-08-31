@@ -279,18 +279,30 @@ def run_realistic_simulation():
     print("【測試 5】Layer 3 金額/比例硬停損保險（單日累積虧損達 -5,000 元，強制鎖死停止策略）")
     print("-" * 70)
 
-    # 人為設定累計虧損達 -5,100 元 (上限 -5,000 元)
-    s_long.realized_pnl_ntd = -5100.0
-    s_long.held_qty = 0
-    s_long.held_direction = None
+    # 建立乾淨的 StrategyState（避免前一個測試留下的 stopped=True 污染）
+    s_risk = StrategyState(
+        strategy_id="breakout_long",
+        strategy="breakout",
+        direction_limit="long",
+        label="突破做多",
+        product_code="TM2609",
+        qty=1,
+        max_loss_ntd=5000.0,
+        max_loss_pct=0.05,
+        realized_pnl_ntd=-5100.0,  # 累計虧損已達 -5,100 元 (超過上限 -5,000 元)
+        held_qty=0,
+        held_direction=None,
+        stopped=False,
+    )
 
     with patch("backend.strategy_service._load_bars", return_value=df_long_signal), \
          patch("backend.strategy_service._latest_closed_signal", return_value={"time": "2026-09-01T13:45:00", "direction": "long", "key": "bar5_long"}):
-        _tick_one(s_long, mock_svc, {"quote": {"last_price": 22000.0}})
-        assert s_long.stopped is True, "預期觸發風控上限後 strategy.stopped=True"
-        assert s_long.held_qty == 0, "風控鎖死後不應開新倉"
-        print(f"  ✓ 觸發 Layer 3 風控保險網: {s_long.stop_reason}")
-        print(f"  ✓ 策略已永久鎖死停止 (stopped={s_long.stopped})，徹底防止繼續虧損！")
+        _tick_one(s_risk, mock_svc, {"quote": {"last_price": 22000.0}})
+        assert s_risk.stopped is True, "預期觸發風控上限後 strategy.stopped=True"
+        assert s_risk.held_qty == 0, "風控鎖死後不應開新倉"
+        assert "已達風控停損" in s_risk.stop_reason, f"預期 Layer 3 風控原因，實際={s_risk.stop_reason}"
+        print(f"  ✓ 觸發 Layer 3 風控保險網: {s_risk.stop_reason}")
+        print(f"  ✓ 策略已永久鎖死停止 (stopped={s_risk.stopped})，徹底防止繼續虧損！")
 
     # =========================================================================
     # 測試項目 6：回彈策略 (Pullback) 雙向運作驗證
@@ -330,8 +342,49 @@ def run_realistic_simulation():
         print(f"  ✓ 券商拒單處理正確: {s_pb_long.last_action}")
         print("  ✓ 同一訊號標記已消費，不會每秒轟炸券商！")
 
+    # =========================================================================
+    # 測試項目 8：跨策略同向疊單獨立記帳（breakout_long 與 pullback_long 同時做多同一商品）
+    # =========================================================================
+    print("\n" + "-" * 70)
+    print("【測試 8】跨策略同向疊單獨立記帳（兩支不同策略同時做多 TM2609，各自記帳、互不干擾）")
+    print("-" * 70)
+
+    # 用全新的 state（不沿用前面測試污染過的物件，避免重演 Test 5 那種假陽性）
+    s_cross_bl = StrategyState(
+        strategy_id="breakout_long", strategy="breakout", direction_limit="long",
+        label="突破做多", product_code="TM2609", qty=1,
+        stop_loss_points=80.0, take_profit_points=200.0, max_loss_ntd=5000.0, max_loss_pct=0.05,
+    )
+    s_cross_pl = StrategyState(
+        strategy_id="pullback_long", strategy="pullback", direction_limit="long",
+        label="回測做多", product_code="TM2609", qty=1,
+        stop_loss_points=80.0, take_profit_points=200.0, max_loss_ntd=5000.0, max_loss_pct=0.05,
+    )
+
+    with patch("backend.strategy_service._load_bars", return_value=df_long_signal), \
+         patch("backend.strategy_service._latest_closed_signal", return_value={"time": "2026-09-01T15:00:00", "direction": "long", "key": "bar8a_long"}):
+        # breakout_long 先進場，成交價 22,100
+        _tick_one(s_cross_bl, mock_svc, {"quote": {"last_price": 22100.0}})
+        assert s_cross_bl.held_qty == 1
+        assert s_cross_bl.entry_price == 22100.0
+
+        # pullback_long 在不同價位（22,180）也進場做多同一個商品——驗證允許跨策略同向疊單
+        _tick_one(s_cross_pl, mock_svc, {"quote": {"last_price": 22180.0}})
+        assert s_cross_pl.held_qty == 1
+        assert s_cross_pl.entry_price == 22180.0, "pullback_long 應該用自己成交當下的價位記帳，不受 breakout_long 影響"
+        print(f"  ✓ 兩支策略同時做多同一商品成功：breakout_long @ {s_cross_bl.entry_price}、pullback_long @ {s_cross_pl.entry_price}（各自獨立記帳）")
+
+    # 只有 breakout_long 收到反向（空方）訊號——驗證只平自己的倉，完全不動 pullback_long
+    with patch("backend.strategy_service._load_bars", return_value=df_long_signal), \
+         patch("backend.strategy_service._latest_closed_signal", return_value={"time": "2026-09-01T16:00:00", "direction": "short", "key": "bar8b_short"}):
+        _tick_one(s_cross_bl, mock_svc, {"quote": {"last_price": 22150.0}})
+        assert s_cross_bl.held_qty == 0, "breakout_long 收到反向訊號應該平倉"
+        assert s_cross_pl.held_qty == 1, "pullback_long 不該被 breakout_long 的反向訊號影響"
+        assert s_cross_pl.entry_price == 22180.0, "pullback_long 的記帳資料不該被動到"
+        print(f"  ✓ breakout_long 反向出場後：自己 held_qty={s_cross_bl.held_qty}，pullback_long 完全不受影響 held_qty={s_cross_pl.held_qty} @ {s_cross_pl.entry_price}")
+
     print("\n" + "=" * 70)
-    print("🎉 7 大全流程擬真壓力測試全數 100% 通過！未發現邏輯崩潰或邊界條件漏洞！")
+    print("🎉 8 大全流程擬真壓力測試全數 100% 通過！未發現邏輯崩潰或邊界條件漏洞！")
     print("=" * 70)
 
 
