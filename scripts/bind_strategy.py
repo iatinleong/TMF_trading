@@ -59,6 +59,22 @@ def main() -> int:
     parser.add_argument("--take-profit-points", type=float, default=None, help="客製化停利點數（如 250.0）")
     parser.add_argument("--max-loss-ntd", type=float, default=None, help="客製化金額硬停損（如 10000.0）")
     parser.add_argument("--max-loss-pct", type=float, default=None, help="客製化比例硬停損（如 0.10）")
+    parser.add_argument(
+        "--oco-enabled", action=argparse.BooleanOptionalAction, default=None,
+        help="Layer 1 券商 OCO 智慧單開關（不指定則沿用資料庫預設值 True）",
+    )
+    parser.add_argument(
+        "--soft-stop-enabled", action=argparse.BooleanOptionalAction, default=None,
+        help="Layer 2 本地軟停損停利備援開關（不指定則沿用資料庫預設值 True）",
+    )
+    parser.add_argument(
+        "--risk-insurance-enabled", action=argparse.BooleanOptionalAction, default=None,
+        help="Layer 3 金額/比例硬停損保險開關（不指定則沿用資料庫預設值 True）",
+    )
+    parser.add_argument(
+        "--reverse-signal-exit-enabled", action=argparse.BooleanOptionalAction, default=None,
+        help="Layer 4 反向訊號出場開關（不指定則沿用資料庫預設值 True）",
+    )
     parser.add_argument("--enabled", action="store_true", help="建立後直接標記為啟用（預設不啟用）")
     args = parser.parse_args()
 
@@ -84,6 +100,10 @@ def main() -> int:
         take_profit_points=args.take_profit_points,
         max_loss_ntd=args.max_loss_ntd,
         max_loss_pct=args.max_loss_pct,
+        oco_enabled=args.oco_enabled,
+        soft_stop_enabled=args.soft_stop_enabled,
+        risk_insurance_enabled=args.risk_insurance_enabled,
+        reverse_signal_exit_enabled=args.reverse_signal_exit_enabled,
     )
     print(f"已綁定：{row}")
     return 0
