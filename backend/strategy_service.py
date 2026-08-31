@@ -90,9 +90,6 @@ class StrategyState:
     max_loss_pct: float = 0.10
     stop_loss_points: float = 100.0
     take_profit_points: float = 250.0
-    trailing_points: float = 50.0
-    breakeven_trigger_points: float = 80.0
-    peak_price_since_entry: float = 0.0
     realized_pnl_ntd: float = 0.0
     held_qty: int = 0
     held_direction: str | None = None
@@ -671,8 +668,6 @@ def start_strategy(
     qty: int | None = None,
     stop_loss_points: float | None = None,
     take_profit_points: float | None = None,
-    trailing_points: float | None = None,
-    breakeven_trigger_points: float | None = None,
     initial_capital_ntd: float | None = None,
     max_loss_ntd: float | None = None,
     max_loss_pct: float | None = None,
@@ -694,8 +689,6 @@ def start_strategy(
         max_loss_pct=float(max_loss_pct if max_loss_pct is not None else defaults["max_loss_pct"]),
         stop_loss_points=float(stop_loss_points if stop_loss_points is not None else defaults["stop_loss_points"]),
         take_profit_points=float(take_profit_points if take_profit_points is not None else defaults["take_profit_points"]),
-        trailing_points=float(trailing_points if trailing_points is not None else getattr(defaults, "trailing_points", 50.0)),
-        breakeven_trigger_points=float(breakeven_trigger_points if breakeven_trigger_points is not None else getattr(defaults, "breakeven_trigger_points", 80.0)),
     )
 
     # 啟動當下把「已經存在的舊訊號」預先標記為已消費，避免把啟動前就已成立的
@@ -910,16 +903,6 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
         trigger_kind: str | None = None
         floating_pnl: float | None = None
         if current_price is not None:
-            # 追蹤持倉期間極值 (peak price)
-            if state.held_direction == "long":
-                state.peak_price_since_entry = max(state.peak_price_since_entry or current_price, current_price)
-            else:
-                state.peak_price_since_entry = (
-                    min(state.peak_price_since_entry or current_price, current_price)
-                    if state.peak_price_since_entry > 0
-                    else current_price
-                )
-
             try:
                 floating_pnl = _estimate_pnl_ntd(
                     contract=contract,
@@ -938,60 +921,16 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     else state.entry_price - current_price
                 )
                 if points <= -abs(state.stop_loss_points) and state.protection_order_smart_key is None:
+                    # Layer 2 (軟停損備援)：券商端 OCO 未生效時頂著
                     trigger_kind = "stop_loss"
                 elif points >= abs(state.take_profit_points) and state.protection_order_smart_key is None:
+                    # Layer 2 (軟停利備援)
                     trigger_kind = "take_profit"
                 elif floating_pnl is not None and state.loss_limit_hit(floating_pnl):
+                    # Layer 3 (風控保險網 / 硬停損)
                     trigger_kind = "risk_stop"
-
-            elif state.exit_mode == "trailing_stop":
-                # 移動停損 / 移動鎖利：從最高點回檔超過 trailing_points 點平倉
-                drawdown_points = (
-                    state.peak_price_since_entry - current_price
-                    if state.held_direction == "long"
-                    else current_price - state.peak_price_since_entry
-                )
-                initial_loss_points = (
-                    state.entry_price - current_price
-                    if state.held_direction == "long"
-                    else current_price - state.entry_price
-                )
-                if initial_loss_points >= abs(state.stop_loss_points):
-                    trigger_kind = "stop_loss"
-                elif drawdown_points >= abs(state.trailing_points):
-                    trigger_kind = "trailing_stop"
-                elif floating_pnl is not None and state.loss_limit_hit(floating_pnl):
-                    trigger_kind = "risk_stop"
-
-            elif state.exit_mode == "breakeven":
-                # 保本機制：獲利達 breakeven_trigger_points 後，停損移至進場成本
-                profit_points = (
-                    current_price - state.entry_price
-                    if state.held_direction == "long"
-                    else state.entry_price - current_price
-                )
-                loss_points = -profit_points
-                is_breakeven_active = (
-                    profit_points >= abs(state.breakeven_trigger_points)
-                    or (
-                        state.held_direction == "long"
-                        and state.peak_price_since_entry >= state.entry_price + abs(state.breakeven_trigger_points)
-                    )
-                    or (
-                        state.held_direction == "short"
-                        and state.peak_price_since_entry <= state.entry_price - abs(state.breakeven_trigger_points)
-                    )
-                )
-                effective_stop = 0.0 if is_breakeven_active else abs(state.stop_loss_points)
-                if loss_points >= effective_stop:
-                    trigger_kind = "breakeven_stop" if is_breakeven_active else "stop_loss"
-                elif profit_points >= abs(state.take_profit_points):
-                    trigger_kind = "take_profit"
-                elif floating_pnl is not None and state.loss_limit_hit(floating_pnl):
-                    trigger_kind = "risk_stop"
-
             elif state.exit_mode == "signal_only":
-                # 純訊號出場：不進行點數停損停利，保留金額硬停損
+                # 純訊號出場模式：跳過 Layer 1/2 點數出場，保留 Layer 3 金額硬停損兜底
                 if floating_pnl is not None and state.loss_limit_hit(floating_pnl):
                     trigger_kind = "risk_stop"
 
@@ -999,16 +938,10 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
             reason_label = {
                 "stop_loss": "停損",
                 "take_profit": "停利",
-                "trailing_stop": "移動停損鎖利",
-                "breakeven_stop": "保本停損",
                 "risk_stop": "風控保險",
-            }.get(trigger_kind, "風控平倉")
+            }[trigger_kind]
             if trigger_kind == "risk_stop":
                 threshold_note = f"上限 -{state.max_loss_ntd:,.0f} 元 / -{state.max_loss_pct * 100:.0f}%"
-            elif trigger_kind == "trailing_stop":
-                threshold_note = f"自極值 {state.peak_price_since_entry:.0f} 回檔 {state.trailing_points:.0f} 點"
-            elif trigger_kind == "breakeven_stop":
-                threshold_note = f"觸及進場成本 {state.entry_price:.0f} 點保本線"
             else:
                 points_value = state.stop_loss_points if trigger_kind == "stop_loss" else state.take_profit_points
                 threshold_note = f"門檻 {points_value:.0f} 點"

@@ -1117,7 +1117,7 @@ def test_start_strategy_accepts_custom_risk_parameters(clean_armed):
             take_profit_points=200.0,
             max_loss_ntd=5000.0,
             max_loss_pct=0.05,
-            exit_mode="trailing_stop",
+            exit_mode="signal_only",
         )
 
     state = _armed["breakout_long"]
@@ -1126,48 +1126,7 @@ def test_start_strategy_accepts_custom_risk_parameters(clean_armed):
     assert state.take_profit_points == 200.0
     assert state.max_loss_ntd == 5000.0
     assert state.max_loss_pct == 0.05
-    assert state.exit_mode == "trailing_stop"
-
-
-def test_tick_one_triggers_trailing_stop():
-    """驗證 exit_mode='trailing_stop' 時，自最高點回檔超過 trailing_points 會觸發平倉。"""
-    state = _open_long_state(product_code="TM2609")
-    state.exit_mode = "trailing_stop"
-    state.trailing_points = 50.0
-    state.entry_price = 22000.0
-    state.peak_price_since_entry = 22200.0  # 曾衝到 22200 (+200)
-
-    svc = MagicMock()
-    svc.place_order.return_value = {"order_result": {"success": True}}
-    # 現價回檔至 22140（自 22200 回檔 60 點 > 50 點門檻）
-    st = {"quote": {"last_price": 22140.0}}
-
-    _tick_one(state, svc, st)
-
-    svc.place_order.assert_called_once()
-    assert state.held_qty == 0
-    assert "移動停損鎖利" in state.last_action
-
-
-def test_tick_one_triggers_breakeven_stop():
-    """驗證 exit_mode='breakeven' 時，獲利曾達門檻後回檔至進場價會觸發保本平倉。"""
-    state = _open_long_state(product_code="TM2609")
-    state.exit_mode = "breakeven"
-    state.breakeven_trigger_points = 80.0
-    state.stop_loss_points = 100.0
-    state.entry_price = 22000.0
-    state.peak_price_since_entry = 22090.0  # 曾達到 +90 點 (> 80 點保本觸發門檻)
-
-    svc = MagicMock()
-    svc.place_order.return_value = {"order_result": {"success": True}}
-    # 現價回落至進場價 22000.0
-    st = {"quote": {"last_price": 22000.0}}
-
-    _tick_one(state, svc, st)
-
-    svc.place_order.assert_called_once()
-    assert state.held_qty == 0
-    assert "保本停損" in state.last_action
+    assert state.exit_mode == "signal_only"
 
 
 def test_tick_one_skips_points_exit_for_signal_only():
