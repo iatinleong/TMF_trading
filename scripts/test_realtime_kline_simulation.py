@@ -144,21 +144,43 @@ def run_simulation():
     assert oco_args["trigger_price"] == str(int(expected_profit_trigger))
     assert oco_args["trigger_price2"] == str(int(expected_stop_trigger))
 
-    # 4. 模擬行情劇烈下跌 85 點至 22165（觸及 80 點停損門檻）
+    # 4. 模擬行情劇烈下跌 85 點至 22165（跌破客製化 80 點停損門檻）
     print("\n[Step 4] 模擬即時行情跌破停損價 (22165 點，虧損 85 點)...")
-    # 假設 OCO 在券商端觸發成交，或軟停損備援觸發
-    state.protection_order_smart_key = None # 模擬 OCO 觸發後在券商端平倉
+    # 模擬軟停損備援接管（OCO 未在券商端掛單或已失效狀態）
+    state.protection_order_smart_key = None
     mock_svc.status.return_value = {
+        "connected": True,
         "quote": {"last_price": 22165.0},
-        "positions": [], # 券商端部位已平倉
+        "positions": [{"product": "TM09", "direction_key": "long", "qty": 1, "price": "22,250"}],
     }
+    mock_svc.place_order.return_value = {
+        "order_result": {"success": True, "order_no": "ORD10002"},
+        "state": {"positions": []},
+    }
+
     with patch("backend.strategy_service.TradingService.get", return_value=mock_svc), \
          patch("backend.strategy_service._load_bars", return_value=bars_df):
         strategy_tick()
 
-    print(f"  ✓ 停損平倉後狀態: held_qty={state.held_qty}, last_action={state.last_action}")
+    print(f"  ✓ 停損平倉後狀態: held_qty={state.held_qty}, held_direction={state.held_direction}")
+    print(f"  ✓ 停損動作紀錄: {state.last_action}")
+    print(f"  ✓ 累計實現損益: {state.realized_pnl_ntd:,.0f} 元")
+
+    # 嚴格驗證 Step 4 的平倉行為與狀態清空
+    assert state.held_qty == 0, f"平倉後 held_qty 應為 0，實際為 {state.held_qty}"
+    assert state.held_direction is None, f"平倉後 held_direction 應為 None，實際為 {state.held_direction}"
+    assert "停損" in state.last_action, f"last_action 應包含停損訊息，實際為 {state.last_action}"
+    assert state.realized_pnl_ntd < 0, "停損後累計損益應為負數"
+
+    # 驗證平倉單參數
+    close_call_args = mock_svc.place_order.call_args.args[0]
+    print(f"  ✓ 送往券商的平倉委託單: {close_call_args}")
+    assert close_call_args["side"] == "sell"
+    assert close_call_args["qty"] == 1
+    assert close_call_args["new_close"] == 1  # 嚴格平倉單
+
     print("\n" + "=" * 60)
-    print("🎉 恭喜！Real-Time 60分K線 ➔ 訊號確認 ➔ 客製化 OCO 智慧單 ➔ 觸價停損 全流程模擬 100% 成功！")
+    print("🎉 真正的 100% 驗證完成：進場 ➔ OCO 智慧單 ➔ 跌破停損 ➔ 送出平倉單 ➔ 持倉歸零！")
     print("=" * 60)
 
 
