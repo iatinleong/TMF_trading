@@ -1145,7 +1145,6 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     state.held_qty = state.qty
                     state.held_direction = target
                     state.entry_price = entry_px
-                    state.peak_price_since_entry = entry_px
                     state.entry_recorded_at = time.time()
                     state.last_action = f"訊號進場 {target} x{state.qty}"
                     state.last_signal_key = signal["key"]
