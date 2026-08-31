@@ -118,3 +118,60 @@ def test_admin_upsert_posts_risk_parameters(monkeypatch):
         "max_loss_ntd": 5000.0,
         "max_loss_pct": 0.05,
     }
+
+
+def test_admin_upsert_posts_layer_toggles(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
+
+    fake_response = MagicMock()
+    fake_response.json.return_value = [
+        {"strategy_id": "breakout_long", "user_id": "user-456", "enabled": True}
+    ]
+    fake_response.raise_for_status.return_value = None
+
+    with patch("backend.strategy_config_store.requests.post", return_value=fake_response) as mock_post:
+        admin_upsert_strategy_config(
+            "user-456",
+            "breakout_long",
+            product_code="TM2609",
+            qty=1,
+            enabled=True,
+            oco_enabled=False,
+            soft_stop_enabled=True,
+            risk_insurance_enabled=False,
+            reverse_signal_exit_enabled=True,
+        )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload == {
+        "user_id": "user-456",
+        "strategy_id": "breakout_long",
+        "product_code": "TM2609",
+        "qty": 1,
+        "enabled": True,
+        "oco_enabled": False,
+        "soft_stop_enabled": True,
+        "risk_insurance_enabled": False,
+        "reverse_signal_exit_enabled": True,
+    }
+
+
+def test_admin_upsert_omits_layer_toggles_when_not_specified(monkeypatch):
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
+
+    fake_response = MagicMock()
+    fake_response.json.return_value = [{"strategy_id": "breakout_long"}]
+    fake_response.raise_for_status.return_value = None
+
+    with patch("backend.strategy_config_store.requests.post", return_value=fake_response) as mock_post:
+        admin_upsert_strategy_config(
+            "user-456", "breakout_long", product_code="TM2609", qty=1, enabled=True,
+        )
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert "oco_enabled" not in payload
+    assert "soft_stop_enabled" not in payload
+    assert "risk_insurance_enabled" not in payload
+    assert "reverse_signal_exit_enabled" not in payload

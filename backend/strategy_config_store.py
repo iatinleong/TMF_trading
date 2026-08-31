@@ -72,6 +72,10 @@ def admin_upsert_strategy_config(
     take_profit_points: float | None = None,
     max_loss_ntd: float | None = None,
     max_loss_pct: float | None = None,
+    oco_enabled: bool | None = None,
+    soft_stop_enabled: bool | None = None,
+    risk_insurance_enabled: bool | None = None,
+    reverse_signal_exit_enabled: bool | None = None,
     timeout: float = 10.0,
 ) -> dict:
     """把某個策略客製化綁定給某個帳號（新增），或更新已經綁定過的參數；靠
@@ -97,6 +101,14 @@ def admin_upsert_strategy_config(
         payload["max_loss_ntd"] = float(max_loss_ntd)
     if max_loss_pct is not None:
         payload["max_loss_pct"] = float(max_loss_pct)
+    if oco_enabled is not None:
+        payload["oco_enabled"] = bool(oco_enabled)
+    if soft_stop_enabled is not None:
+        payload["soft_stop_enabled"] = bool(soft_stop_enabled)
+    if risk_insurance_enabled is not None:
+        payload["risk_insurance_enabled"] = bool(risk_insurance_enabled)
+    if reverse_signal_exit_enabled is not None:
+        payload["reverse_signal_exit_enabled"] = bool(reverse_signal_exit_enabled)
 
     headers = _headers()
     headers["Prefer"] = "resolution=merge-duplicates,return=representation"
