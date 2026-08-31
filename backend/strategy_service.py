@@ -28,7 +28,7 @@ from .config import DEFAULT_STRATEGY, ContractSpec, app_base_dir
 from .kline_engine import get_store
 from .indicators import add_moving_averages, resample_to_60min
 from .signals import generate_breakout_signals, generate_pullback_signals
-from .timeutil import TAIPEI_TZ
+from .timeutil import TAIPEI_TZ, to_unix_seconds
 from .trading_service import TradingService
 
 logger = logging.getLogger(__name__)
@@ -176,7 +176,7 @@ def _record_trade(
         {
             "strategy_id": strategy_id,
             "type": kind,  # "entry" | "exit"
-            "time": int(pd.Timestamp(bar_time).timestamp()),
+            "time": to_unix_seconds(bar_time),
             "direction": direction,
             "price": price,
             "pnl": pnl,
@@ -577,7 +577,7 @@ def klines_with_signals(product_code: str, limit: int = 500) -> list[dict[str, A
     for i, (idx, row) in enumerate(bars.iterrows()):
         rows.append(
             {
-                "time": int(pd.Timestamp(idx).timestamp()),
+                "time": to_unix_seconds(idx),
                 "open": _num(row.get("open")),
                 "high": _num(row.get("high")),
                 "low": _num(row.get("low")),

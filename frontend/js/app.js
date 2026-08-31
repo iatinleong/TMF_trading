@@ -121,7 +121,14 @@ function initChart() {
     grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
     rightPriceScale: { borderColor: '#30363d' },
-    timeScale: { borderColor: '#30363d', timeVisible: true, secondsVisible: false },
+    timeScale: {
+      borderColor: '#30363d',
+      timeVisible: true,
+      secondsVisible: false,
+      rightOffset: 5,
+      barSpacing: 8,
+      minBarSpacing: 3,
+    },
   });
 
   candleSeries = chart.addCandlestickSeries({
@@ -175,6 +182,21 @@ function initChart() {
   });
 }
 
+let chartInitialFitted = false;
+
+async function onProductChange() {
+  const sel = document.getElementById('product-select');
+  const code = (sel ? sel.value : '').trim().toUpperCase();
+  if (!code) return;
+  currentProduct = code;
+  chartInitialFitted = false;
+  try {
+    await apiFetch(`${API}/api/product?product=${encodeURIComponent(code)}`, { method: 'POST' });
+  } catch (_) { /* ignore */ }
+  await loadKlines();
+  await refreshConnection();
+}
+
 async function loadKlines() {
   const res = await apiFetch(`${API}/api/klines?product=${currentProduct}&limit=500`);
   const data = await res.json();
@@ -186,6 +208,15 @@ async function loadKlines() {
     time: k.time, open: k.open, high: k.high, low: k.low, close: k.close,
   })));
   await loadSignals();
+
+  if (!chartInitialFitted && klinesCache.length > 0 && chart) {
+    const totalBars = klinesCache.length;
+    chart.timeScale().setVisibleLogicalRange({
+      from: Math.max(0, totalBars - 80),
+      to: totalBars + 2,
+    });
+    chartInitialFitted = true;
+  }
 }
 
 const STRATEGY_SHORT_CODE = {
