@@ -117,6 +117,10 @@ def _auto_arm_bound_strategies() -> None:
             take_profit_points=row.get("take_profit_points"),
             max_loss_ntd=row.get("max_loss_ntd"),
             max_loss_pct=row.get("max_loss_pct"),
+            oco_enabled=row.get("oco_enabled"),
+            soft_stop_enabled=row.get("soft_stop_enabled"),
+            risk_insurance_enabled=row.get("risk_insurance_enabled"),
+            reverse_signal_exit_enabled=row.get("reverse_signal_exit_enabled"),
         )
 
 
