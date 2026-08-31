@@ -756,6 +756,9 @@ def _reconcile_audit_log_path() -> Path:
     準）。這個檔案就是為了下次再發生類似狀況時，能直接查到當時真正比對的
     數字，不用再猜。
     """
+    account_user_id = os.getenv("ACCOUNT_USER_ID", "").strip()
+    if account_user_id:
+        return DATA_DIR / "users" / account_user_id / "reconcile_audit.log"
     return DATA_DIR / "reconcile_audit.log"
 
 

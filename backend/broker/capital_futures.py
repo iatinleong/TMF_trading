@@ -216,10 +216,15 @@ def _ensure_sta_apartment() -> None:
 
 
 def _find_default_log_path() -> Path:
-    """SKCOM Center/Order/Reply log 預設輸出目錄。"""
+    """SKCOM Center/Order/Reply log 預設輸出目錄。
+    若設定了 ACCOUNT_USER_ID（Worker 模式），自動分流至 data/users/<user_id>/capital_logs，
+    避免多個帳號行程共用同一個目錄產生 Windows 檔案鎖衝突與日誌混雜。"""
     env_path = os.getenv("CAPITAL_LOG_PATH")
     if env_path:
         return Path(env_path)
+    account_user_id = os.getenv("ACCOUNT_USER_ID", "").strip()
+    if account_user_id:
+        return _find_project_root() / "data" / "users" / account_user_id / "capital_logs"
     return _find_project_root() / "data" / "capital_logs"
 
 

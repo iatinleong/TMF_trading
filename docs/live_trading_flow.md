@@ -36,6 +36,9 @@
 3. **行情資料源與交易下單分離（Data Feed vs Execution Broker）**：
    - **行情與 K 線（Data Feed）**：全市場公開數據，由永豐 Shioaji API（讀取 `app_secrets` 的共用金鑰）與群益主報價連線負責 60 分 K 棒合成與歷史補缺，供全系統策略共享，不消耗各客戶的報價配額。
    - **下單與帳務（Order Execution）**：各 Worker 開機時從 `user_broker_credentials` 資料表載入該帳號專屬的 `CAPITAL_USER_ID / PASSWORD`；系統保證 `_load_project_env()` 與連線時 Worker 專屬帳密具有最高覆蓋優先權，絕不覆蓋回共用主帳號，確保真金白銀 100% 下在客戶自己的帳戶上。
+4. **日誌與稽核紀錄分流隔離（Per-Account Log & Audit Separation）**：
+   - **共用市場資料**：`data/*_60min_real.csv`（60 分 K 棒快取）、`data/raw_tick/`（逐筆行情）由全市場共享。
+   - **帳號專屬日誌**：Worker 模式下自動將群益原生日誌（`capital_logs/`）、下單稽核（`order_audit.log`）、持倉稽核（`position_audit.log`）與對帳日誌（`reconcile_audit.log`）分流輸出至 `data/users/<user_id>/` 目錄，徹底避免多行程競爭 Windows 檔案鎖，確保各帳號紀錄互不污染。
 
 ---
 

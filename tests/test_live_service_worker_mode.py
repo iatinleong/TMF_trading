@@ -104,3 +104,61 @@ def test_auto_connect_on_startup_preserves_worker_credentials_during_connect(mon
     assert os.environ["CAPITAL_USER_ID"] == "WORKER_B_ACCOUNT"
     assert os.environ["CAPITAL_PASSWORD"] == "WORKER_B_PASSWORD"
     mock_connect.assert_called_once()
+
+
+def test_log_paths_partition_by_account_user_id(monkeypatch):
+    """驗證設定 ACCOUNT_USER_ID 時，SKCOM log、下單稽核、持倉稽核與對帳日誌全部自動分流至 data/users/<user_id>/。"""
+    from backend.broker.capital_futures import (
+        _find_default_log_path,
+        _order_audit_log_path,
+        _position_audit_log_path,
+    )
+    from backend.strategy_service import _reconcile_audit_log_path
+
+    monkeypatch.delenv("CAPITAL_LOG_PATH", raising=False)
+    monkeypatch.setenv("ACCOUNT_USER_ID", "user-xyz-888")
+
+    capital_logs = _find_default_log_path()
+    order_audit = _order_audit_log_path()
+    position_audit = _position_audit_log_path()
+    reconcile_audit = _reconcile_audit_log_path()
+
+    assert "users" in capital_logs.parts
+    assert "user-xyz-888" in capital_logs.parts
+    assert capital_logs.name == "capital_logs"
+
+    assert "users" in order_audit.parts
+    assert "user-xyz-888" in order_audit.parts
+    assert order_audit.name == "order_audit.log"
+
+    assert "users" in position_audit.parts
+    assert "user-xyz-888" in position_audit.parts
+    assert position_audit.name == "position_audit.log"
+
+    assert "users" in reconcile_audit.parts
+    assert "user-xyz-888" in reconcile_audit.parts
+    assert reconcile_audit.name == "reconcile_audit.log"
+
+
+def test_log_paths_use_shared_data_when_account_user_id_unset(monkeypatch):
+    """驗證未設定 ACCOUNT_USER_ID（共用主行程）時，日誌維持輸出在 data/ 與 data/capital_logs。"""
+    from backend.broker.capital_futures import (
+        _find_default_log_path,
+        _order_audit_log_path,
+        _position_audit_log_path,
+    )
+    from backend.strategy_service import _reconcile_audit_log_path
+
+    monkeypatch.delenv("CAPITAL_LOG_PATH", raising=False)
+    monkeypatch.delenv("ACCOUNT_USER_ID", raising=False)
+
+    capital_logs = _find_default_log_path()
+    order_audit = _order_audit_log_path()
+    position_audit = _position_audit_log_path()
+    reconcile_audit = _reconcile_audit_log_path()
+
+    assert "users" not in capital_logs.parts
+    assert capital_logs.name == "capital_logs"
+    assert "users" not in order_audit.parts
+    assert "users" not in position_audit.parts
+    assert "users" not in reconcile_audit.parts
