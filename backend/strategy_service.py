@@ -1153,66 +1153,72 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
         else:
             # 方向限定策略：出現反向訊號只平倉出場，不反手做另一邊
             if state.held_qty > 0:
-                close_side = "sell" if state.held_direction == "long" else "buy"
-                result = svc.place_order(
-                    {
-                        "product_code": state.product_code,
-                        "side": close_side,
-                        "qty": state.held_qty,
-                        "price": "M",
-                        "trade_type": 2,
-                        "new_close": 1,
-                    }
-                )
-                order_result = result.get("order_result") or {}
-                if not order_result.get("success"):
-                    state.last_signal_key = signal["key"]
-                    state.consecutive_failures += 1
-                    state.last_action = f"平倉失敗（{state.held_direction}）: {order_result.get('message') or '券商拒單'}"
-                    if _check_orphaned_fill(
-                        result.get("state") or {},
-                        expected_side=("short" if close_side == "sell" else "long"),
-                        qty=state.held_qty,
-                    ):
-                        # 2026-08-21 修正：這裡跟上面持倉停損停利那段的孤兒單處理不一致，
-                        # 之前只有停止、沒有清空 held_qty——代表偵測到「其實已經平倉」
-                        # 之後，下一輪還是會當作有留倉繼續處理，等於白偵測。統一改成
-                        # 跟上面一樣清空。
+                if not state.reverse_signal_exit_enabled:
+                    state.last_action = (
+                        f"已持倉 {state.held_direction} x{state.held_qty}，"
+                        "已關閉反向訊號出場，持倉不動"
+                    )
+                else:
+                    close_side = "sell" if state.held_direction == "long" else "buy"
+                    result = svc.place_order(
+                        {
+                            "product_code": state.product_code,
+                            "side": close_side,
+                            "qty": state.held_qty,
+                            "price": "M",
+                            "trade_type": 2,
+                            "new_close": 1,
+                        }
+                    )
+                    order_result = result.get("order_result") or {}
+                    if not order_result.get("success"):
+                        state.last_signal_key = signal["key"]
+                        state.consecutive_failures += 1
+                        state.last_action = f"平倉失敗（{state.held_direction}）: {order_result.get('message') or '券商拒單'}"
+                        if _check_orphaned_fill(
+                            result.get("state") or {},
+                            expected_side=("short" if close_side == "sell" else "long"),
+                            qty=state.held_qty,
+                        ):
+                            # 2026-08-21 修正：這裡跟上面持倉停損停利那段的孤兒單處理不一致，
+                            # 之前只有停止、沒有清空 held_qty——代表偵測到「其實已經平倉」
+                            # 之後，下一輪還是會當作有留倉繼續處理，等於白偵測。統一改成
+                            # 跟上面一樣清空。
+                            state.held_qty = 0
+                            state.held_direction = None
+                            state.entry_price = 0.0
+                            _cancel_protection_order_for_state(state, svc)
+                            _stop_with_reason(
+                                state,
+                                "⚠ 平倉委託回報失敗，但偵測到近期有相符的真實成交紀錄，"
+                                "這筆倉位可能其實已經平倉、或狀態跟我們追蹤的不一致，"
+                                "已自動停止本策略，請立即人工核對！",
+                            )
+                    else:
+                        pnl = None
+                        if state.entry_price > 0 and quote:
+                            pnl = _estimate_pnl_ntd(
+                                contract=contract,
+                                direction=str(state.held_direction),
+                                entry_price=state.entry_price,
+                                exit_price=float(quote),
+                                qty=state.held_qty,
+                            )
+                            state.realized_pnl_ntd += pnl
+                        _record_trade(
+                            state.strategy_id,
+                            kind="exit",
+                            bar_time=signal["time"],
+                            direction=str(state.held_direction),
+                            price=float(quote) if quote else state.entry_price,
+                            pnl=pnl,
+                        )
+                        state.last_action = f"反向訊號，平倉 {state.held_direction} x{state.held_qty}"
                         state.held_qty = 0
                         state.held_direction = None
                         state.entry_price = 0.0
+                        state.last_signal_key = signal["key"]
                         _cancel_protection_order_for_state(state, svc)
-                        _stop_with_reason(
-                            state,
-                            "⚠ 平倉委託回報失敗，但偵測到近期有相符的真實成交紀錄，"
-                            "這筆倉位可能其實已經平倉、或狀態跟我們追蹤的不一致，"
-                            "已自動停止本策略，請立即人工核對！",
-                        )
-                else:
-                    pnl = None
-                    if state.entry_price > 0 and quote:
-                        pnl = _estimate_pnl_ntd(
-                            contract=contract,
-                            direction=str(state.held_direction),
-                            entry_price=state.entry_price,
-                            exit_price=float(quote),
-                            qty=state.held_qty,
-                        )
-                        state.realized_pnl_ntd += pnl
-                    _record_trade(
-                        state.strategy_id,
-                        kind="exit",
-                        bar_time=signal["time"],
-                        direction=str(state.held_direction),
-                        price=float(quote) if quote else state.entry_price,
-                        pnl=pnl,
-                    )
-                    state.last_action = f"反向訊號，平倉 {state.held_direction} x{state.held_qty}"
-                    state.held_qty = 0
-                    state.held_direction = None
-                    state.entry_price = 0.0
-                    state.last_signal_key = signal["key"]
-                    _cancel_protection_order_for_state(state, svc)
             else:
                 state.last_action = "空手，反向訊號不動作（本策略不做這個方向）"
         if state.loss_limit_hit():

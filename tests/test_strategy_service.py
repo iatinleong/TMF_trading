@@ -886,8 +886,9 @@ def test_tick_one_entry_skips_oco_when_disabled(clean_armed):
 
 def test_tick_one_reverse_signal_closes_position_by_default(clean_armed):
     """
-    2026-08-31：預設（`exit_mode` 未設定，或設成 "signal_only"）維持原本行為——
-    方向限定策略遇到反向訊號，有留倉就平倉出場。
+    reverse_signal_exit_enabled 預設 True，方向限定策略遇到反向訊號、有留倉
+    時應該平倉出場（見 test_tick_one_reverse_signal_skipped_when_disabled
+    驗證關掉之後的行為）。
     """
     state = _open_long_state(product_code="TM2609")  # direction_limit="long", held_qty=1
     svc = MagicMock()
@@ -909,6 +910,58 @@ def test_tick_one_reverse_signal_closes_position_by_default(clean_armed):
 
     svc.place_order.assert_called_once()
     assert state.held_qty == 0
+
+
+def test_tick_one_reverse_signal_skipped_when_disabled(clean_armed):
+    state = _open_long_state(product_code="TM2609", reverse_signal_exit_enabled=False)
+    svc = MagicMock()
+    st = {"quote": {"last_price": 20050.0}}
+
+    fake_bars = MagicMock()
+    fake_bars.empty = False
+    fake_bars.__len__.return_value = 100
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-08-21T09:45:00", "direction": "short", "key": "k1"},
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+    assert "已關閉反向訊號出場" in state.last_action
+
+
+def test_tick_one_reverse_signal_flat_position_unaffected_by_toggle(clean_armed):
+    # 空手時遇到反向訊號，不管開關是 True 還是 False，訊息都該是「空手不
+    # 動作」，不能被誤導成「已關閉反向出場」（code review 抓到的巢狀結構
+    # 要求：開關判斷要放在 held_qty > 0 分支內側，不是最外層）。
+    state = _open_long_state(
+        product_code="TM2609", held_qty=0, held_direction=None, entry_price=0.0,
+        reverse_signal_exit_enabled=False,
+    )
+    state.last_signal_key = None
+    svc = MagicMock()
+    st = {"quote": {"last_price": 20050.0}}
+
+    fake_bars = MagicMock()
+    fake_bars.empty = False
+    fake_bars.__len__.return_value = 100
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-08-21T09:45:00", "direction": "short", "key": "k1"},
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.last_action == "空手，反向訊號不動作（本策略不做這個方向）"
 
 
 def test_tick_one_entry_falls_back_to_bar_close_when_quote_missing(clean_armed):
