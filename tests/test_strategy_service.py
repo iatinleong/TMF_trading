@@ -228,6 +228,40 @@ def test_tick_one_risk_stop_fallback_triggers_before_point_stop():
     assert "風控保險" in state.stop_reason
 
 
+def test_tick_one_soft_stop_skipped_when_disabled():
+    # 跟 test_tick_one_forces_close_on_stop_loss_points 同一組價位（跌 200
+    # 點，遠超預設 stop_loss_points=100），但 soft_stop_enabled=False 時
+    # 不該觸發平倉。max_loss_ntd 拉高避免順便撞到風控保險。
+    state = _open_long_state(soft_stop_enabled=False, max_loss_ntd=100_000.0)
+    svc = MagicMock()
+    st = {"quote": {"last_price": 19800.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+    assert state.stopped is False
+
+
+def test_tick_one_risk_insurance_skipped_when_disabled():
+    # 跟 test_tick_one_risk_stop_fallback_triggers_before_point_stop 同一組
+    # 場景（點數停損門檻拉很寬，浮動虧損金額超過 max_loss_ntd），但
+    # risk_insurance_enabled=False 時不該觸發平倉。
+    state = _open_long_state(
+        stop_loss_points=1000.0, take_profit_points=3000.0,
+        max_loss_ntd=500.0, max_loss_pct=0.99,
+        risk_insurance_enabled=False,
+    )
+    svc = MagicMock()
+    st = {"quote": {"last_price": 19950.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+    assert state.stopped is False
+
+
 def test_tick_one_no_risk_stop_when_both_within_limits():
     # 點數、NTD門檻都還沒到，兩邊都不該觸發。
     state = _open_long_state(stop_loss_points=1000.0, take_profit_points=3000.0, max_loss_ntd=500.0, max_loss_pct=0.99)

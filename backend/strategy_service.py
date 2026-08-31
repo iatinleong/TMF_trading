@@ -929,13 +929,13 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                 if state.held_direction == "long"
                 else state.entry_price - current_price
             )
-            if points <= -abs(state.stop_loss_points) and state.protection_order_smart_key is None:
+            if state.soft_stop_enabled and points <= -abs(state.stop_loss_points) and state.protection_order_smart_key is None:
                 # Layer 2 (軟停損備援)：券商端 OCO 未生效時頂著
                 trigger_kind = "stop_loss"
-            elif points >= abs(state.take_profit_points) and state.protection_order_smart_key is None:
+            elif state.soft_stop_enabled and points >= abs(state.take_profit_points) and state.protection_order_smart_key is None:
                 # Layer 2 (軟停利備援)
                 trigger_kind = "take_profit"
-            elif floating_pnl is not None and state.loss_limit_hit(floating_pnl):
+            elif state.risk_insurance_enabled and floating_pnl is not None and state.loss_limit_hit(floating_pnl):
                 # Layer 3 (風控保險網 / 硬停損)
                 trigger_kind = "risk_stop"
 
