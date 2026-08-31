@@ -6,7 +6,7 @@
 
 # 第一篇：帳號綁定與專屬配套體系 (Account Layer)
 
-系統採用**「依帳號獨立隔離、一體化配對專屬交易與風管配套」**的架構：
+系統採用**「依帳號獨立隔離、行情資料源與下單執行分離、一體化配對專屬交易與風管配套」**的架構：
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────┐
@@ -17,11 +17,11 @@
 ┌─────────────────────────────────────────▼─────────────────────────────────────────┐
 │                    📦 帳號專屬交易與風管配套 (user_strategy_configs)                  │
 │                                                                                   │
-│  【4 支獨立方向交易策略】                 【專屬 4 道風控與出場防護網】                   │
-│  ├─ breakout_long  (突破做多)            ├─ 1. 券商 OCO 智慧單 (stop_loss/take_profit)    │
-│  ├─ breakout_short (突破做空)            ├─ 2. 本地軟停損備援 (soft SL/TP fallback)        │
-│  ├─ pullback_long  (回測做多)            ├─ 3. 金額硬停損網   (max_loss_ntd/pct)          │
-│  └─ pullback_short (回測做空)            └─ 4. 60分K反向平倉  (reverse signal close)      │
+│  【4 支獨立方向交易策略】                 【專屬 4 道風控防線（均可獨立開關）】           │
+│  ├─ breakout_long  (突破做多)            ├─ 1. 券商 OCO 智慧單 (oco_enabled)              │
+│  ├─ breakout_short (突破做空)            ├─ 2. 本地軟停損備援 (soft_stop_enabled)        │
+│  ├─ pullback_long  (回測做多)            ├─ 3. 金額硬停損保險 (risk_insurance_enabled)   │
+│  └─ pullback_short (回測做空)            └─ 4. 60分K反向平倉  (reverse_signal_exit_enabled)│
 └───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -32,7 +32,10 @@
 1. **身分驗證**：使用者透過 Supabase 登入取得專屬 JWT Token。
 2. **獨立 Worker 行程 (`WORKER_MODE=1`)**：
    - 每個帳號由獨立的後端行程（Worker Process）單獨運行，透過環境變數 `ACCOUNT_USER_ID=<UUID>` 綁定特定使用者。
-   - 每個 Worker 擁有獨立的群益 COM API 元件實例、獨立的行情報價訂閱與獨立的記憶體狀態，不同使用者之間**資金、持倉、下單與風控完全物理隔離，互不干擾**。
+   - 每個 Worker 擁有獨立的群益 COM API 元件實例與獨立的記憶體狀態，不同使用者之間**資金、持倉、下單與風控完全物理隔離，互不干擾**。
+3. **行情資料源與交易下單分離（Data Feed vs Execution Broker）**：
+   - **行情與 K 線（Data Feed）**：全市場公開數據，由永豐 Shioaji API（讀取 `app_secrets` 的共用金鑰）與群益主報價連線負責 60 分 K 棒合成與歷史補缺，供全系統策略共享，不消耗各客戶的報價配額。
+   - **下單與帳務（Order Execution）**：各 Worker 開機時從 `user_broker_credentials` 資料表載入該帳號專屬的 `CAPITAL_USER_ID / PASSWORD`；系統保證 `_load_project_env()` 與連線時 Worker 專屬帳密具有最高覆蓋優先權，絕不覆蓋回共用主帳號，確保真金白銀 100% 下在客戶自己的帳戶上。
 
 ---
 
@@ -40,19 +43,23 @@
 
 在 Supabase 資料庫中，每個帳號都配有一組專屬的策略與風控配置合約（`user_strategy_configs` 表）：
 
-| 欄位名稱 | 類型 | 說明 | 範例 |
-|---|---|---|---|
-| `user_id` | UUID | 綁定的帳號識別碼 | `a1b2c3d4-...` |
-| `strategy_id` | Text | 啟用的策略識別碼 | `breakout_long` / `pullback_short` 等 |
-| `product_code` | Text | 交易商品代碼 | `TM2609`（微台指 9 月） |
-| `qty` | Integer | 委託口數 | `1` 或 `2` |
-| `enabled` | Boolean | 是否啟用此策略 | `true`（啟用） / `false`（停用） |
-| **`stop_loss_points`** | Double | **帳號專屬停損點數** | `80.0`（虧損 80 點強制停損） |
-| **`take_profit_points`** | Double | **帳號專屬停利點數** | `200.0`（獲利 200 點停利了結） |
-| **`max_loss_ntd`** | Double | **帳號專屬金額硬停損** | `5000.0`（單日虧損達 5,000 元硬斷腕） |
-| **`max_loss_pct`** | Double | **帳號專屬比例硬停損** | `0.05`（虧損達本金 5% 硬斷腕） |
+| 欄位名稱 | 類型 | 預設值 | 說明 | 範例 |
+|---|---|---|---|---|
+| `user_id` | UUID | - | 綁定的帳號識別碼 | `a1b2c3d4-...` |
+| `strategy_id` | Text | - | 啟用的策略識別碼 | `breakout_long` / `pullback_short` 等 |
+| `product_code` | Text | `TM2608` | 交易商品代碼 | `TM2609`（微台指 9 月） |
+| `qty` | Integer | `1` | 委託口數 | `1` 或 `2` |
+| `enabled` | Boolean | `false` | 是否啟用此策略 | `true`（啟用） / `false`（停用） |
+| **`stop_loss_points`** | Double | `100.0` | **帳號專屬停損點數** | `80.0`（虧損 80 點強制停損） |
+| **`take_profit_points`** | Double | `250.0` | **帳號專屬停利點數** | `200.0`（獲利 200 點停利了結） |
+| **`max_loss_ntd`** | Double | `10000.0` | **帳號專屬金額硬停損** | `5000.0`（單日虧損達 5,000 元硬斷腕） |
+| **`max_loss_pct`** | Double | `0.10` | **帳號專屬比例硬停損** | `0.05`（虧損達本金 5% 硬斷腕） |
+| **`oco_enabled`** | Boolean | `true` | **第 1 道：券商 OCO 智慧單開關** | `true`（開） / `false`（關） |
+| **`soft_stop_enabled`** | Boolean | `true` | **第 2 道：本地軟停損/停利開關** | `true`（開） / `false`（關） |
+| **`risk_insurance_enabled`** | Boolean | `true` | **第 3 道：金額/比例硬停損開關** | `true`（開） / `false`（關） |
+| **`reverse_signal_exit_enabled`** | Boolean | `true` | **第 4 道：60分K 反向平倉開關** | `true`（開） / `false`（關） |
 
-> **管理員綁定工具**：可使用 `python scripts/bind_strategy.py --user-id <UUID> --strategy-id breakout_long --product-code TM2609 --qty 1 --stop-loss-points 80 --take-profit-points 200 --max-loss-ntd 5000 --enabled` 進行一鍵配置。
+> **管理員綁定工具**：可使用 `python scripts/bind_strategy.py --user-id <UUID> --strategy-id breakout_long --product-code TM2609 --qty 1 --stop-loss-points 80 --take-profit-points 200 --max-loss-ntd 5000 --enabled` 進行一鍵配置（亦可加上 `--no-reverse-signal-exit-enabled` 等開關旗標）。
 
 ---
 
@@ -68,12 +75,13 @@ sequenceDiagram
     participant DB as Supabase DB
     participant S as 策略引擎 (StrategyService)
 
-    W->>B: 自動連線登入 (auto_connect_on_startup)
+    W->>W: 載入專屬帳密 (_apply_worker_account_credentials)
+    W->>B: 自動連線登入專屬帳號 (auto_connect_on_startup)
     B-->>W: 回報連線成功 + 帳戶真實權益數 (Equity)
     W->>DB: 讀取該 user_id 啟用的策略與專屬風控 (list_user_strategy_configs)
-    DB-->>W: 回傳策略清單與專屬風控參數
+    DB-->>W: 回傳策略清單、專屬風控參數與 4 道防線開關
     W->>S: 呼叫 start_strategy 注入專屬參數並掛載 (Auto-Arm)
-    Note over S: 4 支策略各自載入專屬停損停利，進入 60 秒即時監控輪詢
+    Note over S: 4 支策略各自載入專屬停損停利與防線開關，進入 60 秒即時監控輪詢
 ```
 
 ---
@@ -131,19 +139,19 @@ flowchart TD
         E["取得成交價 entry_price > 0"]
     end
 
-    subgraph L1 ["🛡️ 第 1 道：券商端 OCO 智慧單（主力防線）"]
+    subgraph L1 ["🛡️ 第 1 道：券商端 OCO 智慧單（oco_enabled）"]
         D1["立刻向群益主機送出 SendFutureOCOOrderV1 (new_close=1)<br>• 停損 = entry_price ± stop_loss_points<br>• 停利 = entry_price ∓ take_profit_points<br>★ 掛在券商主機，斷線/當機依然生效"]
     end
 
-    subgraph L2 ["🛡️ 第 2 道：本地軟停損/軟停利備援（備援防線）"]
+    subgraph L2 ["🛡️ 第 2 道：本地軟停損/軟停利備援（soft_stop_enabled）"]
         D2["每 60 秒本地輪詢監控<br>（僅在 OCO 智慧單未掛上或失效時接管，有 OCO 則自動讓路）"]
     end
 
-    subgraph L3 ["🛡️ 第 3 道：金額/比例硬停損保險網（最高優先級）"]
+    subgraph L3 ["🛡️ 第 3 道：金額/比例硬停損保險網（risk_insurance_enabled）"]
         D3["帳戶層級無條件電路保險絲<br>• 浮虧/累計虧損達 max_loss_ntd 或 max_loss_pct<br>★ 無條件強制市價全平並鎖住策略，防止極端跳空爆倉"]
     end
 
-    subgraph L4 ["🛡️ 第 4 道：60 分 K 反向訊號平倉（趨勢翻轉）"]
+    subgraph L4 ["🛡️ 第 4 道：60 分 K 反向訊號平倉（reverse_signal_exit_enabled）"]
         D4["60 分 K 收盤出現相反指標訊號<br>★ 市價平倉手內部部位（不反手開新倉）"]
     end
 
@@ -155,21 +163,21 @@ flowchart TD
 
 ### 4 道防線詳細規格：
 
-1. **第 1 道：券商端 OCO 智慧單（主力防線）**
-   - 進場成功後立刻向群益主機送出 `SendFutureOCOOrderV1` 二擇一單（帶停損與停利兩支腿）。
+1. **第 1 道：券商端 OCO 智慧單（`oco_enabled`）**
+   - 進場成功且 `oco_enabled=True` 時，立刻向群益主機送出 `SendFutureOCOOrderV1` 二擇一單（帶停損與停利兩支腿）。
    - 委託嚴格指定 `new_close = 1（平倉）`，在券商端具備防呆機制，絕不會意外反手開新倉。
-2. **第 2 道：本地軟停損/軟停利備援（備援防線）**
-   - 每 60 秒輪詢，僅在 `state.protection_order_smart_key is None`（券商 OCO 未生效）時接管送出市價平倉單。有 OCO 智慧單時主動讓路，絕不搶單。
-3. **第 3 道：金額/比例硬停損保險網（最後防線）**
-   - 浮動虧損達 `max_loss_ntd`（如 5,000 元）或 `max_loss_pct`（如 5%）時，**無條件強制市價平倉並停用該策略**。
-4. **第 4 道：60 分 K 反向訊號平倉（趨勢翻轉出場）**
-   - 當 60 分 K 收盤出現相反方向訊號時，若手上有多單則市價賣出平倉（空單則市價買進平倉），**只平倉、不反手**。
+2. **第 2 道：本地軟停損/軟停利備援（`soft_stop_enabled`）**
+   - 每 60 秒輪詢，僅在 `state.protection_order_smart_key is None`（券商 OCO 未生效）時接管送出市價平倉單。有 OCO 智慧單時主動讓路，絕不搶單。若 `soft_stop_enabled=False` 則跳過。
+3. **第 3 道：金額/比例硬停損保險網（`risk_insurance_enabled`）**
+   - `risk_insurance_enabled=True` 時，浮動虧損達 `max_loss_ntd`（如 5,000 元）或 `max_loss_pct`（如 5%），**無條件強制市價平倉並停用該策略**。
+4. **第 4 道：60 分 K 反向訊號平倉（`reverse_signal_exit_enabled`）**
+   - `reverse_signal_exit_enabled=True` 時，當 60 分 K 收盤出現相反方向訊號，若手上有多單則市價賣出平倉（空單則市價買進平倉），**只平倉、不反手**。若設為 `False` 則持倉不動、抱滿波段。
 
 ### 各層獨立開關（2026-08-31）
 
 四道防線各自對應 `StrategyState` 的一個獨立布林欄位（`oco_enabled`／
 `soft_stop_enabled`／`risk_insurance_enabled`／`reverse_signal_exit_enabled`），
-可透過 `user_strategy_configs` 表依帳號/策略客製化關閉，預設全部開啟。四層
+可透過 `user_strategy_configs` 表依帳號/策略客製化關閉，預設全部開啟（`True`）。四層
 **完全對等**，沒有任何一層是強制、不可關閉的——包含第 3 道風控保險網也可以
 關掉。
 
@@ -203,18 +211,18 @@ flowchart TD
 ## 6. 全流程整合時序總覽
 
 ```
-[帳號登入] ➔ [Worker 啟動] ➔ [自動掛載專屬策略 + 風控配套]
+[帳號登入] ➔ [Worker 啟動] ➔ [自動掛載專屬策略 + 風控配套與開關]
       │
       ▼ (每 60 秒輪詢)
 [60分K 收盤確認訊號] ➔ [市價進場 FOK (new_close=0)]
       │
-      ▼ (entry_price > 0)
-[掛券商 OCO 智慧單 (new_close=1)] ──失敗──▶ [第 2 道軟停損本地頂著]
+      ▼ (entry_price > 0 且 oco_enabled=True)
+[掛券商 OCO 智慧單 (new_close=1)] ──失敗──▶ [第 2 道軟停損本地頂著 (soft_stop_enabled)]
       │
       ▼ (每 60 秒即時監控)
-  ├─ 觸及第 1/2 道點數門檻 ➔ 平倉出場
-  ├─ 觸及第 3 道金額硬停損 ➔ 強制平倉並鎖住策略
-  └─ 觸及第 4 道反向指標訊號 ➔ 平倉出場（不反手）
+  ├─ 觸及第 1/2 道點數門檻 (開關開啟時) ➔ 平倉出場
+  ├─ 觸及第 3 道金額硬停損 (risk_insurance_enabled) ➔ 強制平倉並鎖住策略
+  └─ 觸及第 4 道反向指標訊號 (reverse_signal_exit_enabled) ➔ 平倉出場（不反手）
       │
       ▼ (平倉完成後)
 [例行對帳同步本地持倉] ➔ [30秒寬限期後自動撤除孤兒智慧單]
