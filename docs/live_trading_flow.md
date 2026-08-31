@@ -49,7 +49,7 @@
    - **下單與帳務（Order Execution）**：各 Worker 開機時從 `user_broker_credentials` 資料表載入該帳號專屬的 `CAPITAL_USER_ID / PASSWORD`；系統保證 `_load_project_env()` 與連線時 Worker 專屬帳密具有最高覆蓋優先權，絕不覆蓋回共用主帳號，確保真金白銀 100% 下在客戶自己的帳戶上。
 4. **日誌與稽核紀錄分流隔離（Per-Account Log & Audit Separation）**：
    - **共用市場資料**：`data/*_60min_real.csv`（60 分 K 棒快取）、`data/raw_tick/`（逐筆行情）由全市場共享。
-   - **帳號專屬日誌**：Worker 模式下自動將群益原生日誌（`capital_logs/`）、下單稽核（`order_audit.log`）、持倉稽核（`position_audit.log`）與對帳日誌（`reconcile_audit.log`）分流輸出至 `data/users/<user_id>/` 目錄，徹底避免多行程競爭 Windows 檔案鎖，確保各帳號紀錄互不污染。
+   - **帳號專屬日誌**：Worker 模式下自動將群益原生日誌（`capital_logs/`）、按鈕操作稽核（`action_audit.log`，精確記錄幾點幾分按下啟動/停止/平倉/調參）、下單稽核（`order_audit.log`）、持倉稽核（`position_audit.log`）與對帳日誌（`reconcile_audit.log`）分流輸出至 `data/users/<user_id>/` 目錄，徹底避免多行程競爭 Windows 檔案鎖，確保各帳號紀錄互不污染。
 
 ---
 

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import math
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -82,6 +84,42 @@ CONTRACT_SPECS: dict[str, ContractSpec] = {
     "TMF": ContractSpec(name="TMF", point_value=10.0, tick_size=1.0),
 }
 VALID_STRATEGIES = {"breakout", "pullback"}
+
+
+def _action_audit_log_path(user_id: str | None = None) -> Path:
+    account_user_id = (user_id or os.getenv("ACCOUNT_USER_ID", "")).strip()
+    if account_user_id:
+        return DATA_DIR / "users" / account_user_id / "action_audit.log"
+    return DATA_DIR / "action_audit.log"
+
+
+def append_action_audit(
+    *,
+    action: str,
+    user_id: str = "",
+    user_email: str = "",
+    payload: Any = None,
+    status: str = "SUCCESS",
+    detail: str = "",
+) -> None:
+    """使用者按鈕操作稽核紀錄（持久化、只會 append）。
+    記錄前端 Dashboard 按下的任何控制按鈕（啟動/停止策略、一鍵平倉、切換商品、
+    真實下單安全開關、手動下單/撤單等），包含精確時間戳、使用者身分與請求參數。"""
+    try:
+        path = _action_audit_log_path(user_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        ts = pd.Timestamp.now(tz="Asia/Taipei").strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+        if isinstance(payload, BaseModel):
+            payload_str = payload.model_dump_json()
+        elif isinstance(payload, dict):
+            payload_str = json.dumps(payload, ensure_ascii=False)
+        else:
+            payload_str = str(payload or "")
+        line = f"{ts}\tuser_id={user_id}\temail={user_email}\taction={action}\tpayload={payload_str}\tstatus={status}\tdetail={detail}\n"
+        with path.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:  # noqa: BLE001
+        logger.warning("寫入操作稽核 log 失敗", exc_info=True)
 
 
 async def strategy_loop() -> None:
@@ -549,8 +587,15 @@ def live_strategy_trades(strategy_id: str | None = None) -> list[dict[str, objec
 
 
 @app.post("/api/product")
-def live_set_product(product: str) -> dict[str, object]:
-    return set_product(product)
+def live_set_product(product: str, request: Request = None) -> dict[str, object]:
+    res = set_product(product)
+    append_action_audit(
+        action="SET_PRODUCT",
+        user_id=getattr(getattr(request, "state", None), "user_id", "") if request else "",
+        user_email=getattr(getattr(request, "state", None), "user_email", "") if request else "",
+        payload={"product": product},
+    )
+    return res
 
 
 @app.get("/api/live/params")
@@ -569,91 +614,210 @@ def live_strategy_status() -> dict[str, object]:
 
 
 @app.post("/api/strategy/start")
-def live_strategy_start(request: StrategyStartRequest) -> dict[str, object]:
+def live_strategy_start(req_body: StrategyStartRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        return start_strategy(
-            request.strategy_id,
-            request.product_code,
-            qty=request.qty,
-            stop_loss_points=request.stop_loss_points,
-            take_profit_points=request.take_profit_points,
-            max_loss_ntd=request.max_loss_ntd,
-            max_loss_pct=request.max_loss_pct,
-            oco_enabled=request.oco_enabled,
-            soft_stop_enabled=request.soft_stop_enabled,
-            risk_insurance_enabled=request.risk_insurance_enabled,
-            reverse_signal_exit_enabled=request.reverse_signal_exit_enabled,
+        res = start_strategy(
+            req_body.strategy_id,
+            req_body.product_code,
+            qty=req_body.qty,
+            stop_loss_points=req_body.stop_loss_points,
+            take_profit_points=req_body.take_profit_points,
+            max_loss_ntd=req_body.max_loss_ntd,
+            max_loss_pct=req_body.max_loss_pct,
+            oco_enabled=req_body.oco_enabled,
+            soft_stop_enabled=req_body.soft_stop_enabled,
+            risk_insurance_enabled=req_body.risk_insurance_enabled,
+            reverse_signal_exit_enabled=req_body.reverse_signal_exit_enabled,
         )
+        append_action_audit(
+            action="START_STRATEGY",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="SUCCESS",
+        )
+        return res
     except ValueError as exc:
+        append_action_audit(
+            action="START_STRATEGY",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/strategy/stop")
-def live_strategy_stop(request: StrategyStopRequest) -> dict[str, object]:
-    return stop_strategy(request.strategy_id)
+def live_strategy_stop(req_body: StrategyStopRequest, request: Request = None) -> dict[str, object]:
+    res = stop_strategy(req_body.strategy_id)
+    append_action_audit(
+        action="STOP_STRATEGY",
+        user_id=getattr(getattr(request, "state", None), "user_id", "") if request else "",
+        user_email=getattr(getattr(request, "state", None), "user_email", "") if request else "",
+        payload=req_body.model_dump(),
+        status="SUCCESS",
+    )
+    return res
 
 
 @app.post("/api/positions/flatten")
-def live_flatten_positions() -> dict[str, object]:
+def live_flatten_positions(request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
         result = flatten_all_positions()
+        result["reconciled_strategies"] = reconcile_after_manual_close()
+        append_action_audit(
+            action="FLATTEN_POSITIONS",
+            user_id=user_id,
+            user_email=user_email,
+            status="SUCCESS",
+            detail=f"reconciled={result.get('reconciled_strategies')}",
+        )
+        return result
     except Exception as exc:  # noqa: BLE001
+        append_action_audit(
+            action="FLATTEN_POSITIONS",
+            user_id=user_id,
+            user_email=user_email,
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    # 一鍵平倉是真的送出真實委託單，但策略自己的持倉記帳不會自動知道，
-    # 平倉後一定要跑一次核對，兜不起來就自動停止相關策略、請人工核對
-    # （見 strategy_service.reconcile_after_manual_close 註解）。
-    result["reconciled_strategies"] = reconcile_after_manual_close()
-    return result
 
 
 @app.post("/api/positions/close")
-def api_close_position(request: ClosePositionRequest) -> dict[str, object]:
+def api_close_position(req_body: ClosePositionRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        result = live_close_position(request.model_dump())
+        result = live_close_position(req_body.model_dump())
+        result["reconciled_strategies"] = reconcile_after_manual_close(req_body.product_code)
+        append_action_audit(
+            action="CLOSE_POSITION",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="SUCCESS",
+        )
+        return result
     except Exception as exc:  # noqa: BLE001
+        append_action_audit(
+            action="CLOSE_POSITION",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    result["reconciled_strategies"] = reconcile_after_manual_close(request.product_code)
-    return result
 
 
 @app.delete("/api/order/{seq_no}")
-def api_cancel_order(seq_no: str, account: str | None = None) -> dict[str, object]:
+def api_cancel_order(seq_no: str, account: str | None = None, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        return live_cancel_order(seq_no, account=account)
+        res = live_cancel_order(seq_no, account=account)
+        append_action_audit(
+            action="CANCEL_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload={"seq_no": seq_no, "account": account},
+            status="SUCCESS",
+        )
+        return res
     except Exception as exc:  # noqa: BLE001
+        append_action_audit(
+            action="CANCEL_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload={"seq_no": seq_no, "account": account},
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/order/stop")
-def api_place_stop_order(request: StopOrderRequest) -> dict[str, object]:
-    """
-    送出真正的券商端 STP 停損智慧單（不是 strategy_service 目前用的軟停損）。
-    帳戶需已簽署「期貨智慧單風險預告書」，見 backend/broker/capital_futures.py
-    的 send_future_stp_order 說明。
-    """
+def api_place_stop_order(req_body: StopOrderRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        return place_stop_order(request.model_dump())
+        res = place_stop_order(req_body.model_dump())
+        append_action_audit(
+            action="PLACE_STOP_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="SUCCESS",
+        )
+        return res
     except Exception as exc:  # noqa: BLE001
+        append_action_audit(
+            action="PLACE_STOP_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/order/stop/cancel")
-def api_cancel_stop_order(request: CancelStopOrderRequest) -> dict[str, object]:
+def api_cancel_stop_order(req_body: CancelStopOrderRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        return cancel_stop_order(request.model_dump())
+        res = cancel_stop_order(req_body.model_dump())
+        append_action_audit(
+            action="CANCEL_STOP_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="SUCCESS",
+        )
+        return res
     except Exception as exc:  # noqa: BLE001
+        append_action_audit(
+            action="CANCEL_STOP_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/order/mit")
-def api_place_mit_order(request: MitOrderRequest) -> dict[str, object]:
-    """
-    送出真正的券商端 MIT 觸價智慧單（用來做真實停利單）。跟 STP 共用
-    /api/order/stop/cancel 撤單（傳 trade_kind=8）。見 send_future_mit_order 說明。
-    """
+def api_place_mit_order(req_body: MitOrderRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        return place_mit_order(request.model_dump())
+        res = place_mit_order(req_body.model_dump())
+        append_action_audit(
+            action="PLACE_MIT_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="SUCCESS",
+        )
+        return res
     except Exception as exc:  # noqa: BLE001
+        append_action_audit(
+            action="PLACE_MIT_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -740,22 +904,49 @@ def trading_capability() -> dict[str, object]:
 
 
 @app.post("/api/trading/connect")
-def trading_connect(request: TradingConnectRequest) -> dict[str, object]:
+def trading_connect(req_body: TradingConnectRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        return TradingService.get().connect(
-            environment=request.environment,
-            user_id=request.user_id,
-            password=request.password,
-            product_code=request.product_code,
-            account=request.account,
+        res = TradingService.get().connect(
+            environment=req_body.environment,
+            user_id=req_body.user_id,
+            password=req_body.password,
+            product_code=req_body.product_code,
+            account=req_body.account,
         )
+        append_action_audit(
+            action="CONNECT_BROKER",
+            user_id=user_id,
+            user_email=user_email,
+            payload={"environment": req_body.environment, "product_code": req_body.product_code, "account": req_body.account},
+            status="SUCCESS",
+        )
+        return res
     except Exception as exc:  # noqa: BLE001 - 回傳給 dashboard 顯示
+        append_action_audit(
+            action="CONNECT_BROKER",
+            user_id=user_id,
+            user_email=user_email,
+            payload={"environment": req_body.environment, "product_code": req_body.product_code, "account": req_body.account},
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/trading/disconnect")
-def trading_disconnect() -> dict[str, object]:
-    return TradingService.get().disconnect()
+def trading_disconnect(request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
+    res = TradingService.get().disconnect()
+    append_action_audit(
+        action="DISCONNECT_BROKER",
+        user_id=user_id,
+        user_email=user_email,
+        status="SUCCESS",
+    )
+    return res
 
 
 @app.get("/api/trading/status")
@@ -769,11 +960,21 @@ def trading_safety() -> dict[str, object]:
 
 
 @app.post("/api/trading/safety")
-def trading_safety_set(request: TradingSafetyRequest) -> dict[str, object]:
+def trading_safety_set(req_body: TradingSafetyRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     # 從「禁止下單」切到「允許下單」時要求輸入確認字串，避免誤觸就打開真實下單。
-    if not request.disabled and request.confirm != "ENABLE":
+    if not req_body.disabled and req_body.confirm != "ENABLE":
         raise HTTPException(status_code=400, detail="confirm 必須是 'ENABLE' 才能開啟真實下單")
-    disabled = set_trading_disabled(request.disabled)
+    disabled = set_trading_disabled(req_body.disabled)
+    append_action_audit(
+        action="SET_TRADING_SAFETY",
+        user_id=user_id,
+        user_email=user_email,
+        payload=req_body.model_dump(),
+        status="SUCCESS",
+        detail=f"trading_disabled={disabled}",
+    )
     return {"trading_disabled": disabled}
 
 
@@ -794,18 +995,54 @@ def trading_subscribe(request: TradingSubscribeRequest) -> dict[str, object]:
 
 
 @app.post("/api/trading/order")
-def trading_place_order(request: TradingOrderRequest) -> dict[str, object]:
+def trading_place_order(req_body: TradingOrderRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        return TradingService.get().place_order(request.model_dump())
+        res = TradingService.get().place_order(req_body.model_dump())
+        append_action_audit(
+            action="MANUAL_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="SUCCESS",
+        )
+        return res
     except Exception as exc:  # noqa: BLE001
+        append_action_audit(
+            action="MANUAL_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.post("/api/order")
-def live_place_order(request: TradingOrderRequest) -> dict[str, object]:
+def live_place_order(req_body: TradingOrderRequest, request: Request = None) -> dict[str, object]:
+    user_id = getattr(getattr(request, "state", None), "user_id", "") if request else ""
+    user_email = getattr(getattr(request, "state", None), "user_email", "") if request else ""
     try:
-        return place_order(request.model_dump())
+        res = place_order(req_body.model_dump())
+        append_action_audit(
+            action="MANUAL_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="SUCCESS",
+        )
+        return res
     except Exception as exc:  # noqa: BLE001
+        append_action_audit(
+            action="MANUAL_ORDER",
+            user_id=user_id,
+            user_email=user_email,
+            payload=req_body.model_dump(),
+            status="FAILED",
+            detail=str(exc),
+        )
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
