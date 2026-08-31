@@ -824,30 +824,6 @@ def test_tick_one_reverse_signal_closes_position_by_default(clean_armed):
     assert state.held_qty == 0
 
 
-def test_tick_one_reverse_signal_skipped_when_exit_mode_is_sltp_only(clean_armed):
-    """`exit_mode="sltp_only"` 時，反向訊號出場整層讓路，只靠停損停利/風控保險頂著，部位維持不動。"""
-    state = _open_long_state(product_code="TM2609", exit_mode="sltp_only")
-    svc = MagicMock()
-    st = {"quote": {"last_price": 20050.0}}  # 沒有觸及停損停利門檻
-
-    fake_bars = MagicMock()
-    fake_bars.empty = False
-    fake_bars.__len__.return_value = 100
-
-    with patch.object(
-        strategy_service,
-        "_latest_closed_signal",
-        return_value={"time": "2026-08-21T09:45:00", "direction": "short", "key": "k1"},
-    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
-        strategy_service, "_signaled_frame", return_value=MagicMock()
-    ):
-        _tick_one(state, svc, st)
-
-    svc.place_order.assert_not_called()
-    assert state.held_qty == 1
-    assert state.held_direction == "long"
-
-
 def test_tick_one_entry_falls_back_to_bar_close_when_quote_missing(clean_armed):
     """
     2026-08-30 code review 抓到的隱患：進場成交那一刻，如果即時報價剛好缺失
@@ -1117,7 +1093,6 @@ def test_start_strategy_accepts_custom_risk_parameters(clean_armed):
             take_profit_points=200.0,
             max_loss_ntd=5000.0,
             max_loss_pct=0.05,
-            exit_mode="signal_only",
         )
 
     state = _armed["breakout_long"]
@@ -1126,22 +1101,3 @@ def test_start_strategy_accepts_custom_risk_parameters(clean_armed):
     assert state.take_profit_points == 200.0
     assert state.max_loss_ntd == 5000.0
     assert state.max_loss_pct == 0.05
-    assert state.exit_mode == "signal_only"
-
-
-def test_tick_one_skips_points_exit_for_signal_only():
-    """驗證 exit_mode='signal_only' 時，不會因為點數虧損觸發軟停損，等反向訊號。"""
-    state = _open_long_state(product_code="TM2609")
-    state.exit_mode = "signal_only"
-    state.stop_loss_points = 100.0
-    state.entry_price = 22000.0
-
-    svc = MagicMock()
-    # 現價 21850（虧損 150 點 > 100 點），但未達 max_loss_ntd 門檻
-    st = {"quote": {"last_price": 21850.0}}
-
-    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
-        _tick_one(state, svc, st)
-
-    svc.place_order.assert_not_called()
-    assert state.held_qty == 1

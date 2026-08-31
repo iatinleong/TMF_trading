@@ -72,7 +72,6 @@ def admin_upsert_strategy_config(
     take_profit_points: float | None = None,
     max_loss_ntd: float | None = None,
     max_loss_pct: float | None = None,
-    exit_mode: str | None = None,
     timeout: float = 10.0,
 ) -> dict:
     """把某個策略客製化綁定給某個帳號（新增），或更新已經綁定過的參數；靠
@@ -98,8 +97,6 @@ def admin_upsert_strategy_config(
         payload["max_loss_ntd"] = float(max_loss_ntd)
     if max_loss_pct is not None:
         payload["max_loss_pct"] = float(max_loss_pct)
-    if exit_mode is not None:
-        payload["exit_mode"] = str(exit_mode)
 
     headers = _headers()
     headers["Prefer"] = "resolution=merge-duplicates,return=representation"

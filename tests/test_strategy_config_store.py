@@ -104,7 +104,6 @@ def test_admin_upsert_posts_risk_parameters(monkeypatch):
             take_profit_points=200.0,
             max_loss_ntd=5000.0,
             max_loss_pct=0.05,
-            exit_mode="trailing_stop",
         )
 
     payload = mock_post.call_args.kwargs["json"]
@@ -118,5 +117,4 @@ def test_admin_upsert_posts_risk_parameters(monkeypatch):
         "take_profit_points": 200.0,
         "max_loss_ntd": 5000.0,
         "max_loss_pct": 0.05,
-        "exit_mode": "trailing_stop",
     }

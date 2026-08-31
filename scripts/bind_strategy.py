@@ -59,7 +59,6 @@ def main() -> int:
     parser.add_argument("--take-profit-points", type=float, default=None, help="客製化停利點數（如 250.0）")
     parser.add_argument("--max-loss-ntd", type=float, default=None, help="客製化金額硬停損（如 10000.0）")
     parser.add_argument("--max-loss-pct", type=float, default=None, help="客製化比例硬停損（如 0.10）")
-    parser.add_argument("--exit-mode", default=None, help="出場/風控模式（預設 sltp_fixed）")
     parser.add_argument("--enabled", action="store_true", help="建立後直接標記為啟用（預設不啟用）")
     args = parser.parse_args()
 
@@ -85,7 +84,6 @@ def main() -> int:
         take_profit_points=args.take_profit_points,
         max_loss_ntd=args.max_loss_ntd,
         max_loss_pct=args.max_loss_pct,
-        exit_mode=args.exit_mode,
     )
     print(f"已綁定：{row}")
     return 0

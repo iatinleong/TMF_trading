@@ -117,7 +117,6 @@ def _auto_arm_bound_strategies() -> None:
             take_profit_points=row.get("take_profit_points"),
             max_loss_ntd=row.get("max_loss_ntd"),
             max_loss_pct=row.get("max_loss_pct"),
-            exit_mode=row.get("exit_mode"),
         )
 
 
@@ -246,7 +245,6 @@ class StrategyStartRequest(BaseModel):
     take_profit_points: float | None = None
     max_loss_ntd: float | None = None
     max_loss_pct: float | None = None
-    exit_mode: str | None = None
 
 
 class StrategyStopRequest(BaseModel):
@@ -573,7 +571,6 @@ def live_strategy_start(request: StrategyStartRequest) -> dict[str, object]:
             take_profit_points=request.take_profit_points,
             max_loss_ntd=request.max_loss_ntd,
             max_loss_pct=request.max_loss_pct,
-            exit_mode=request.exit_mode,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

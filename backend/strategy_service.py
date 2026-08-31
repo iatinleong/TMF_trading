@@ -83,7 +83,6 @@ class StrategyState:
     strategy: str
     direction_limit: str
     label: str
-    exit_mode: str = "sltp_fixed"
     qty: int = 1
     initial_capital_ntd: float = 100_000.0
     max_loss_ntd: float = 10_000.0
@@ -282,10 +281,6 @@ def _place_oco_protection_for_state(state: StrategyState, svc: TradingService) -
        實際價差，格式未驗證過）；改用 order_price_type=2（限價）+ 實際數字
        價格，跟原本 STP/MIT 已經驗證過能用的方式一致。
     """
-    if state.exit_mode == "signal_only":
-        state.last_action += "（風控模式為 signal_only 純訊號出場，略過掛券商 OCO 智慧單）"
-        return
-
     settlement_month = _settlement_month_from_tmf_code(state.product_code)
     if settlement_month is None:
         state.last_action += "（非 TMF 具體月份碼，OCO 智慧單略過，改用軟停損停利保護）"
@@ -605,7 +600,6 @@ def strategy_config_defaults(strategy_id: str | None = None) -> dict[str, Any]:
         "strategy": defs.get("strategy", "pullback"),
         "direction_limit": defs.get("direction_limit", "long"),
         "label": defs.get("label", strategy_id or ""),
-        "exit_mode": "signal_only",
         "qty": _env_int("STRATEGY_QTY", 1),
         "initial_capital_ntd": _fetch_equity_basis(),
         "max_loss_ntd": _env_float("STRATEGY_MAX_LOSS_NTD", 10_000.0),
@@ -625,7 +619,6 @@ def _state_to_dict(state: StrategyState) -> dict[str, Any]:
         "product_code": state.product_code,
         "strategy": state.strategy,
         "direction_limit": state.direction_limit,
-        "exit_mode": state.exit_mode,
         "qty": state.qty,
         "held_qty": state.held_qty,
         "held_direction": state.held_direction,
@@ -671,7 +664,6 @@ def start_strategy(
     initial_capital_ntd: float | None = None,
     max_loss_ntd: float | None = None,
     max_loss_pct: float | None = None,
-    exit_mode: str | None = None,
 ) -> dict[str, Any]:
     if strategy_id not in STRATEGY_DEFS:
         raise ValueError(f"未知的策略 id: {strategy_id}（可用：{', '.join(STRATEGY_DEFS)}）")
@@ -682,7 +674,6 @@ def start_strategy(
         strategy=str(defaults["strategy"]),
         direction_limit=str(defaults["direction_limit"]),
         label=str(defaults["label"]),
-        exit_mode=str(exit_mode if exit_mode is not None else defaults["exit_mode"]),
         qty=int(qty if qty is not None else defaults["qty"]),
         initial_capital_ntd=float(initial_capital_ntd if initial_capital_ntd is not None else defaults["initial_capital_ntd"]),
         max_loss_ntd=float(max_loss_ntd if max_loss_ntd is not None else defaults["max_loss_ntd"]),
@@ -914,25 +905,20 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
             except (ValueError, TypeError):
                 floating_pnl = None
 
-            if state.exit_mode == "sltp_fixed":
-                points = (
-                    current_price - state.entry_price
-                    if state.held_direction == "long"
-                    else state.entry_price - current_price
-                )
-                if points <= -abs(state.stop_loss_points) and state.protection_order_smart_key is None:
-                    # Layer 2 (軟停損備援)：券商端 OCO 未生效時頂著
-                    trigger_kind = "stop_loss"
-                elif points >= abs(state.take_profit_points) and state.protection_order_smart_key is None:
-                    # Layer 2 (軟停利備援)
-                    trigger_kind = "take_profit"
-                elif floating_pnl is not None and state.loss_limit_hit(floating_pnl):
-                    # Layer 3 (風控保險網 / 硬停損)
-                    trigger_kind = "risk_stop"
-            elif state.exit_mode == "signal_only":
-                # 純訊號出場模式：跳過 Layer 1/2 點數出場，保留 Layer 3 金額硬停損兜底
-                if floating_pnl is not None and state.loss_limit_hit(floating_pnl):
-                    trigger_kind = "risk_stop"
+            points = (
+                current_price - state.entry_price
+                if state.held_direction == "long"
+                else state.entry_price - current_price
+            )
+            if points <= -abs(state.stop_loss_points) and state.protection_order_smart_key is None:
+                # Layer 2 (軟停損備援)：券商端 OCO 未生效時頂著
+                trigger_kind = "stop_loss"
+            elif points >= abs(state.take_profit_points) and state.protection_order_smart_key is None:
+                # Layer 2 (軟停利備援)
+                trigger_kind = "take_profit"
+            elif floating_pnl is not None and state.loss_limit_hit(floating_pnl):
+                # Layer 3 (風控保險網 / 硬停損)
+                trigger_kind = "risk_stop"
 
         if trigger_kind is not None:
             reason_label = {
@@ -1145,13 +1131,6 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         _place_oco_protection_for_state(state, svc)
             else:
                 state.last_action = f"已持倉 {target} x{state.held_qty}，同向訊號不動作"
-        elif state.exit_mode == "sltp_only":
-            # 2026-08-31：依帳號/策略客製化——exit_mode="sltp_only" 時，這支
-            # 策略對反向訊號整個讓路，只靠停損停利／風控保險頂著，不理會
-            # 訊號邏輯自己判斷的「趨勢可能反轉」。這是刻意的風險輪廓選擇
-            # （會讓部位撐過更大幅度的逆向波動），不是預設行為——預設
-            # （exit_mode 未設定或 "signal_only"）維持原本反向訊號就出場。
-            state.last_action = f"已持倉 {state.held_direction} x{state.held_qty}，exit_mode=sltp_only 不理會反向訊號"
         else:
             # 方向限定策略：出現反向訊號只平倉出場，不反手做另一邊
             if state.held_qty > 0:

@@ -28,7 +28,7 @@
 
 ### 0a. 帳號登入與策略配對機制 (Account Pairing)
 - **身分驗證**：使用者透過 Supabase 登入取得 JWT。
-- **策略客製化綁定表 (`user_strategy_configs`)**：資料庫中記錄每個帳號允許運行的策略、商品代碼（如 `TM2609`）、口數、是否啟用 (`enabled=true`)，以及**專屬風控參數**（`stop_loss_points` 停損點數、`take_profit_points` 停利點數、`max_loss_ntd` 硬停損金額、`max_loss_pct` 硬停損比例、`exit_mode` 風控模式）。
+- **策略客製化綁定表 (`user_strategy_configs`)**：資料庫中記錄每個帳號允許運行的策略、商品代碼（如 `TM2609`）、口數、是否啟用 (`enabled=true`)，以及**專屬風控參數**（`stop_loss_points` 停損點數、`take_profit_points` 停利點數、`max_loss_ntd` 硬停損金額、`max_loss_pct` 硬停損比例）。
 - **獨立 Worker 自動掛載**：當系統以 Worker 模式啟動（`WORKER_MODE=1`）且群益連線成功後，`_auto_arm_bound_strategies()` 會自動把該帳號已啟用的策略帶入其專屬風控參數 Arm 起來，無需人工在網頁上一一手動勾選與設定。
 
 ### 0b. 4 個獨立方向交易策略 (Trading Strategies)

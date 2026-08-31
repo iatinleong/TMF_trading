@@ -4,5 +4,4 @@ alter table if exists public.user_strategy_configs
   add column if not exists stop_loss_points double precision,
   add column if not exists take_profit_points double precision,
   add column if not exists max_loss_ntd double precision,
-  add column if not exists max_loss_pct double precision,
-  add column if not exists exit_mode text;
+  add column if not exists max_loss_pct double precision;

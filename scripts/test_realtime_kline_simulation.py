@@ -71,7 +71,6 @@ def run_simulation():
             take_profit_points=200.0,
             max_loss_ntd=5000.0,
             max_loss_pct=0.05,
-            exit_mode="sltp_fixed",
         )
     state = _armed[strategy_id]
     print(f"  ✓ 策略 {strategy_id} 已掛載 (Armed)")

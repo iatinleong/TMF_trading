@@ -41,7 +41,6 @@ def test_arms_only_enabled_bound_strategies(monkeypatch):
             "take_profit_points": 200.0,
             "max_loss_ntd": 5000.0,
             "max_loss_pct": 0.05,
-            "exit_mode": "trailing_stop",
         },
         {"strategy_id": "breakout_short", "product_code": "TM2609", "qty": 1, "enabled": False},
     ]
@@ -58,5 +57,4 @@ def test_arms_only_enabled_bound_strategies(monkeypatch):
         take_profit_points=200.0,
         max_loss_ntd=5000.0,
         max_loss_pct=0.05,
-        exit_mode="trailing_stop",
     )
