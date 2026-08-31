@@ -47,7 +47,7 @@ function updateChartLegend(kline, sig) {
 
   let html = '';
   if (kline && isVal(kline.open) && isVal(kline.close)) {
-    const c = Number(kline.close) >= Number(kline.open) ? 'var(--green)' : 'var(--red)';
+    const c = Number(kline.close) >= Number(kline.open) ? '#ef4444' : '#22c55e';
     html += `<span style="color:${c}">O:${formatPrice(kline.open)} H:${formatPrice(kline.high)} L:${formatPrice(kline.low)} C:${formatPrice(kline.close)}</span>`;
   }
 
