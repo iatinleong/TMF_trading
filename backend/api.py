@@ -249,6 +249,10 @@ class StrategyStartRequest(BaseModel):
     take_profit_points: float | None = None
     max_loss_ntd: float | None = None
     max_loss_pct: float | None = None
+    oco_enabled: bool | None = None
+    soft_stop_enabled: bool | None = None
+    risk_insurance_enabled: bool | None = None
+    reverse_signal_exit_enabled: bool | None = None
 
 
 class StrategyStopRequest(BaseModel):
@@ -575,6 +579,10 @@ def live_strategy_start(request: StrategyStartRequest) -> dict[str, object]:
             take_profit_points=request.take_profit_points,
             max_loss_ntd=request.max_loss_ntd,
             max_loss_pct=request.max_loss_pct,
+            oco_enabled=request.oco_enabled,
+            soft_stop_enabled=request.soft_stop_enabled,
+            risk_insurance_enabled=request.risk_insurance_enabled,
+            reverse_signal_exit_enabled=request.reverse_signal_exit_enabled,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

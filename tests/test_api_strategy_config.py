@@ -12,7 +12,7 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
-from backend.api import api_me, api_my_strategy_configs
+from backend.api import StrategyStartRequest, api_me, api_my_strategy_configs, live_strategy_start
 
 
 def _make_request(*, user_id: str = "", user_email: str = "") -> Request:
@@ -67,3 +67,39 @@ def test_my_strategy_configs_empty_for_account_with_no_custom_strategy():
         result = api_my_strategy_configs(request)
 
     assert result == []
+
+
+def test_live_strategy_start_passes_layer_toggles_through():
+    request = StrategyStartRequest(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        oco_enabled=False,
+        soft_stop_enabled=True,
+        risk_insurance_enabled=False,
+        reverse_signal_exit_enabled=True,
+    )
+
+    with patch("backend.api.start_strategy", return_value={"strategy_id": "breakout_long"}) as mock_start:
+        live_strategy_start(request)
+
+    mock_start.assert_called_once_with(
+        "breakout_long",
+        "TM2609",
+        qty=None,
+        stop_loss_points=None,
+        take_profit_points=None,
+        max_loss_ntd=None,
+        max_loss_pct=None,
+        oco_enabled=False,
+        soft_stop_enabled=True,
+        risk_insurance_enabled=False,
+        reverse_signal_exit_enabled=True,
+    )
+
+
+def test_strategy_start_request_defaults_layer_toggles_to_none():
+    request = StrategyStartRequest(strategy_id="breakout_long", product_code="TM2609")
+    assert request.oco_enabled is None
+    assert request.soft_stop_enabled is None
+    assert request.risk_insurance_enabled is None
+    assert request.reverse_signal_exit_enabled is None
