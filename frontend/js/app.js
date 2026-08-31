@@ -426,35 +426,35 @@ async function refreshOrders() {
         ? `<button class="action-btn danger" type="button" onclick="cancelOrder('${escHtml(seq)}')">撤單</button>`
         : '—';
 
-      // 1. 性質 (新倉/平倉/當沖/自動)
-      let flagBadge = '—';
+      // 1. 性質 (新倉 / 平倉 / 當沖 / 自動)
+      let flagText = '—';
       const flag = String(r.new_close_flag || '').toUpperCase();
-      if (flag === 'N') flagBadge = '<span class="badge-flag new">新倉</span>';
-      else if (flag === 'O') flagBadge = '<span class="badge-flag close">平倉</span>';
-      else if (flag === 'Y') flagBadge = '<span class="badge-flag daytrade">當沖</span>';
-      else if (flag === 'A') flagBadge = '<span class="badge-flag auto">自動</span>';
-      else if (flag) flagBadge = `<span class="badge-flag auto">${escHtml(flag)}</span>`;
+      if (flag === 'N') flagText = '新倉';
+      else if (flag === 'O') flagText = '平倉';
+      else if (flag === 'Y') flagText = '當沖';
+      else if (flag === 'A') flagText = '自動';
+      else if (flag) flagText = flag;
 
-      // 2. 買賣方向 (紅多 / 綠空)
-      let dirHtml = escHtml(r.direction || '—');
-      if (r.direction === '多' || r.direction_key === 'long') dirHtml = '<span class="text-long">多</span>';
-      else if (r.direction === '空' || r.direction_key === 'short') dirHtml = '<span class="text-short">空</span>';
+      // 2. 買賣方向 (買進 / 賣出)
+      let dirText = r.direction || '—';
+      if (r.direction === '多' || r.direction_key === 'long') dirText = '買進';
+      else if (r.direction === '空' || r.direction_key === 'short') dirText = '賣出';
 
       // 3. 口數 (已成交 / 委託口數)
       const filled = (r.filled_qty !== undefined && r.filled_qty !== '') ? r.filled_qty : (r.is_active ? '0' : (r.qty || '0'));
       const total = r.orig_qty || r.qty || '—';
-      const qtyHtml = `<span class="qty-highlight">${escHtml(String(filled))}</span> <span class="qty-dim">/ ${escHtml(String(total))}</span>`;
+      const qtyText = `${filled} / ${total}`;
 
       // 4. 序號/書號
-      const orderIdHtml = `<span class="seq-mono">${escHtml(r.book_no || r.seq_no || '—')}</span>`;
+      const orderId = r.book_no || r.seq_no || '—';
 
       return `<tr>
         <td>${escHtml(r.time || '—')}</td>
-        <td>${orderIdHtml}</td>
+        <td>${escHtml(orderId)}</td>
         <td>${escHtml(r.product || '—')}</td>
-        <td>${flagBadge}</td>
-        <td>${dirHtml}</td>
-        <td>${qtyHtml}</td>
+        <td>${escHtml(flagText)}</td>
+        <td>${escHtml(dirText)}</td>
+        <td>${escHtml(qtyText)}</td>
         <td>${escHtml(r.price || '—')}</td>
         <td>${escHtml(r.status || '—')}</td>
         <td>${cancelBtn}</td>
@@ -903,7 +903,14 @@ async function init() {
   setInterval(() => refreshOrders(), 3000);
   setInterval(() => refreshStrategyStatus(), 5000);
   setInterval(() => refreshTradingSafety(), 5000);
-  setInterval(() => loadSignals(), 60000);
+  // 2026-08-31 實測抓到的 bug：蠟燭圖本體（candleSeries）只有頁面第一次載入時
+  // 呼叫過 loadKlines() 一次，之後完全不會再更新——只有 MA 線/訊號疊圖靠
+  // loadSignals() 每 60 秒刷新，導致蠟燭圖凍結在頁面剛打開那一刻，跟後端
+  // 實際的 K 線資料越差越多，畫面看起來會逐漸「跟現在對不上」。loadKlines()
+  // 本身最後就會呼叫 loadSignals()，這裡改成定時呼叫 loadKlines()，兩邊一起
+  // 刷新，不需要也不該再分開各跑各的。setData() 不會重置使用者當下的縮放/
+  // 平移位置（這個檔案沒有呼叫 fitContent()），刷新不會打斷使用者正在看的範圍。
+  setInterval(() => loadKlines(), 60000);
 }
 
 init().catch(console.error);

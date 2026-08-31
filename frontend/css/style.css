@@ -332,26 +332,6 @@ td { padding: 4px 6px; border-bottom: 1px solid var(--bg3); white-space: nowrap;
 }
 .action-btn.danger:hover { background: var(--red-bg); }
 
-.badge-flag {
-  display: inline-block;
-  padding: 1px 6px;
-  border-radius: 3px;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-.badge-flag.new { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
-.badge-flag.close { background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.4); }
-.badge-flag.daytrade { background: rgba(168, 85, 247, 0.15); color: #a855f7; border: 1px solid rgba(168, 85, 247, 0.4); }
-.badge-flag.auto { background: rgba(148, 163, 184, 0.15); color: #94a3b8; border: 1px solid rgba(148, 163, 184, 0.4); }
-
-.text-long { color: #ef4444; font-weight: 600; }
-.text-short { color: #22c55e; font-weight: 600; }
-
-.seq-mono { font-family: monospace; font-size: 11px; color: var(--muted); }
-.qty-highlight { font-weight: 600; }
-.qty-dim { color: var(--muted); font-size: 10px; }
-
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
