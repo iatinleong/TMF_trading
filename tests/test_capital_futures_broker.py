@@ -316,3 +316,18 @@ def test_position_audit_log_includes_account_tag(tmp_path):
 
     content = audit_path.read_text(encoding="utf-8")
     assert "account=test_user_123" in content
+
+
+def test_find_project_root_frozen_mode(monkeypatch, tmp_path):
+    """驗證在 PyInstaller 凍結執行檔環境下，_find_project_root 正確回傳 exe 所在目錄。"""
+    from pathlib import Path
+    import sys
+
+    fake_exe = tmp_path / "installed_app" / "quant_app.exe"
+    fake_exe.parent.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "executable", str(fake_exe))
+
+    root = capital_futures._find_project_root()
+    assert root == fake_exe.parent

@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -182,7 +183,11 @@ def _capital_tick_timestamp(n_date: int, n_timehms: int) -> pd.Timestamp:
 
 
 def _find_project_root() -> Path:
-    """由 SKCOM.dll 位置反推專案根目錄。"""
+    """由 SKCOM.dll 位置反推專案根目錄（支援 PyInstaller 打包執行檔）。
+    PyInstaller 凍結後 __file__ 會解析到暫存目錄，因此改用 exe 所在目錄，
+    確保 capital_logs 與 audit log 一律寫在 exe 旁邊持久化的 data/ 目錄。"""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
     here = Path(__file__).resolve()
     for parent in here.parents:
         for rel in _DLL_CANDIDATE_RELATIVE_PATHS:
