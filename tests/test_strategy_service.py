@@ -797,6 +797,57 @@ def test_tick_one_entry_places_oco_protection(clean_armed):
     assert state.protection_order_smart_key == "26564233"
 
 
+def test_tick_one_reverse_signal_closes_position_by_default(clean_armed):
+    """
+    2026-08-31：預設（`exit_mode` 未設定，或設成 "signal_only"）維持原本行為——
+    方向限定策略遇到反向訊號，有留倉就平倉出場。
+    """
+    state = _open_long_state(product_code="TM2609")  # direction_limit="long", held_qty=1
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    st = {"quote": {"last_price": 20050.0}}
+
+    fake_bars = MagicMock()
+    fake_bars.empty = False
+    fake_bars.__len__.return_value = 100
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-08-21T09:45:00", "direction": "short", "key": "k1"},
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    svc.place_order.assert_called_once()
+    assert state.held_qty == 0
+
+
+def test_tick_one_reverse_signal_skipped_when_exit_mode_is_sltp_only(clean_armed):
+    """`exit_mode="sltp_only"` 時，反向訊號出場整層讓路，只靠停損停利/風控保險頂著，部位維持不動。"""
+    state = _open_long_state(product_code="TM2609", exit_mode="sltp_only")
+    svc = MagicMock()
+    st = {"quote": {"last_price": 20050.0}}  # 沒有觸及停損停利門檻
+
+    fake_bars = MagicMock()
+    fake_bars.empty = False
+    fake_bars.__len__.return_value = 100
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-08-21T09:45:00", "direction": "short", "key": "k1"},
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+    assert state.held_direction == "long"
+
+
 def test_tick_one_entry_falls_back_to_bar_close_when_quote_missing(clean_armed):
     """
     2026-08-30 code review 抓到的隱患：進場成交那一刻，如果即時報價剛好缺失

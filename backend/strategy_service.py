@@ -1136,6 +1136,13 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         _place_oco_protection_for_state(state, svc)
             else:
                 state.last_action = f"已持倉 {target} x{state.held_qty}，同向訊號不動作"
+        elif state.exit_mode == "sltp_only":
+            # 2026-08-31：依帳號/策略客製化——exit_mode="sltp_only" 時，這支
+            # 策略對反向訊號整個讓路，只靠停損停利／風控保險頂著，不理會
+            # 訊號邏輯自己判斷的「趨勢可能反轉」。這是刻意的風險輪廓選擇
+            # （會讓部位撐過更大幅度的逆向波動），不是預設行為——預設
+            # （exit_mode 未設定或 "signal_only"）維持原本反向訊號就出場。
+            state.last_action = f"已持倉 {state.held_direction} x{state.held_qty}，exit_mode=sltp_only 不理會反向訊號"
         else:
             # 方向限定策略：出現反向訊號只平倉出場，不反手做另一邊
             if state.held_qty > 0:
