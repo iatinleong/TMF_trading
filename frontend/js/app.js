@@ -177,9 +177,43 @@ function initChart() {
     updateChartLegend(candleData, { ma_fast: ma5Val, ma_mid: ma20Val, ma_slow: ma60Val });
   });
 
-  window.addEventListener('resize', () => {
-    chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+  // 2026-08-31 實測抓到的 bug：圖表是在頁面版面（.main-grid 的 flex/grid 排版）
+  // 還沒完全定案前的那一刻建立的，createChart 當下量到的 el.clientWidth/Height
+  // 可能不是最終尺寸；本來只靠 window resize 事件事後修正，但一般使用者打開
+  // 頁面不會去拖動瀏覽器視窗，這個初始尺寸誤差永遠不會自己修正，canvas 內部
+  // 繪圖緩衝區會卡在建立當下量到的錯誤尺寸，卻被 CSS 硬拉伸成容器該有的顯示
+  // 尺寸——蠟燭、間距、MA 線看起來全部跟著扭曲，就是「K 線間隔很開/很亂/很怪」
+  // 這類回報的根因，不是資料或時區問題。改用 ResizeObserver 監控容器「元素
+  // 本身」的尺寸變化（不只是瀏覽器視窗），版面排版一定案就會立刻修正一次。
+  //
+  // 兩個實測踩到的坑，都跟 Chrome 官方 ResizeObserver 文件明講的注意事項一樣：
+  // 1. callback 裡不能同步呼叫 chart.applyOptions()——applyOptions 可能讓
+  //    canvas 尺寸變化，又回頭觸發同一個 observer，形成同步遞迴迴圈，瀏覽器
+  //    渲染執行緒整個卡死（實測truly掛住超過 45 秒）。用 requestAnimationFrame
+  //    把實際套用尺寸這件事延到下一個影格，跳出同步呼叫鏈。
+  // 2. 不能同時保留舊的 window resize 監聽器——兩邊都在改同一個 chart 的
+  //    尺寸，等於兩條路徑互相干擾。ResizeObserver 本身就會涵蓋「瀏覽器視窗
+  //    改變導致容器尺寸改變」這個情境，window resize 監聽器整個是多餘的，拿掉。
+  let resizeScheduled = false;
+  const resizeObserver = new ResizeObserver(() => {
+    if (resizeScheduled) return;
+    resizeScheduled = true;
+    requestAnimationFrame(() => {
+      resizeScheduled = false;
+      chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+    });
   });
+  resizeObserver.observe(el);
+
+  // 保底修正：ResizeObserver 的初始通知（規格保證 observe() 之後一定會發生
+  // 一次）實測發現在某些情況下（背景分頁、自動化工具控制的分頁）可能被瀏覽器
+  // 的渲染管線延後、甚至完全不觸發（渲染管線本身被節流時，仰賴渲染步驟送出
+  // 的通知也會一起被卡住）。setTimeout 走的是一般計時器佇列，不依賴渲染管線
+  // 是否有在跑，一定會執行，用來在頁面剛載入、版面剛穩定的這個時間點做一次
+  // 保底校正，不完全依賴 ResizeObserver 有沒有真的觸發。
+  setTimeout(() => {
+    chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+  }, 300);
 }
 
 let chartInitialFitted = false;
