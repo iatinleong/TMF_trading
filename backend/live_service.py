@@ -41,24 +41,6 @@ BASE_DIR = app_base_dir(__file__)
 ENV_PATH = BASE_DIR / ".env"
 
 
-def _load_project_env() -> None:
-    load_dotenv(ENV_PATH)
-    # 2026-08-26：本機 .env 先當底線/備援值，讀完之後才嘗試用 Supabase 的
-    # 遠端密鑰覆蓋（見 backend/secrets_store.py）——這樣多台機器只要都設定
-    # 同一個 SUPABASE_SECRET_KEY，密鑰改一個地方全部同步；沒設定服務端
-    # 金鑰、或連線失敗時，維持用本機 .env 既有值，不影響開機。
-    try:
-        load_remote_secrets()
-    except Exception as exc:  # noqa: BLE001 - 遠端密鑰失敗不該擋開機
-        logger.warning("套用 Supabase 密鑰時發生例外，忽略並使用本機 .env: %s", exc)
-
-
-def _is_worker_mode() -> bool:
-    """WORKER_MODE=1 代表這個行程是某個帳號自己的 worker，不是共用的主行程
-    ——差別見 docs/superpowers/plans/2026-08-26-per-account-worker-process.md。"""
-    return os.getenv("WORKER_MODE", "").strip().lower() in {"1", "true", "yes"}
-
-
 def _apply_worker_account_credentials() -> None:
     """ACCOUNT_USER_ID 有設的話，用那個帳號自己的群益帳密覆蓋
     CAPITAL_USER_ID/CAPITAL_PASSWORD；沒設、或那個帳號還沒被設定過帳密，
@@ -73,6 +55,29 @@ def _apply_worker_account_credentials() -> None:
         return
     os.environ["CAPITAL_USER_ID"] = creds["capital_user_id"]
     os.environ["CAPITAL_PASSWORD"] = creds["capital_password"]
+
+
+def _load_project_env() -> None:
+    load_dotenv(ENV_PATH)
+    # 2026-08-26：本機 .env 先當底線/備援值，讀完之後才嘗試用 Supabase 的
+    # 遠端密鑰覆蓋（見 backend/secrets_store.py）——這樣多台機器只要都設定
+    # 同一個 SUPABASE_SECRET_KEY，密鑰改一個地方全部同步；沒設定服務端
+    # 金鑰、或連線失敗時，維持用本機 .env 既有值，不影響開機。
+    try:
+        load_remote_secrets()
+    except Exception as exc:  # noqa: BLE001 - 遠端密鑰失敗不該擋開機
+        logger.warning("套用 Supabase 密鑰時發生例外，忽略並使用本機 .env: %s", exc)
+
+    # 2026-08-31 關鍵修正：若處於 Worker 模式，載入完遠端全域密鑰後，
+    # 必須保證用該 Worker 自己的帳密覆蓋 CAPITAL_USER_ID / PASSWORD，
+    # 避免後續 _load_project_env() 呼叫將專屬帳密覆蓋回共用主帳號。
+    _apply_worker_account_credentials()
+
+
+def _is_worker_mode() -> bool:
+    """WORKER_MODE=1 代表這個行程是某個帳號自己的 worker，不是共用的主行程
+    ——差別見 docs/superpowers/plans/2026-08-26-per-account-worker-process.md。"""
+    return os.getenv("WORKER_MODE", "").strip().lower() in {"1", "true", "yes"}
 
 
 _load_project_env()
@@ -119,6 +124,9 @@ def auto_connect_on_startup() -> None:
     """部署啟動時自動連線（讀 .env，不需手動按連線）。"""
     global _connect_error, current_product
     _load_project_env()
+    environment = _default_environment()
+    product = _default_live_product()
+    current_product = product
     _apply_worker_account_credentials()
     if os.getenv("AUTO_CONNECT", "1").strip().lower() in {"0", "false", "no"}:
         logger.info("AUTO_CONNECT 已關閉，跳過自動連線")
@@ -128,11 +136,9 @@ def auto_connect_on_startup() -> None:
         logger.warning(_connect_error)
         return
 
-    product = _default_live_product()
-    current_product = product
     try:
         TradingService.get().connect(
-            environment=_default_environment(),
+            environment=environment,
             product_code=product,
             account=os.getenv("CAPITAL_ACCOUNT") or None,
         )

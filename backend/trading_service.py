@@ -50,7 +50,8 @@ _ENV_PATH = _BASE_DIR / ".env"
 
 
 def _load_project_env() -> None:
-    load_dotenv(_ENV_PATH, override=True)
+    # 2026-08-31：override=False 避免重載 .env 時將 Worker 專屬的 CAPITAL_USER_ID 覆蓋掉
+    load_dotenv(_ENV_PATH, override=False)
 
 
 def trading_disabled() -> bool:
