@@ -1271,3 +1271,29 @@ def test_start_strategy_defaults_all_toggles_true_when_omitted(clean_armed):
     assert state.soft_stop_enabled is True
     assert state.risk_insurance_enabled is True
     assert state.reverse_signal_exit_enabled is True
+
+
+def test_resolve_strategy_product_code():
+    from backend.strategy_service import resolve_strategy_product_code
+    from backend.trading_service import compute_current_tmf_code
+
+    current_tmf = compute_current_tmf_code()
+    assert resolve_strategy_product_code(None) == current_tmf
+    assert resolve_strategy_product_code("") == current_tmf
+    assert resolve_strategy_product_code("TMF") == current_tmf
+    assert resolve_strategy_product_code("TM") == current_tmf
+    assert resolve_strategy_product_code("MTX") == "MTX"
+    assert resolve_strategy_product_code("TX") == "TX"
+    assert resolve_strategy_product_code("TM2610") == "TM2610"
+
+
+def test_start_strategy_with_none_or_empty_product_code_resolves_to_front_month(clean_armed):
+    from backend.strategy_service import start_strategy, _armed
+    from backend.trading_service import compute_current_tmf_code
+
+    current_tmf = compute_current_tmf_code()
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
+        start_strategy("breakout_long", product_code=None)
+
+    state = _armed["breakout_long"]
+    assert state.product_code == current_tmf

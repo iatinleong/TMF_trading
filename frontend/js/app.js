@@ -2,7 +2,7 @@ const API = window.location.origin;
 
 let chart, candleSeries, volumeSeries, maFastSeries, maMidSeries, maSlowSeries;
 let ws = null;
-let currentProduct = 'TM2608';
+let currentProduct = '';
 let currentSide = 'buy';
 
 function isVal(v) {
@@ -717,9 +717,11 @@ async function onStrategyToggle(strategyId, checked) {
       });
     } else {
       const cfg = myStrategyConfigs[strategyId] || {};
+      const inputProduct = (document.getElementById('product-select')?.value || '').trim();
+      const effectiveProduct = inputProduct || currentProduct || cfg.product_code || null;
       const payload = {
         strategy_id: strategyId,
-        product_code: cfg.product_code || currentProduct,
+        product_code: effectiveProduct,
         qty: cfg.qty != null ? Number(cfg.qty) : 1,
         stop_loss_points: cfg.stop_loss_points != null ? Number(cfg.stop_loss_points) : undefined,
         take_profit_points: cfg.take_profit_points != null ? Number(cfg.take_profit_points) : undefined,

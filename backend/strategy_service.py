@@ -29,7 +29,7 @@ from .kline_engine import get_store
 from .indicators import add_moving_averages, resample_to_60min
 from .signals import generate_breakout_signals, generate_pullback_signals
 from .timeutil import TAIPEI_TZ, to_unix_seconds
-from .trading_service import TradingService
+from .trading_service import TradingService, compute_current_tmf_code
 
 logger = logging.getLogger(__name__)
 
@@ -424,6 +424,23 @@ def trade_log(strategy_id: str | None = None) -> list[dict[str, Any]]:
     return all_trades
 
 
+def resolve_strategy_product_code(product_code: str | None = None) -> str:
+    """自動將空值、通用品種代碼（TMF/MTX/TX）解析成真實可交易的群益商品代碼。
+    - None / "" / "TMF" / "TM" -> 自動計算當前近月微台（例如 TM2609，結算後自動 TM2610）
+    - "MTX" / "MXF" -> 小台近月（MTX）
+    - "TX" -> 大台近月（TX）
+    - 具體合約代碼（如 "TM2609"）-> 保持原樣
+    """
+    raw = str(product_code or "").strip().upper()
+    if not raw or raw in {"TMF", "TM"}:
+        return compute_current_tmf_code()
+    if raw in {"MTX", "MXF"}:
+        return "MTX"
+    if raw == "TX":
+        return "TX"
+    return raw
+
+
 def _contract_from_product(product_code: str) -> str:
     upper = product_code.upper()
     # 2026-08-21 實盤稽核發現：實際活著在用的微台商品碼是 "TM"+YYMM（例如
@@ -675,7 +692,7 @@ def strategy_status(strategy_id: str | None = None) -> dict[str, Any]:
 
 def start_strategy(
     strategy_id: str,
-    product_code: str,
+    product_code: str | None = None,
     *,
     qty: int | None = None,
     stop_loss_points: float | None = None,
@@ -691,9 +708,10 @@ def start_strategy(
     if strategy_id not in STRATEGY_DEFS:
         raise ValueError(f"未知的策略 id: {strategy_id}（可用：{', '.join(STRATEGY_DEFS)}）")
     defaults = strategy_config_defaults(strategy_id)
+    effective_product_code = resolve_strategy_product_code(product_code)
     state = StrategyState(
         strategy_id=strategy_id,
-        product_code=product_code,
+        product_code=effective_product_code,
         strategy=str(defaults["strategy"]),
         direction_limit=str(defaults["direction_limit"]),
         label=str(defaults["label"]),
@@ -711,8 +729,8 @@ def start_strategy(
 
     # 啟動當下把「已經存在的舊訊號」預先標記為已消費，避免把啟動前就已成立的
     # MA 交叉狀態誤判成剛發生的新訊號，導致一開策略就對著舊狀態送出真實委託。
-    contract = _contract_from_product(product_code)
-    bars = _load_bars(contract, product_code=product_code)
+    contract = _contract_from_product(effective_product_code)
+    bars = _load_bars(contract, product_code=effective_product_code)
     if not bars.empty and len(bars) >= DEFAULT_STRATEGY.ma_slow + 2:
         existing_signal = _latest_closed_signal(_signaled_frame(state.strategy, bars))
         if existing_signal:
@@ -903,6 +921,12 @@ def _stop_with_reason(state: StrategyState, reason: str) -> None:
 
 def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> None:
     state.last_checked_at = time.time()
+
+    # 若無持倉且為微台商品，自動對齊至當前近月合約（結算日換約自動無縫切換）
+    if state.held_qty == 0 and state.product_code.upper().startswith("TM"):
+        current_tmf = compute_current_tmf_code()
+        if state.product_code.upper() != current_tmf.upper():
+            state.product_code = current_tmf
 
     contract = _contract_from_product(state.product_code)
     quote_info = st.get("quote") or {}

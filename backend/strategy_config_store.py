@@ -65,7 +65,7 @@ def admin_upsert_strategy_config(
     user_id: str,
     strategy_id: str,
     *,
-    product_code: str,
+    product_code: str | None = None,
     qty: int | None = None,
     enabled: bool = False,
     stop_loss_points: float | None = None,

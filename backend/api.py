@@ -149,7 +149,7 @@ def _auto_arm_bound_strategies() -> None:
             continue
         start_strategy(
             row["strategy_id"],
-            row["product_code"],
+            row.get("product_code"),
             qty=row.get("qty"),
             stop_loss_points=row.get("stop_loss_points"),
             take_profit_points=row.get("take_profit_points"),
@@ -281,7 +281,7 @@ class TradingSubscribeRequest(BaseModel):
 
 class StrategyStartRequest(BaseModel):
     strategy_id: str
-    product_code: str = "TM2608"
+    product_code: str | None = None
     qty: int | None = None
     stop_loss_points: float | None = None
     take_profit_points: float | None = None

@@ -20,8 +20,8 @@
       <span id="ticker-bid-ask" class="ticker-sub">—</span>
     </div>
     <div class="controls">
-      <input type="text" id="product-select" value="" placeholder="商品代碼，如 TM2608（留空會自動帶入目前連線中的近月合約）"
-        title="輸入群益商品代碼後按「確定」鎖定交易標的。微台格式為 TM+年月（例：2026/08 = TM2608），小台 MXFR1，大台 TXFR1" />
+      <input type="text" id="product-select" value="" placeholder="商品代碼，如 TM2609、MTX、TX（留空自動帶入當前近月合約）"
+        title="輸入商品代碼後按「確定」切換交易標的。微台（如 TM2609 或 TMF）、小台 MTX、大台 TX。策略將直接以輸入框商品為準進行交易。" />
       <button id="product-confirm-btn" class="action-btn" type="button" title="鎖定並開始訂閱這個商品">確定</button>
       <span class="dot" id="ws-status" title="WebSocket 狀態"></span>
       <span id="ws-count" style="font-size:10px;color:#8b949e;min-width:48px">—</span>
@@ -143,6 +143,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=66"></script>
+  <script src="js/app.js?v=64"></script>
 </body>
 </html>
