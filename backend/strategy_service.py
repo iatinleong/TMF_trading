@@ -425,8 +425,9 @@ def trade_log(strategy_id: str | None = None) -> list[dict[str, Any]]:
 
 
 def resolve_strategy_product_code(product_code: str | None = None) -> str:
-    """自動將空值、通用品種代碼（TMF/MTX/TX）解析成真實可交易的群益商品代碼。
+    """自動將空值、通用品種代碼（TMF/MTX/TX）或過期合約代碼解析成真實可交易的群益商品代碼。
     - None / "" / "TMF" / "TM" -> 自動計算當前近月微台（例如 TM2609，結算後自動 TM2610）
+    - 過期微台代碼（如 TM2608 在 9 月已過期）-> 自動修正為當前近月 TM2609
     - "MTX" / "MXF" -> 小台近月（MTX）
     - "TX" -> 大台近月（TX）
     - 具體合約代碼（如 "TM2609"）-> 保持原樣
@@ -438,6 +439,10 @@ def resolve_strategy_product_code(product_code: str | None = None) -> str:
         return "MTX"
     if raw == "TX":
         return "TX"
+    current_tmf = compute_current_tmf_code()
+    if raw.startswith("TM") and len(raw) == 6 and raw[2:].isdigit():
+        if raw < current_tmf:
+            return current_tmf
     return raw
 
 
@@ -927,6 +932,15 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
         current_tmf = compute_current_tmf_code()
         if state.product_code.upper() != current_tmf.upper():
             state.product_code = current_tmf
+            # 換約切換商品當下，必須重新對新商品預先標記「既有舊訊號為已消費」，
+            # 避免把新商品換約前就已存在的歷史 MA 狀態誤判為剛產生的新訊號而誤發市價單！
+            new_contract = _contract_from_product(current_tmf)
+            new_bars = _load_bars(new_contract, product_code=current_tmf)
+            if not new_bars.empty and len(new_bars) >= DEFAULT_STRATEGY.ma_slow + 2:
+                existing_sig = _latest_closed_signal(_signaled_frame(state.strategy, new_bars))
+                state.last_signal_key = existing_sig["key"] if existing_sig else None
+            else:
+                state.last_signal_key = None
 
     contract = _contract_from_product(state.product_code)
     quote_info = st.get("quote") or {}

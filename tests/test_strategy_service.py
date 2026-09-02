@@ -1297,3 +1297,50 @@ def test_start_strategy_with_none_or_empty_product_code_resolves_to_front_month(
 
     state = _armed["breakout_long"]
     assert state.product_code == current_tmf
+
+
+def test_resolve_strategy_product_code_corrects_expired_tmf():
+    from backend.strategy_service import resolve_strategy_product_code
+    from backend.trading_service import compute_current_tmf_code
+
+    current_tmf = compute_current_tmf_code()
+    # 傳入過去已過期的 TM2608，應自動校正為當前近月
+    assert resolve_strategy_product_code("TM2608") == current_tmf
+
+
+def test_auto_roll_premarks_existing_signal_and_does_not_fire_stale_order():
+    """驗證：當 _tick_one 觸發 auto-roll 換約時，必須立即將新商品的既有訊號標記為已消費，
+    絕不能對著換約前就已存在的歷史 MA 狀態誤發真實市價委託！"""
+    from backend.strategy_service import StrategyState, _tick_one
+    from unittest.mock import MagicMock, patch
+
+    state = StrategyState(
+        strategy_id="breakout_long",
+        product_code="TM2608",
+        strategy="breakout",
+        direction_limit="long",
+        label="測試",
+        qty=1,
+        initial_capital_ntd=100000.0,
+        max_loss_ntd=10000.0,
+        max_loss_pct=0.1,
+        stop_loss_points=100.0,
+        take_profit_points=250.0,
+    )
+    assert state.last_signal_key is None
+
+    mock_svc = MagicMock()
+    mock_svc.is_order_enabled.return_value = True
+
+    dummy_signal = {"key": "2026-09-01 10:00:00_long", "direction": "long", "close": 46800.0, "time": 1788200000}
+    mock_df = pd.DataFrame({"close": [46800.0] * 70, "ma_fast": [46800.0] * 70, "ma_mid": [46700.0] * 70, "ma_slow": [46600.0] * 70})
+
+    with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._load_bars", return_value=mock_df):
+        st = {"quote": {"last_price": 46800.0}}
+        _tick_one(state, mock_svc, st)
+
+    # 換約完成且歷史訊號已被預先消費
+    assert state.product_code == "TM2609"
+    assert state.last_signal_key == "2026-09-01 10:00:00_long"
+    assert not mock_svc.place_order.called, "安全防護失效：換約瞬間不可對著舊訊號下單！"
