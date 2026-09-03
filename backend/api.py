@@ -571,17 +571,53 @@ def live_ticker(product: str = "TM2608") -> dict[str, object]:
 
 
 @app.get("/api/klines")
-def live_klines(product: str = "TM2608", limit: int = 500) -> list[dict[str, object]]:
+def live_klines(product: str = "", limit: int = 500) -> list[dict[str, object]]:
     from .kline_engine import DEFAULT_KLINE_LIMIT
+    from .strategy_service import resolve_strategy_product_code
 
+    prod = resolve_strategy_product_code(product)
     effective = limit if limit > 0 else DEFAULT_KLINE_LIMIT
-    return get_klines(product, limit=min(effective, 2000))
+    return get_klines(prod, limit=min(effective, 2000))
 
 
 @app.get("/api/klines/signals")
-def live_klines_signals(product: str = "TM2608", limit: int = 500) -> list[dict[str, object]]:
+def live_klines_signals(product: str = "", limit: int = 500) -> list[dict[str, object]]:
     """K 棒 + MA(5/20/60) + 突破/回測策略訊號，給圖表疊圖用。"""
-    return klines_with_signals(product, limit=min(limit, 2000))
+    from .strategy_service import resolve_strategy_product_code
+
+    prod = resolve_strategy_product_code(product)
+    return klines_with_signals(prod, limit=min(limit, 2000))
+
+
+@app.post("/api/klines/repair")
+def repair_kline(product: str = "", bar_time: int | None = None) -> dict[str, object]:
+    """線上熱修復/重抓殘缺 K 棒：
+    從記憶體與硬碟快取中清除指定或最新收盤 K 棒，並立即調用永豐 Shioaji 補齊真實歷史逐筆！
+    免手動改 JSON、免重啟服務。"""
+    from .kline_engine import get_store
+    from .shioaji_backfill import backfill_via_shioaji
+    from .strategy_service import resolve_strategy_product_code
+
+    prod = resolve_strategy_product_code(product)
+    store = get_store(prod)
+    removed_key = None
+    if bar_time:
+        if bar_time in store._bars:
+            store._bars.pop(bar_time, None)
+            removed_key = bar_time
+    else:
+        if store._bars:
+            removed_key = max(store._bars.keys())
+            store._bars.pop(removed_key, None)
+    if removed_key is not None:
+        store._persist()
+    added = backfill_via_shioaji(prod, lookback_days=1)
+    return {
+        "product": prod,
+        "removed_bar_time": removed_key,
+        "backfilled_bars": added,
+        "status": "SUCCESS",
+    }
 
 
 @app.get("/api/strategy/trades")
