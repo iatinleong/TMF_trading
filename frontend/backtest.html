@@ -51,8 +51,12 @@
           <input id="live4-take-profit-points" type="number" min="0" step="10" value="300" />
         </label>
         <label class="field checkbox-field">
+          <input id="live4-reverse-exit-checkbox" type="checkbox" checked />
+          <span>啟用反向訊號出場（Layer 4：出現反向訊號時平倉出場；關閉則只靠停損停利出場）</span>
+        </label>
+        <label class="field checkbox-field">
           <input id="live4-stop-take-checkbox" type="checkbox" checked />
-          <span>啟用停損停利（比照實盤，關掉則純靠訊號出場）</span>
+          <span>啟用點數停損停利（Layer 1/2：點數 SL / TP 觸價出場）</span>
         </label>
         <label class="field">
           <span>單策略起始本金</span>
@@ -67,7 +71,7 @@
         </label>
         <label class="field checkbox-field">
           <input id="live4-risk-stop-checkbox" type="checkbox" checked />
-          <span>啟用風控保險（點數停損之外的額外浮動損益保險，哪個先觸發用哪個）</span>
+          <span>啟用風控保險（Layer 3：點數停損之外的額外金額/比例浮動損益硬保險）</span>
         </label>
       </div>
 
@@ -179,6 +183,6 @@
   </div>
 
   <script src="js/lightweight-charts.js"></script>
-  <script src="js/dashboard.js?v=7"></script>
+  <script src="js/dashboard.js?v=8"></script>
 </body>
 </html>

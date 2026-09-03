@@ -136,44 +136,59 @@ def load_recent_ticks(symbol: str, days: int = 30) -> pd.DataFrame:
 
 def load_tmfr1_range(start_date: str, end_date: str) -> pd.DataFrame:
     """
-    讀取本機 data/raw_tick/TMFR1/*.parquet（Shioaji 回補的逐筆成交，見
-    strategy-order-retry-storm-bug 以外的另一批資料來源）指定日期區間的資料，
-    組成 tick-level OHLCV（open=high=low=close=成交價，沿用 _load_and_filter
-    同樣的「一筆成交視為一根退化 K 棒」慣例，之後可直接餵給 resample_to_60min）。
+    讀取本機 data/raw_tick/TMFR1/*.parquet（Shioaji 回補的逐筆成交）指定日期區間的資料。
+    若 raw_tick/TMFR1 資料夾不存在（例如 VM 部署環境未帶大型原始逐筆檔），
+    自動無縫退回讀取 data/TMFR1_parquet_60min.csv 或 data/TMF_60min_real.csv。
     """
-    tmfr1_dir = RAW_TICK_DIR / "TMFR1"
-    if not tmfr1_dir.is_dir():
-        raise FileNotFoundError(f"找不到 {tmfr1_dir}")
-
     start = pd.Timestamp(start_date)
     end = pd.Timestamp(end_date)
     if start > end:
         raise ValueError("start_date 必須早於或等於 end_date")
 
-    frames: list[pd.DataFrame] = []
-    for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):
-        date_str = path.stem[len("TMFR1_") :]
-        try:
-            file_date = pd.Timestamp(date_str)
-        except ValueError:
-            continue
-        if file_date < start or file_date > end:
-            continue
-        day_df = pd.read_parquet(path, columns=["ts", "close", "volume"])
-        frames.append(day_df)
+    tmfr1_dir = RAW_TICK_DIR / "TMFR1"
+    if tmfr1_dir.is_dir():
+        frames: list[pd.DataFrame] = []
+        for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):
+            date_str = path.stem[len("TMFR1_") :]
+            try:
+                file_date = pd.Timestamp(date_str)
+            except ValueError:
+                continue
+            if file_date < start or file_date > end:
+                continue
+            try:
+                day_df = pd.read_parquet(path, columns=["ts", "close", "volume"])
+                frames.append(day_df)
+            except Exception:
+                pass
+        if frames:
+            combined = pd.concat(frames, ignore_index=True)
+            combined = combined.rename(columns={"ts": "datetime"})
+            combined["open"] = combined["close"]
+            combined["high"] = combined["close"]
+            combined["low"] = combined["close"]
+            combined = combined.sort_values("datetime").reset_index(drop=True)
+            return combined[["datetime", "open", "high", "low", "close", "volume"]]
 
-    if not frames:
-        raise RuntimeError(
-            f"{start_date} ~ {end_date} 區間內在 {tmfr1_dir} 找不到任何 TMFR1 tick 資料檔"
-        )
+    # 備援：若無 parquet 檔，嘗試從現有的 60min CSV 讀取
+    for candidate_name in ("TMFR1_parquet_60min.csv", "TMF_60min_real.csv"):
+        fallback_csv = DATA_DIR / candidate_name
+        if fallback_csv.exists():
+            try:
+                df = pd.read_csv(fallback_csv)
+                if "datetime" in df.columns:
+                    df["datetime"] = pd.to_datetime(df["datetime"])
+                    df = df.sort_values("datetime")
+                    mask = (df["datetime"] >= start) & (df["datetime"] <= (end + pd.Timedelta(days=1)))
+                    filtered = df.loc[mask].reset_index(drop=True)
+                    if not filtered.empty:
+                        return filtered[["datetime", "open", "high", "low", "close", "volume"]]
+            except Exception:
+                pass
 
-    combined = pd.concat(frames, ignore_index=True)
-    combined = combined.rename(columns={"ts": "datetime"})
-    combined["open"] = combined["close"]
-    combined["high"] = combined["close"]
-    combined["low"] = combined["close"]
-    combined = combined.sort_values("datetime").reset_index(drop=True)
-    return combined[["datetime", "open", "high", "low", "close", "volume"]]
+    raise RuntimeError(
+        f"{start_date} ~ {end_date} 區間內找不到可用的 TMFR1 歷史資料檔（請確認 data/raw_tick/TMFR1 或 TMFR1_parquet_60min.csv 是否存在）"
+    )
 
 
 def build_60min_dataset(symbol: str, days: int = 30) -> Path:

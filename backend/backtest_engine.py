@@ -391,22 +391,17 @@ def run_direction_limited_backtest(
     max_loss_ntd: float = 10_000.0,
     max_loss_pct: float = 0.10,
     use_risk_stop: bool = True,
+    oco_enabled: bool = True,
+    soft_stop_enabled: bool = True,
+    risk_insurance_enabled: bool = True,
+    reverse_signal_exit_enabled: bool = True,
 ) -> tuple[list[Trade], dict]:
     """
-    對齊 backend/strategy_service.py 實盤 4 策略邏輯的方向限定回測，2026-08-06 新增、
-    2026-08-07 改成點數停損停利為主、NTD/%浮動損益門檻當「額外保險」：
+    對齊 backend/strategy_service.py 實盤 4 策略邏輯的方向限定回測，支援 4 道獨立分層保護開關：
+    - reverse_signal_exit_enabled: 是否在反向訊號發生時出場（預設 True；關閉時手動或靠 SL/TP 出場）
+    - oco_enabled / soft_stop_enabled: 是否啟用點數停損停利（任一開啟即啟用點數 SL/TP）
+    - risk_insurance_enabled: 是否啟用 NTD/% 金額風控保險（預設 True）
     - 只在訊號方向與 direction_limit 相同時進場；已持倉時同向訊號忽略不動作。
-    - 訊號方向相反時只出場、不反手（跟 experiments/sltp_vs_signal_only_ab_test.py 的
-      signal_only 版本不同——那個會反手開反向倉，這裡完全比照實盤 direction_limit 語意）。
-    - use_stop_take=True（預設）時，持倉觸及進場價 ±stop_loss_points/take_profit_points
-      即出場。use_risk_stop=True（預設）時，同時比較 max_loss_ntd / max_loss_pct*
-      initial_capital_ntd 換算成點數的門檻，取「先觸發的那個」（點數停損 vs
-      風控保險，哪個價位先碰到就用哪個，比照實盤 _tick_one 的邏輯）。
-    - 2026-08-07 修正跳空處理：每根K棒先檢查「開盤價」有沒有已經跳空穿過停損/停利/
-      風控價位（例如日盤夜盤中間跳空），有的話用開盤價成交，不能假設剛好成交在
-      理論價位；開盤沒跳空的話才用該根K棒 high/low 判斷盤中有沒有觸價，觸價一樣
-      在理論價位成交。同一根K棒兩者都可能觸及時，保守假設停損（或風控保險，看哪個
-      先觸發）先成交（沿用舊版固定 SL/TP 引擎 `_evaluate_exit_on_bar` 的悲觀假設）。
     """
     engine = BacktestEngine(
         strategy=strategy,
@@ -419,11 +414,10 @@ def run_direction_limited_backtest(
 
     trades: list[Trade] = []
     position: _OpenPosition | None = None
-    # 停損跟風控保險兩個候選價位取「先觸發的那個」算出來 position.stop_loss_price，
-    # 這裡另外記錄「那個有效停損價實際上是哪一種」，出場時才能標對 exit_reason。
-    # 全程只會有一個部位在跑，用簡單變數記，不需要用 id(position) 這種容易因記憶體
-    # 位址重複使用而出錯的 key。
     active_stop_reason: str = "stop_loss"
+
+    has_point_sl_tp = bool(use_stop_take and (oco_enabled or soft_stop_enabled))
+    has_risk_insurance = bool(use_risk_stop and risk_insurance_enabled)
 
     def _risk_stop_points() -> float:
         loss_ntd_limit = abs(float(max_loss_ntd))
@@ -434,7 +428,7 @@ def run_direction_limited_backtest(
         bar = prepared.iloc[index]
         bar_time = pd.Timestamp(prepared.index[index])
 
-        if position is not None and (use_stop_take or use_risk_stop):
+        if position is not None and (has_point_sl_tp or has_risk_insurance):
             open_price = float(bar["open"])
             high_price = float(bar["high"])
             low_price = float(bar["low"])
@@ -445,7 +439,7 @@ def run_direction_limited_backtest(
                     exit_price = engine._apply_slippage(open_price, "long", is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
                     position = None
-                elif use_stop_take and open_price >= position.take_profit_price:
+                elif has_point_sl_tp and open_price >= position.take_profit_price:
                     exit_price = engine._apply_slippage(open_price, "long", is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
                     position = None
@@ -453,7 +447,7 @@ def run_direction_limited_backtest(
                     exit_price = engine._apply_slippage(position.stop_loss_price, "long", is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
                     position = None
-                elif use_stop_take and high_price >= position.take_profit_price:
+                elif has_point_sl_tp and high_price >= position.take_profit_price:
                     exit_price = engine._apply_slippage(position.take_profit_price, "long", is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
                     position = None
@@ -462,7 +456,7 @@ def run_direction_limited_backtest(
                     exit_price = engine._apply_slippage(open_price, "short", is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
                     position = None
-                elif use_stop_take and open_price <= position.take_profit_price:
+                elif has_point_sl_tp and open_price <= position.take_profit_price:
                     exit_price = engine._apply_slippage(open_price, "short", is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
                     position = None
@@ -470,7 +464,7 @@ def run_direction_limited_backtest(
                     exit_price = engine._apply_slippage(position.stop_loss_price, "short", is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
                     position = None
-                elif use_stop_take and low_price <= position.take_profit_price:
+                elif has_point_sl_tp and low_price <= position.take_profit_price:
                     exit_price = engine._apply_slippage(position.take_profit_price, "short", is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
                     position = None
@@ -483,9 +477,8 @@ def run_direction_limited_backtest(
                 if direction == direction_limit:
                     if position is None:
                         entry_price = engine._apply_slippage(current_open, direction, is_entry=True)  # noqa: SLF001
-                        point_stop = abs(stop_loss_points) if use_stop_take else float("inf")
-                        risk_stop = _risk_stop_points() if use_risk_stop else float("inf")
-                        # 取「先觸發」的那個，也就是點數比較小（比較容易先被碰到）的一個。
+                        point_stop = abs(stop_loss_points) if has_point_sl_tp else float("inf")
+                        risk_stop = _risk_stop_points() if has_risk_insurance else float("inf")
                         effective_stop_points = min(point_stop, risk_stop)
                         stop_reason = "stop_loss" if point_stop <= risk_stop else "risk_stop"
                         if effective_stop_points == float("inf"):
@@ -494,7 +487,7 @@ def run_direction_limited_backtest(
                             stop_loss_price = float(entry_price) - effective_stop_points
                         else:
                             stop_loss_price = float(entry_price) + effective_stop_points
-                        if use_stop_take:
+                        if has_point_sl_tp:
                             take_profit_price = (
                                 float(entry_price) + abs(take_profit_points)
                                 if direction == "long"
@@ -511,11 +504,11 @@ def run_direction_limited_backtest(
                         )
                         active_stop_reason = stop_reason
                     # else: 同向已持倉，不動作（比照實盤「同向訊號不動作」）
-                elif position is not None:
+                elif position is not None and reverse_signal_exit_enabled:
                     exit_price = engine._apply_slippage(current_open, position.direction, is_entry=False)  # noqa: SLF001
                     trades.append(engine._close_trade(position, bar_time, exit_price, "signal_exit"))  # noqa: SLF001
                     position = None
-                # else: 空手遇反向訊號，不動作（比照實盤「本策略不做這個方向」）
+                # else: 空手遇反向訊號或已關閉反向出場，不動作
 
     if position is not None:
         last_time = pd.Timestamp(prepared.index[-1])

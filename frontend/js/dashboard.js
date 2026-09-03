@@ -46,6 +46,7 @@ const elements = {
   live4EndDate: document.getElementById('live4-end-date'),
   live4StopLossPoints: document.getElementById('live4-stop-loss-points'),
   live4TakeProfitPoints: document.getElementById('live4-take-profit-points'),
+  live4ReverseExitCheckbox: document.getElementById('live4-reverse-exit-checkbox'),
   live4StopTakeCheckbox: document.getElementById('live4-stop-take-checkbox'),
   live4CapitalInput: document.getElementById('live4-capital-input'),
   live4MaxLossNtd: document.getElementById('live4-max-loss-ntd'),
@@ -542,17 +543,25 @@ function renderResult(result) {
 }
 
 function buildBacktestPayload() {
+  const stopTakeChecked = elements.live4StopTakeCheckbox ? elements.live4StopTakeCheckbox.checked : true;
+  const riskStopChecked = elements.live4RiskStopCheckbox ? elements.live4RiskStopCheckbox.checked : true;
+  const reverseExitChecked = elements.live4ReverseExitCheckbox ? elements.live4ReverseExitCheckbox.checked : true;
+
   return {
     start_date: elements.live4StartDate.value,
     end_date: elements.live4EndDate.value,
     contract: 'TMF',
     stop_loss_points: Number(elements.live4StopLossPoints.value || 100),
     take_profit_points: Number(elements.live4TakeProfitPoints.value || 300),
-    use_stop_take: elements.live4StopTakeCheckbox.checked,
+    use_stop_take: stopTakeChecked,
     initial_capital_ntd: Number(elements.live4CapitalInput.value || 100000),
     max_loss_ntd: Number(elements.live4MaxLossNtd.value || 10000),
     max_loss_pct: Number(elements.live4MaxLossPct.value || 10) / 100,
-    use_risk_stop: elements.live4RiskStopCheckbox.checked,
+    use_risk_stop: riskStopChecked,
+    oco_enabled: stopTakeChecked,
+    soft_stop_enabled: stopTakeChecked,
+    risk_insurance_enabled: riskStopChecked,
+    reverse_signal_exit_enabled: reverseExitChecked,
   };
 }
 

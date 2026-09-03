@@ -158,8 +158,9 @@ def test_find_missing_bars_detects_gap_in_closed_session(monkeypatch):
     product = "TESTGAPDETECT"
     store = get_store(product)
     store._bars.clear()
-
-    base_day = pd.Timestamp.now().normalize() - pd.Timedelta(days=5)
+    base_day = pd.Timestamp.now().normalize() - pd.Timedelta(days=3)
+    while base_day.dayofweek >= 5:
+        base_day -= pd.Timedelta(days=1)
     all_labels = _expected_day_session_labels(base_day)
     present_labels = [label for label in all_labels if label.strftime("%H:%M") != "11:45"]
     for label in present_labels:

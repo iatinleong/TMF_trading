@@ -457,3 +457,33 @@ def test_direction_limited_backtest_risk_stop_disabled() -> None:
 
     assert len(trades) == 1
     assert trades[0].exit_reason == "end_of_data"
+
+
+def test_direction_limited_backtest_reverse_signal_exit_disabled() -> None:
+    """驗證：當 reverse_signal_exit_enabled=False 時，出現反向訊號不平倉出場，部位維持直到 SL/TP 或 end_of_data。"""
+    frame = make_signaled_frame(
+        opens=[100.0, 100.0, 100.0, 100.0],
+        highs=[100.5, 100.5, 100.5, 100.5],
+        lows=[99.5, 99.5, 99.5, 99.5],
+        closes=[100.0, 100.0, 100.0, 100.0],
+        signals=[None, "long", "short", None],
+        signal_colors=[None, "red", "green", None],
+    )
+
+    # 1. 預設 reverse_signal_exit_enabled=True -> 遇到 short 訊號在次根 open 出場
+    trades_enabled, _ = run_direction_limited_backtest(
+        frame, strategy="breakout", direction_limit="long", contract=_TMF_CONTRACT, cost=DEFAULT_COST,
+        stop_loss_points=1000.0, take_profit_points=3000.0, use_stop_take=True,
+        reverse_signal_exit_enabled=True,
+    )
+    assert len(trades_enabled) == 1
+    assert trades_enabled[0].exit_reason == "signal_exit"
+
+    # 2. 關閉 reverse_signal_exit_enabled=False -> 忽略反向 short 訊號，撐到 end_of_data
+    trades_disabled, _ = run_direction_limited_backtest(
+        frame, strategy="breakout", direction_limit="long", contract=_TMF_CONTRACT, cost=DEFAULT_COST,
+        stop_loss_points=1000.0, take_profit_points=3000.0, use_stop_take=True,
+        reverse_signal_exit_enabled=False,
+    )
+    assert len(trades_disabled) == 1
+    assert trades_disabled[0].exit_reason == "end_of_data"

@@ -254,6 +254,10 @@ class LiveStrategiesBacktestRequest(BaseModel):
     max_loss_ntd: float = 10_000.0
     max_loss_pct: float = 0.10
     use_risk_stop: bool = True
+    oco_enabled: bool = True
+    soft_stop_enabled: bool = True
+    risk_insurance_enabled: bool = True
+    reverse_signal_exit_enabled: bool = True
 
 
 class TradingConnectRequest(BaseModel):
@@ -1088,64 +1092,75 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
     """
     用真實 TMFR1 逐筆資料回測「跟實盤一致」的 4 個獨立方向策略（見
     backend/strategy_service.py 的 STRATEGY_DEFS）：breakout_long/short、
-    pullback_long/short，方向限定不反手、預設無固定 SL/TP 只靠訊號出場，
-    可選比照實盤持倉浮動損益停損。資料來源固定為本機
-    data/raw_tick/TMFR1/*.parquet（見 load_tmfr1_range）。
+    pullback_long/short，支援 4 道獨立分層保護開關（反向訊號出場、點數 SL/TP、
+    金額風控保險），資料來源優先為本機 data/raw_tick/TMFR1/*.parquet，
+    若無逐筆檔則自動無縫降級讀取 TMFR1_parquet_60min.csv。
     """
     try:
         ticks = load_tmfr1_range(request.start_date, request.end_date)
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+    except Exception as exc:
+        logger.exception("讀取回測歷史資料失敗: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    bars = resample_to_60min(ticks)
-    if bars.empty:
-        raise HTTPException(status_code=400, detail="該區間內沒有可用的K棒資料。")
+    try:
+        bars = resample_to_60min(ticks)
+        if bars.empty:
+            raise HTTPException(status_code=400, detail="該區間內沒有可用的K棒資料。")
 
-    enriched = add_moving_averages(
-        bars, fast=DEFAULT_STRATEGY.ma_fast, mid=DEFAULT_STRATEGY.ma_mid, slow=DEFAULT_STRATEGY.ma_slow,
-    )
-    enriched.index = pd.to_datetime(enriched.index)
-    enriched = enriched.sort_index()
-
-    contract = _resolve_contract(request.contract)
-    cost = _build_cost_config(request)
-
-    signaled_by_strategy = {
-        "breakout": generate_breakout_signals(enriched),
-        "pullback": generate_pullback_signals(enriched),
-    }
-
-    strategies_out: dict[str, object] = {}
-    for strategy_id, defs in STRATEGY_DEFS.items():
-        signaled = signaled_by_strategy[defs["strategy"]]
-        trades, summary = run_direction_limited_backtest(
-            signaled,
-            strategy=defs["strategy"],  # type: ignore[arg-type]
-            direction_limit=defs["direction_limit"],  # type: ignore[arg-type]
-            contract=contract,
-            cost=cost,
-            slippage_points=float(request.slippage_points),
-            stop_loss_points=float(request.stop_loss_points),
-            take_profit_points=float(request.take_profit_points),
-            use_stop_take=request.use_stop_take,
-            initial_capital_ntd=float(request.initial_capital_ntd),
-            max_loss_ntd=float(request.max_loss_ntd),
-            max_loss_pct=float(request.max_loss_pct),
-            use_risk_stop=request.use_risk_stop,
+        enriched = add_moving_averages(
+            bars, fast=DEFAULT_STRATEGY.ma_fast, mid=DEFAULT_STRATEGY.ma_mid, slow=DEFAULT_STRATEGY.ma_slow,
         )
-        strategies_out[strategy_id] = {
-            "label": defs["label"],
-            "trades": _serialize_trades(trades),
-            "summary": _serialize_summary(summary),
+        enriched.index = pd.to_datetime(enriched.index)
+        enriched = enriched.sort_index()
+
+        contract = _resolve_contract(request.contract)
+        cost = _build_cost_config(request)
+
+        signaled_by_strategy = {
+            "breakout": generate_breakout_signals(enriched),
+            "pullback": generate_pullback_signals(enriched),
         }
 
-    return {
-        "klines": _serialize_klines(enriched),
-        "breakout_signals": _serialize_signals(signaled_by_strategy["breakout"]),
-        "pullback_signals": _serialize_signals(signaled_by_strategy["pullback"]),
-        "strategies": strategies_out,
-        "data_span": [str(enriched.index[0]), str(enriched.index[-1])],
-    }
+        strategies_out: dict[str, object] = {}
+        for strategy_id, defs in STRATEGY_DEFS.items():
+            signaled = signaled_by_strategy[defs["strategy"]]
+            trades, summary = run_direction_limited_backtest(
+                signaled,
+                strategy=defs["strategy"],  # type: ignore[arg-type]
+                direction_limit=defs["direction_limit"],  # type: ignore[arg-type]
+                contract=contract,
+                cost=cost,
+                slippage_points=float(request.slippage_points),
+                stop_loss_points=float(request.stop_loss_points),
+                take_profit_points=float(request.take_profit_points),
+                use_stop_take=request.use_stop_take,
+                initial_capital_ntd=float(request.initial_capital_ntd),
+                max_loss_ntd=float(request.max_loss_ntd),
+                max_loss_pct=float(request.max_loss_pct),
+                use_risk_stop=request.use_risk_stop,
+                oco_enabled=request.oco_enabled,
+                soft_stop_enabled=request.soft_stop_enabled,
+                risk_insurance_enabled=request.risk_insurance_enabled,
+                reverse_signal_exit_enabled=request.reverse_signal_exit_enabled,
+            )
+            strategies_out[strategy_id] = {
+                "label": defs["label"],
+                "trades": _serialize_trades(trades),
+                "summary": _serialize_summary(summary),
+            }
+
+        return {
+            "klines": _serialize_klines(enriched),
+            "breakout_signals": _serialize_signals(signaled_by_strategy["breakout"]),
+            "pullback_signals": _serialize_signals(signaled_by_strategy["pullback"]),
+            "strategies": strategies_out,
+            "data_span": [str(enriched.index[0]), str(enriched.index[-1])],
+        }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("執行回測計算時發生未預期錯誤: %s", exc)
+        raise HTTPException(status_code=400, detail=f"回測執行失敗: {exc}") from exc
 
 
 if os.path.isdir(FRONTEND_DIR):
