@@ -172,7 +172,7 @@ def load_tmfr1_60min_bars(start_date: str, end_date: str) -> pd.DataFrame:
                 day_df = None
         if daily_bars:
             combined = pd.concat(daily_bars)
-            return combined.sort_index()
+            return combined.sort_index(kind="stable")
 
     # 備援：若無 parquet 檔，嘗試從現有的 60min CSV 讀取
     for candidate_name in ("TMFR1_parquet_60min.csv", "TMF_60min_real.csv"):

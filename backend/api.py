@@ -48,7 +48,7 @@ from .live_service import (
     trading_params_for_sidebar,
     ws_clients,
 )
-from .load_taifex_tick import load_tmfr1_60min_bars, load_tmfr1_range
+from .load_taifex_tick import load_tmfr1_60min_bars
 from .strategy_config_store import list_user_strategy_configs
 from .strategy_service import (
     STRATEGY_DEFS,

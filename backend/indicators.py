@@ -23,7 +23,7 @@ def _prepare_ohlcv_frame(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError(f"Missing required OHLCV columns: {missing_columns}")
 
     prepared.index = pd.to_datetime(prepared.index)
-    prepared = prepared.sort_index()
+    prepared = prepared.sort_index(kind="stable")
     return prepared
 
 
