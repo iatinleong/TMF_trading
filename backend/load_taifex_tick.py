@@ -226,7 +226,7 @@ def load_tmfr1_range(start_date: str, end_date: str) -> pd.DataFrame:
             combined["open"] = combined["close"]
             combined["high"] = combined["close"]
             combined["low"] = combined["close"]
-            combined = combined.sort_values("datetime").reset_index(drop=True)
+            combined = combined.sort_values("datetime", kind="stable").reset_index(drop=True)
             return combined[["datetime", "open", "high", "low", "close", "volume"]]
 
     # 備援：若無 parquet 檔，嘗試從現有的 60min CSV 讀取
