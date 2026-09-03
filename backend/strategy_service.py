@@ -1265,6 +1265,7 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         state.held_qty = 0
                         state.held_direction = None
                         state.entry_price = 0.0
+                        state.consecutive_failures = 0
                         state.last_signal_key = signal["key"]
                         _cancel_protection_order_for_state(state, svc)
             else:
