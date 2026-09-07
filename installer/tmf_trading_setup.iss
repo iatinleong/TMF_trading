@@ -56,10 +56,6 @@ Source: "{#DistDir}\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversi
 Source: "{#ProjectRoot}frontend\*"; DestDir: "{app}\frontend"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#CapitalApiDir}\*"; DestDir: "{app}\CapitalAPI_2.13.58_PythonExample"; Excludes: "CapitalLog\*,*.log"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "post_install.ps1"; DestDir: "{app}"; Flags: ignoreversion
-Source: "run_tunnel.ps1"; DestDir: "{app}"; Flags: ignoreversion
-; Cloudflare quick tunnel：讓儀表板可以從外部（手機/別台電腦）連進來，不需要使用者
-; 自己申請 Cloudflare 帳號。網址每次開機都會換，見 run_tunnel.ps1 寫出的 tunnel-url.txt。
-Source: "{#ProjectRoot}tools\cloudflared.exe"; DestDir: "{app}\tools"; Flags: ignoreversion
 ; VC++ 2010 SP1 redist（SKCOM.dll 的硬性依賴）直接內附，避免安裝時依賴微軟下載連結
 ;（舊連結已 404 過一次，內附才是可靠做法）
 Source: "redist\vcredist2010_x64.exe"; DestDir: "{app}\redist"; Flags: ignoreversion
@@ -90,10 +86,6 @@ Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""TMF-Trading-API"" /F"
   Flags: runhidden 64bit; RunOnceId: "TmfDeleteTask"
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""TMF Trading API"""; \
   Flags: runhidden 64bit; RunOnceId: "TmfDeleteFirewallRule"
-Filename: "{sys}\schtasks.exe"; Parameters: "/End /TN ""TMF-Trading-Tunnel"""; \
-  Flags: runhidden 64bit; RunOnceId: "TmfStopTunnelTask"
-Filename: "{sys}\schtasks.exe"; Parameters: "/Delete /TN ""TMF-Trading-Tunnel"" /F"; \
-  Flags: runhidden 64bit; RunOnceId: "TmfDeleteTunnelTask"
 Filename: "{sys}\regsvr32.exe"; \
   Parameters: "/u /s ""{app}\CapitalAPI_2.13.58_PythonExample\CapitalAPI_2.13.58_PythonExample\PythonExampleV2\Quote\Quote\SKCOM.dll"""; \
   Flags: runhidden 64bit; RunOnceId: "TmfUnregisterSkcom"
@@ -101,10 +93,6 @@ Filename: "{sys}\regsvr32.exe"; \
 [Icons]
 Name: "{group}\開啟 {#AppName} 儀表板"; Filename: "http://127.0.0.1:{#AppPort}"
 Name: "{commondesktop}\{#AppName}"; Filename: "http://127.0.0.1:{#AppPort}"
-; quick tunnel 網址每次開機都會換，這裡給一個捷徑直接開啟 run_tunnel.ps1 寫出的網址檔，
-; 使用者不用學怎麼看排程任務或 log。
-Name: "{group}\查看目前對外連線網址"; Filename: "{win}\notepad.exe"; Parameters: """{app}\tunnel-url.txt"""
-Name: "{commondesktop}\{#AppName} 對外連線網址"; Filename: "{win}\notepad.exe"; Parameters: """{app}\tunnel-url.txt"""
 
 [Code]
 var

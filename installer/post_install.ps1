@@ -148,26 +148,10 @@ try {
     Start-ScheduledTask -TaskName $taskName
     Log "排程任務 $taskName 已註冊並啟動（使用者：$currentUser，登入時自動啟動）"
 
-    # 6) 登入時自動啟動 Cloudflare quick tunnel（讓儀表板能從外部連進來）
-    #
-    # 跟後端排程任務同樣理由用「目前使用者 + Interactive」而非 SYSTEM：quick tunnel
-    # 本身不需要憑證，但跟後端排程任務保持一致的登入模型比較好維護，且 Interactive
-    # session 下才看得到使用者實際的網路介面設定。
-    $cloudflaredExe = Join-Path $AppDir "tools\cloudflared.exe"
-    $tunnelScript = Join-Path $AppDir "run_tunnel.ps1"
-    if (-not (Test-Path $cloudflaredExe)) {
-        Log "WARNING: 找不到 $cloudflaredExe，略過 Cloudflare tunnel 排程（儀表板仍可在本機 http://127.0.0.1:$Port 開啟）"
-    } else {
-        $tunnelTaskName = "TMF-Trading-Tunnel"
-        $tunnelAction = New-ScheduledTaskAction -Execute "powershell.exe" `
-            -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$tunnelScript`" -AppDir `"$AppDir`" -Port $Port" `
-            -WorkingDirectory $AppDir
-        $tunnelTrigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
-        $tunnelPrincipal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Highest
-        Register-ScheduledTask -TaskName $tunnelTaskName -Action $tunnelAction -Trigger $tunnelTrigger -Principal $tunnelPrincipal -Force | Out-Null
-        Start-ScheduledTask -TaskName $tunnelTaskName
-        Log "排程任務 $tunnelTaskName 已註冊並啟動；對外網址會寫到 $AppDir\tunnel-url.txt（每次開機都會換）"
-    }
+    # 2026-09-03：移除了 Cloudflare quick tunnel 自動註冊（見 git 歷史）。quick tunnel
+    # 網址每 3 天左右會被 Cloudflare 邊緣節點強制斷線、且沒有正常運作保證，改用 GCP
+    # 靜態外部 IP + 防火牆規則對外連線（見 docs/live_trading_flow.md），對外連線網址
+    # 因此改為固定不變，不需要每次開機重新查詢。
 
     Log "post_install 完成。儀表板：http://127.0.0.1:$Port"
 } catch {
