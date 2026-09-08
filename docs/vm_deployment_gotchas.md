@@ -108,3 +108,60 @@ tzutil /s "Taipei Standard Time" REM 設成台灣時區
 **How to apply**：以後任何地方要把時間戳轉成 unix 秒數，或要取得「現在的台灣時間」，
 一律呼叫 `backend/timeutil.py` 的 `to_unix_seconds()` / `TAIPEI_TZ`，不要自己重新
 實作一次轉換邏輯——這個 bug 就是因為同一段邏輯在三個檔案各自重複實作才反覆出現。
+
+## 6. RDP session 登出會連帶砍掉排程任務（跟 1b 的 602 是不同症狀）
+
+`TMF-Trading-API`／`TMF-Trading-Tunnel` 都用 `-LogonType Interactive -UserId <實際
+使用者>` + `-AtLogOn` 註冊（見上面第 1b 點，這是解 602 必要的設定）。但這個設定本身
+有個副作用：**這個排程任務綁定在「目前這個使用者的登入 session」上，session 一旦
+被登出（不是單純 RDP 斷線／中斷連線，是真的 log off），Windows 會把綁在上面的任務
+process 一起中止**，`Get-ScheduledTaskInfo` 查出來的 `LastTaskResult` 會是
+**`267014`（十六進位 `0x41306`，官方定義是 `SCHED_S_TASK_TERMINATED`）**。
+
+2026-09-03 實測：同一天內發生兩次，兩次 `TMF-Trading-API` 跟 `TMF-Trading-Tunnel`
+都在完全相同的時間點一起變成 `267014`，代表不是個別任務出問題，是那個時間點使用者
+的 RDP session 被登出了（常見成因：關 RDP 視窗時點了「登出/Sign out」而不是直接關
+視窗或「中斷連線」；VM 上設了閒置 RDP 自動登出的原則；同一帳號從別處又開了一個新
+連線把舊 session 踢掉登出）。中止期間，實盤策略完全沒有在運作、也沒有任何保護在
+盯著既有持倉，直到有人發現並手動 `Start-ScheduledTask` 重啟。
+
+**How to apply**：
+- 結束 RDP 連線時一律用「直接關閉視窗」或「中斷連線」，不要點「登出/Sign out」。
+- 查 `Get-ScheduledTask -TaskName "TMF-Trading-API" | Get-ScheduledTaskInfo` 的
+  `LastTaskResult` 是不是 `267014`，是的話代表任務被中止而非自然結束，先
+  `Start-ScheduledTask` 救回，再去查是不是 session 被登出這個根因，不是程式碼問題。
+- 長期建議加一個用 SYSTEM 身分（不需要登入 SKCOM，不會踩 602）跑的看門狗排程，
+  定期檢查這兩個任務是否還活著、死了就自動拉起來，不用等人發現。
+
+## 7. Cloudflare quick tunnel 的連線壽命有限，不適合長期部署
+
+`trycloudflare.com` 這種免帳號、免網域的 quick tunnel，連線本身不保證能撐多久——
+2026-09-03 實測從 `tunnel.log` 完整重建過一次時間軸：一條連線從建立到被 Cloudflare
+邊緣節點主動送出 `Initiating graceful shutdown due to signal terminated` 斷開，
+剛好是 3 天整（起訖秒數幾乎對齊），跟 `TMF-Trading-Tunnel` 排程任務本身死沒死
+（見上面第 6 點）完全無關——就算任務一直活著，連線本身到期一樣會斷、網址一樣會換。
+Cloudflare 官方在每次啟動 quick tunnel 時印出的警語也講得很明白：這種
+account-less tunnel 沒有 uptime 保證，正式環境應該用具名 tunnel。
+
+**How to apply**：這個專案已經改用 **GCP 靜態外部 IP + VPC 防火牆規則**取代 quick
+tunnel（見 `installer/tmf_trading_setup.iss`/`post_install.ps1` 2026-09-03 之後的
+版本，已移除 `TMF-Trading-Tunnel` 排程任務與 `run_tunnel.ps1`/`cloudflared.exe`
+打包）。往後不要再用 quick tunnel 做需要長期穩定的對外連線，除非明確知道對方只是
+短期測試用途。
+
+## 8. GCP 靜態 IP／防火牆設定：兩個實測踩過的小雷
+
+1. **`gcloud compute firewall-rules create` 沒有 `--target-instances`/`--instance-zone`
+   這兩個參數**（會被誤導去猜這兩個名字，但這是給別的資源用的）。firewall rule 只能用
+   `--target-tags`（先用 `gcloud compute instances describe <vm> --format="get(tags.items)"`
+   查這台機器本來掛的 tag，例如新建 VM 常見的 `http-server`/`https-server`，直接沿用；
+   沒有的話用 `gcloud compute instances add-tags <vm> --zone=<zone> --tags=<tag>` 補一個），
+   或完全不指定 target（套用到整個網路，適合只有一台 VM 的簡單場景）。
+2. **刪掉 VM 之後，之前保留的靜態 IP 不會跟著消失，會變成「保留但沒有掛在任何運行中
+   機器上」的孤兒狀態，這種狀態 GCP 是持續計費的**（掛在運行中的 VM 上才免費）。重建
+   VM 後如果不再需要舊的靜態 IP，記得 `gcloud compute addresses delete <name>
+   --region=<region>` 釋放掉，不要讓它一直躺著計費。
+3. 同一個 Google 帳號底下常常橫跨多個 GCP 專案（例如免費試用建了不只一次），VM 也可能
+   換過 zone——`gcloud config get-value project`/`gcloud compute instances list` 先
+   查清楚實際的 project/zone，不要沿用之前記得的值，這個專案就因為猜錯專案/zone
+   走過兩次冤枉路（`compute.addresses.create` 權限不足、`describe` 查不到 VM）。
