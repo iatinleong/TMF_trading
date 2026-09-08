@@ -13,6 +13,7 @@ from backend.strategy_service import (
     _canonical_position_product,
     _cancel_protection_order_for_state,
     _check_orphaned_fill,
+    _opposite_direction_position_exists,
     _place_oco_protection_for_state,
     _settlement_month_from_tmf_code,
     _tick_one,
@@ -1344,3 +1345,92 @@ def test_auto_roll_premarks_existing_signal_and_does_not_fire_stale_order():
     assert state.product_code == "TM2609"
     assert state.last_signal_key == "2026-09-01 10:00:00_long"
     assert not mock_svc.place_order.called, "安全防護失效：換約瞬間不可對著舊訊號下單！"
+
+
+def test_opposite_direction_position_exists_detects_sibling_holding(clean_armed):
+    """驗證：同商品、方向相反、目前持倉中的另一支策略，會被互斥防護偵測到。"""
+    holder = StrategyState(
+        strategy_id="breakout_short",
+        product_code="TM2609",
+        strategy="breakout",
+        direction_limit="short",
+        label="測試空",
+        held_qty=1,
+        held_direction="short",
+    )
+    _armed["breakout_short"] = holder
+
+    assert _opposite_direction_position_exists(
+        "TM2609", "long", exclude_strategy_id="breakout_long"
+    )
+    # 同方向（都是 short）不算「反向」，不應該被擋
+    assert not _opposite_direction_position_exists(
+        "TM2609", "short", exclude_strategy_id="breakout_short"
+    )
+    # 不同商品不算衝突
+    assert not _opposite_direction_position_exists(
+        "MTX", "long", exclude_strategy_id="breakout_long"
+    )
+    # 空手的話不算「持倉中」，不應該被擋
+    holder.held_qty = 0
+    assert not _opposite_direction_position_exists(
+        "TM2609", "long", exclude_strategy_id="breakout_long"
+    )
+
+
+def test_tick_one_skips_entry_when_opposite_direction_sibling_holds_position(clean_armed):
+    """驗證：breakout_short 抱著空單時，breakout_long 看到多頭訊號應該暫緩進場，
+    不送出會被券商淨沖銷掉的買進新倉單（2026-09-08 實盤事故：這個沒擋住，
+    導致空單被買單沖銷、緊接著多單自己的 OCO 保護單又因「留倉部位不足」被拒單，
+    這筆倉位因此完全失去保護）。"""
+    holder = StrategyState(
+        strategy_id="breakout_short",
+        product_code="TM2609",
+        strategy="breakout",
+        direction_limit="short",
+        label="測試空",
+        held_qty=1,
+        held_direction="short",
+    )
+    _armed["breakout_short"] = holder
+
+    state = StrategyState(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        strategy="breakout",
+        direction_limit="long",
+        label="測試多",
+        qty=1,
+        initial_capital_ntd=100000.0,
+        max_loss_ntd=10000.0,
+        max_loss_pct=0.1,
+        stop_loss_points=100.0,
+        take_profit_points=250.0,
+    )
+    _armed["breakout_long"] = state
+
+    mock_svc = MagicMock()
+    mock_svc.is_order_enabled.return_value = True
+
+    dummy_signal = {"key": "2026-09-08 01:00:00_long", "direction": "long", "close": 47500.0, "time": 1788213600}
+    mock_df = pd.DataFrame({"close": [47500.0] * 70, "ma_fast": [47500.0] * 70, "ma_mid": [47400.0] * 70, "ma_slow": [47300.0] * 70})
+
+    with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._load_bars", return_value=mock_df):
+        st = {"quote": {"last_price": 47500.0}}
+        _tick_one(state, mock_svc, st)
+
+    assert not mock_svc.place_order.called, "互斥防護失效：不該對著反向持倉中的商品送出新倉單！"
+    assert state.held_qty == 0
+    # 沒有消費這個訊號的 key——下一輪還要繼續重試，等空單真正出場後才放行
+    assert state.last_signal_key is None
+    assert "暫緩進場" in state.last_action
+
+    # 空單真正出場（held_qty 歸零）之後，同一個訊號應該就能順利進場了
+    holder.held_qty = 0
+    holder.held_direction = None
+    with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._load_bars", return_value=mock_df):
+        _tick_one(state, mock_svc, st)
+
+    assert mock_svc.place_order.called, "反向持倉出場後，應該要能正常進場"

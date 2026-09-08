@@ -258,6 +258,34 @@ def _canonical_position_product(product_code: str) -> str:
     return product_code.strip().upper()
 
 
+def _opposite_direction_position_exists(
+    product_code: str, direction: str, *, exclude_strategy_id: str | None = None
+) -> bool:
+    """
+    2026-09-08 實盤事故根因：群益（跟大多數台灣期貨帳戶一樣）同一帳戶、同一商品
+    不支援真正的雙向留倉——即使送出的是「新倉」（new_close=0），只要方向跟既有
+    持倉相反，券商還是會直接拿新單去沖銷舊部位，而不是變成兩筆各自獨立的部位。
+    當天實測：breakout_short 抱著空單時，breakout_long 看到多頭訊號送出買進新倉單，
+    直接把空單沖銷成空手，緊接著 breakout_long 自己的 OCO 保護單又因為「留倉部位
+    不足」被拒單（[999]）——這筆多單因此完全沒有保護。
+
+    這裡在任何策略準備開新倉前先檢查：目前武裝中的策略裡，有沒有「同一個商品、
+    方向剛好相反、而且目前真的持倉中」的——有的話直接跳過這輪進場，不送出會被
+    券商淨沖銷掉的委託，等對方真正靠 SL/TP/風控出場之後才放行。
+    """
+    opposite = "short" if direction == "long" else "long"
+    target_product = _canonical_position_product(product_code)
+    for other in _armed.values():
+        if exclude_strategy_id is not None and other.strategy_id == exclude_strategy_id:
+            continue
+        if other.held_qty <= 0 or other.held_direction != opposite:
+            continue
+        if _canonical_position_product(other.product_code) != target_product:
+            continue
+        return True
+    return False
+
+
 def _settlement_month_from_tmf_code(product_code: str) -> str | None:
     """
     從 "TM2609" 這類 TMF 具體月份碼推導 STP 智慧單要用的 YYYYMM（"202609"）。
@@ -1104,7 +1132,14 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
 
     try:
         if target == state.direction_limit:
-            if state.held_qty == 0:
+            if state.held_qty == 0 and _opposite_direction_position_exists(
+                state.product_code, target, exclude_strategy_id=state.strategy_id
+            ):
+                state.last_action = (
+                    f"偵測到同商品有反向策略持倉中，暫緩進場（避免被券商淨沖銷)，"
+                    f"待該部位靠 SL/TP/風控真正出場後才會嘗試 {target}"
+                )
+            elif state.held_qty == 0:
                 side = "buy" if target == "long" else "sell"
                 result = svc.place_order(
                     {
