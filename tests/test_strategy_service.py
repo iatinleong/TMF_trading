@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+from backend.broker.capital_futures import CapitalFuturesBroker
 from backend.capital_parse import parse_open_interest_line, parse_order_report_line
 from backend import strategy_service
 from backend.strategy_service import (
@@ -1506,3 +1507,91 @@ def test_tick_one_discards_stale_quote_and_uses_bar_close_for_entry_price(clean_
     assert mock_svc.place_order.called
     assert state.held_qty == 1
     assert state.entry_price == 46390.0, "應該改用K棒收盤價，不是那個過期308點的舊報價 46082"
+
+
+def test_full_session_switch_simulation_end_to_end(clean_armed):
+    """模擬完整的「日夜盤切換」情境，從連線層一路走到策略層，驗證兩層防護
+    合起來真的能處理這個情境，不是只有各自獨立的單元測試：
+
+    1. 連線層：模擬夜盤 05:00 收盤後報價卡住（跟真實事故一樣是 46082），
+       接著模擬真實 log 觀察到的反覆斷線/重連序列（3001/3002/3001...），
+       每次都應該清空過期報價、標記需要重新訂閱。
+    2. 連線層：模擬 COM 專用執行緒 idle loop 呼叫 check_and_resubscribe_quotes()
+       （不是直接在 OnConnection 事件裡呼叫），驗證會重新訂閱、並且模擬
+       真正收到新報價後 quote 正確更新為當下真實市價 46390。
+    3. 策略層：把這個連線層跑完之後的真實狀態餵給 _tick_one，驗證多單
+       用的是重新訂閱後的新報價（46390），不是舊的 46082——證明兩層防護
+       接起來後，整個系統在日夜盤切換情境下的最終行為是正確的。
+    """
+    broker = CapitalFuturesBroker()
+    broker.live.connected = True
+    broker.live.subscribed_product = "TM2609"
+    broker._stocks_ready = True
+    broker.live.quote.last_price = 46082.0  # 夜盤 05:00 收盤的舊報價
+    broker.live.quote.updated_at = "2026-09-11 05:00:00"
+
+    # --- 第 1 步：模擬真實 log 觀察到的反覆重連序列（07:30/07:32/08:10/08:12/08:17）---
+    for n_kind in (3001, 3002, 3001, 3001):
+        broker._quote_events_sink.OnConnection(n_kind, 0)
+        assert broker.live.quote.last_price is None, "每次連線事件後，過期報價都應該被清空"
+    assert broker._needs_resubscribe is True
+
+    # --- 第 2 步：模擬 COM 專用執行緒 idle loop（不是 OnConnection 事件內）呼叫重新訂閱 ---
+    broker._stocks_ready = True  # 商品檔本來就下載過，不用重新等 3003
+    broker.request_stocks = MagicMock(return_value=0)
+    broker.request_ticks = MagicMock(return_value=0)
+
+    def _fake_snapshot(product_code: str) -> None:
+        # 模擬真正重新訂閱之後，收到日盤開盤的真實成交價
+        broker.live.quote.last_price = 46390.0
+        broker.live.quote.updated_at = "2026-09-11 18:01:00"
+
+    broker._snapshot_quote = MagicMock(side_effect=_fake_snapshot)
+
+    resubscribed = broker.check_and_resubscribe_quotes()
+
+    assert resubscribed is True
+    assert broker._needs_resubscribe is False
+    broker.request_stocks.assert_called_once_with("TM2609", page=1)
+    broker.request_ticks.assert_called_once_with("TM2609", page=1)
+    assert broker.live.quote.last_price == 46390.0, "重新訂閱後應該拿到當下真實市價，不是還停在舊值"
+
+    # --- 第 3 步：把連線層跑完之後的真實狀態餵給策略層，驗證多單用的是新報價 ---
+    st = broker.get_live_state()
+    assert st["quote"]["last_price"] == 46390.0
+
+    state = StrategyState(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        strategy="breakout",
+        direction_limit="long",
+        label="測試多",
+        qty=1,
+        initial_capital_ntd=100000.0,
+        max_loss_ntd=10000.0,
+        max_loss_pct=0.1,
+        stop_loss_points=100.0,
+        take_profit_points=250.0,
+    )
+    _armed["breakout_long"] = state
+
+    mock_svc = MagicMock()
+    mock_svc.is_order_enabled.return_value = True
+    mock_svc.place_order.return_value = {"order_result": {"success": True}}
+    mock_svc.place_oco_order.return_value = {
+        "order_result": {"success": True, "raw": "20260911,二擇一委託已送出 條件單號：99999999,x0000,99999999,1688100009999"}
+    }
+
+    dummy_signal = {"key": "2026-09-11 18:00:00_long", "direction": "long", "close": 46390.0, "time": 1789120800}
+    mock_df = pd.DataFrame({"close": [46390.0] * 70, "ma_fast": [46390.0] * 70, "ma_mid": [46300.0] * 70, "ma_slow": [46200.0] * 70})
+
+    with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._load_bars", return_value=mock_df):
+        _tick_one(state, mock_svc, st)
+
+    assert mock_svc.place_order.called
+    assert state.entry_price == 46390.0, "連線層修好之後，策略層應該直接拿到正確的新報價，不需要靠K棒備援兜底"
+
+    # OCO 停利觸發價應該是 46390+250=46640，不是舊報價算出來的 46082+250=46332
+    oco_kwargs = mock_svc.place_oco_order.call_args.args[0]
+    assert oco_kwargs["trigger_price"] == "46640"
