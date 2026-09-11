@@ -61,6 +61,20 @@ MAX_CONSECUTIVE_FAILURES = 3
 # 不清空、不撤單，見 reconcile_after_manual_close／reconcile_orphan_stop_orders。
 RECONCILE_ENTRY_GRACE_SECONDS = 30.0
 
+# 2026-09-11 實盤事故：群益 SKCOM 的報價事件（OnNotifyQuoteLONG）在跨盤
+# （夜盤 05:00 收盤 → 日盤 08:45 開盤）之後沒有自動更新，st["quote"]["last_price"]
+# 卡在前一盤收盤價（46,082）長達 13 小時沒變，但同一時間 K 棒（Shioaji 回補+即時
+# tick 兩路來源）持續正常更新到真實市價（46,390）。官方文件（CapitalAPI SDK
+# 「13.國內報價.docx」OnNotifyTicksLONG 備註）明講「T盤切換T+1盤，不保留前一盤
+# 資料，開發者需自行清除前一盤資料」——SKCOM 本身不會幫你清這個。進場當下
+# entry_px 優先信任這個報價變數，量到一個過期但 >0 的舊價，直接跳過後面所有
+# 備援（broker 持倉快照／K棒收盤價），用這個舊價去算 OCO 停損停利觸發價，
+# 導致停利觸發價還沒掛到券商那邊就已經被真實市價超過，OCO 一掛上去立刻秒觸發
+# 平倉（entry_price=46,082 但真實成交在 46,390，停利觸發價只算到 46,332）。
+# 這裡加一道防呆：報價跟最新K棒收盤價（可靠來源，見上方說明）偏離超過這個
+# 點數，就不信任報價，強制走後面的備援鏈（等同報價缺失時的處理）。
+QUOTE_STALENESS_POINTS = 50.0
+
 
 def _env_float(name: str, default: float) -> float:
     try:
@@ -300,7 +314,9 @@ def _settlement_month_from_tmf_code(product_code: str) -> str | None:
     return f"20{yy}{mm}"
 
 
-def _place_oco_protection_for_state(state: StrategyState, svc: TradingService) -> None:
+def _place_oco_protection_for_state(
+    state: StrategyState, svc: TradingService, *, reference_price: float | None = None
+) -> None:
     """
     進場成交後呼叫：用單一 OCO（二擇一）智慧單，一次委託同時掛停損＋停利兩支
     腿保護這筆留倉。失敗（或非 TMF 商品）就放著 protection_order_smart_key=
@@ -319,6 +335,13 @@ def _place_oco_protection_for_state(state: StrategyState, svc: TradingService) -
     2. order_price_type=3（範圍市價）配 "P" 在 ROD 下會被拒（[519] 需要
        實際價差，格式未驗證過）；改用 order_price_type=2（限價）+ 實際數字
        價格，跟原本 STP/MIT 已經驗證過能用的方式一致。
+
+    2026-09-11 加固：`reference_price`（呼叫端傳入，通常是最新K棒收盤價，見
+    QUOTE_STALENESS_POINTS 說明）非 None 時，最後再做一次現價防呆——不管
+    entry_price 是怎麼來的，只要算出來的觸發價已經在現價的「錯誤那一側」
+    （多單停利價 <= 現價、或多單停損價 >= 現價，空單則相反），代表這張
+    OCO 一掛上去就會立刻被現價觸發，直接用「現價 ± 點數」重新算過，不送出
+    一張還沒送到就已經注定秒觸發的保護單。
     """
     settlement_month = _settlement_month_from_tmf_code(state.product_code)
     if settlement_month is None:
@@ -329,10 +352,20 @@ def _place_oco_protection_for_state(state: StrategyState, svc: TradingService) -
         side = "sell"
         stop_trigger = state.entry_price - abs(state.stop_loss_points)
         take_profit_trigger = state.entry_price + abs(state.take_profit_points)
+        if reference_price is not None and reference_price > 0:
+            if take_profit_trigger <= reference_price:
+                take_profit_trigger = reference_price + abs(state.take_profit_points)
+            if stop_trigger >= reference_price:
+                stop_trigger = reference_price - abs(state.stop_loss_points)
     else:
         side = "buy"
         stop_trigger = state.entry_price + abs(state.stop_loss_points)
         take_profit_trigger = state.entry_price - abs(state.take_profit_points)
+        if reference_price is not None and reference_price > 0:
+            if take_profit_trigger >= reference_price:
+                take_profit_trigger = reference_price - abs(state.take_profit_points)
+            if stop_trigger <= reference_price:
+                stop_trigger = reference_price + abs(state.stop_loss_points)
 
     high_trigger = max(stop_trigger, take_profit_trigger)
     low_trigger = min(stop_trigger, take_profit_trigger)
@@ -1194,6 +1227,16 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         entry_px = float(quote) if quote else 0.0
                     except (ValueError, TypeError):
                         entry_px = 0.0
+                    if entry_px > 0 and not bars.empty:
+                        # 2026-09-11 加固：報價可能是跨盤沒更新的過期值（見上方
+                        # QUOTE_STALENESS_POINTS 說明），跟可靠的K棒收盤價偏離太多
+                        # 就不信任它，視同報價缺失，走後面的備援鏈。
+                        try:
+                            reference_close = float(bars.iloc[-1]["close"])
+                            if reference_close > 0 and abs(entry_px - reference_close) > QUOTE_STALENESS_POINTS:
+                                entry_px = 0.0
+                        except (ValueError, TypeError, KeyError, IndexError):
+                            pass
                     if entry_px <= 0:
                         # 2026-08-30 加固：即時報價缺失時，優先從下單後刷新的 broker positions
                         # 快照裡讀取真實成交均價（GetOpenInterestGW 回報的實際成本），
@@ -1230,7 +1273,13 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                         price=state.entry_price,
                     )
                     if state.entry_price > 0 and state.oco_enabled:
-                        _place_oco_protection_for_state(state, svc)
+                        oco_reference_price = None
+                        try:
+                            if not bars.empty:
+                                oco_reference_price = float(bars.iloc[-1]["close"])
+                        except (ValueError, TypeError, KeyError, IndexError):
+                            oco_reference_price = None
+                        _place_oco_protection_for_state(state, svc, reference_price=oco_reference_price)
             else:
                 state.last_action = f"已持倉 {target} x{state.held_qty}，同向訊號不動作"
         else:

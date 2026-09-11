@@ -777,6 +777,37 @@ def test_place_oco_protection_for_state_skips_non_tmf_product():
     assert state.protection_order_smart_key is None
 
 
+def test_place_oco_protection_for_state_clamps_take_profit_past_reference_price():
+    """2026-09-11 實盤事故：entry_price 因為報價過期記成 46082，但下單當下真實
+    市價已經在 46390，算出來的停利觸發價（46082+250=46332）比真實市價還低，
+    OCO 一掛到券商那邊就立刻被現價觸發、秒平倉。傳入 reference_price（可靠的
+    最新K棒收盤價）之後，應該偵測到停利觸發價已經在現價的錯誤那一側（<=現價），
+    改用「現價+停利點數」重算，確保掛出去的時候還沒被現價觸發。"""
+    state = _open_long_state(product_code="TM2609", entry_price=46082.0)
+    svc = MagicMock()
+    svc.place_oco_order.return_value = _oco_success_response()
+
+    _place_oco_protection_for_state(state, svc, reference_price=46390.0)
+
+    call_kwargs = svc.place_oco_order.call_args.args[0]
+    assert call_kwargs["trigger_price"] == "46640"  # 46390 + 250，不是 46082+250=46332
+    assert call_kwargs["trigger_price2"] == "45982"  # 停損本來就在現價正確一側，不用校正
+
+
+def test_place_oco_protection_for_state_no_clamp_when_reference_price_missing():
+    """reference_price 沒傳（None）時，行為完全比照原本邏輯，不做任何校正——
+    確保這個防呆是可選的加固，不影響既有呼叫端（例如舊測試）。"""
+    state = _open_long_state(product_code="TM2609", entry_price=46082.0)
+    svc = MagicMock()
+    svc.place_oco_order.return_value = _oco_success_response()
+
+    _place_oco_protection_for_state(state, svc, reference_price=None)
+
+    call_kwargs = svc.place_oco_order.call_args.args[0]
+    assert call_kwargs["trigger_price"] == "46332"
+    assert call_kwargs["trigger_price2"] == "45982"
+
+
 def test_cancel_protection_order_for_state_success_clears_tracking():
     state = _open_long_state(
         product_code="TM2609",
@@ -1434,3 +1465,44 @@ def test_tick_one_skips_entry_when_opposite_direction_sibling_holds_position(cle
         _tick_one(state, mock_svc, st)
 
     assert mock_svc.place_order.called, "反向持倉出場後，應該要能正常進場"
+
+
+def test_tick_one_discards_stale_quote_and_uses_bar_close_for_entry_price(clean_armed):
+    """2026-09-11 實盤事故重現：st["quote"]["last_price"] 是跨盤沒更新的過期值
+    （46082，實際是前一個夜盤 05:00 的收盤價），真實市價（也就是K棒收盤價）
+    早就在 46390。舊邏輯無條件信任 quote>0，直接拿 46082 當進場價去算 OCO，
+    停利觸發價因此已經在現價後面，一掛上去就秒觸發平倉。這裡驗證：報價跟
+    K棒收盤價偏離超過 QUOTE_STALENESS_POINTS 時，entry_price 應該改用可靠的
+    K棒收盤價（46390），不是那個過期的 46082。"""
+    state = StrategyState(
+        strategy_id="breakout_long",
+        product_code="TM2609",
+        strategy="breakout",
+        direction_limit="long",
+        label="測試多",
+        qty=1,
+        initial_capital_ntd=100000.0,
+        max_loss_ntd=10000.0,
+        max_loss_pct=0.1,
+        stop_loss_points=100.0,
+        take_profit_points=250.0,
+    )
+    _armed["breakout_long"] = state
+
+    mock_svc = MagicMock()
+    mock_svc.is_order_enabled.return_value = True
+    # 沒有帶 "state"/positions，模擬下單成功但刷新快照裡還沒查得到最新持倉，
+    # 逼進場價判定走到第 3 層備援（K棒收盤價）。
+    mock_svc.place_order.return_value = {"order_result": {"success": True}}
+
+    dummy_signal = {"key": "2026-09-11 18:00:00_long", "direction": "long", "close": 46390.0, "time": 1789120800}
+    mock_df = pd.DataFrame({"close": [46390.0] * 70, "ma_fast": [46390.0] * 70, "ma_mid": [46300.0] * 70, "ma_slow": [46200.0] * 70})
+
+    with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._load_bars", return_value=mock_df):
+        st = {"quote": {"last_price": 46082.0}}  # 過期的舊報價，偏離現價 308 點
+        _tick_one(state, mock_svc, st)
+
+    assert mock_svc.place_order.called
+    assert state.held_qty == 1
+    assert state.entry_price == 46390.0, "應該改用K棒收盤價，不是那個過期308點的舊報價 46082"
