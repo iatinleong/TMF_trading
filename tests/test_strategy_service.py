@@ -1530,17 +1530,22 @@ def test_full_session_switch_simulation_end_to_end(clean_armed):
     broker.live.quote.last_price = 46082.0  # 夜盤 05:00 收盤的舊報價
     broker.live.quote.updated_at = "2026-09-11 05:00:00"
 
-    # --- 第 1 步：模擬真實 log 觀察到的反覆重連序列（07:30/07:32/08:10/08:12/08:17）---
-    for n_kind in (3001, 3002, 3001, 3001):
-        broker._quote_events_sink.OnConnection(n_kind, 0)
-        assert broker.live.quote.last_price is None, "每次連線事件後，過期報價都應該被清空"
-    assert broker._needs_resubscribe is True
-
-    # --- 第 2 步：模擬 COM 專用執行緒 idle loop（不是 OnConnection 事件內）呼叫重新訂閱 ---
-    broker._stocks_ready = True  # 商品檔本來就下載過，不用重新等 3003
+    # 在觸發 OnConnection 前掛上 mock，嚴格驗證 OnConnection 執行期間絕不呼叫 RequestStocks / RequestTicks
     broker.request_stocks = MagicMock(return_value=0)
     broker.request_ticks = MagicMock(return_value=0)
 
+    # --- 第 1 步：模擬真實 log 觀察到的重連與跨盤序列（3001/3002/3001/3003）---
+    for n_kind in (3001, 3002, 3001, 3003):
+        broker._quote_events_sink.OnConnection(n_kind, 0)
+        assert broker.live.quote.last_price is None, "每次連線事件後，過期報價都應該被清空"
+
+    assert broker._stocks_ready is True, "OnConnection(3003) 應自然將 _stocks_ready 設為 True，不需手動覆寫"
+    assert broker._needs_resubscribe is True, "跨盤後應標記需要重新訂閱"
+    # 嚴格斷言：OnConnection 回呼期間絕不能直接呼叫 RequestStocks（避免 COM 重入死鎖）
+    broker.request_stocks.assert_not_called()
+    broker.request_ticks.assert_not_called()
+
+    # --- 第 2 步：模擬 COM 專用執行緒 idle loop（不是 OnConnection 事件內）呼叫重新訂閱 ---
     def _fake_snapshot(product_code: str) -> None:
         # 模擬真正重新訂閱之後，收到日盤開盤的真實成交價
         broker.live.quote.last_price = 46390.0
