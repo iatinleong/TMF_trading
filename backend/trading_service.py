@@ -384,6 +384,7 @@ class TradingService:
                 with self._lock:
                     if self._broker and self._broker.live.connected:
                         try:
+                            self._broker.check_and_resubscribe_quotes()
                             self._broker.pump_events(0.2)
                         except Exception as exc:  # noqa: BLE001
                             logger.warning("pump_events failed: %s", exc)
@@ -517,6 +518,15 @@ class TradingService:
             self._broker.subscribe_quote(quote_product, wait_timeout=120.0)
             self._broker.pump_events(3.0)
             return self._broker.get_live_state()
+
+    def check_resubscribe(self) -> bool:
+        return self._run_com(self._check_resubscribe_impl)
+
+    def _check_resubscribe_impl(self) -> bool:
+        with self._lock:
+            if not self._broker:
+                return False
+            return self._broker.check_and_resubscribe_quotes()
 
     def _try_load_kline_impl(self, product_code: str, bar_limit: int = 500) -> bool:
         with self._lock:

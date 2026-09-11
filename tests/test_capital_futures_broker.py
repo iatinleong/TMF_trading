@@ -331,3 +331,111 @@ def test_find_project_root_frozen_mode(monkeypatch, tmp_path):
 
     root = capital_futures._find_project_root()
     assert root == fake_exe.parent
+
+
+def test_on_connection_3003_sets_needs_resubscribe_and_clears_stale_quote():
+    """
+    2026-09-11：官方文件《13.國內報價.docx》明確警告 OnConnection 內不可直接呼叫 RequestStocks，
+    且跨盤（T盤切換T+1盤）需自行清除前一盤資料。
+    驗證 OnConnection(3003) 會標記 _stocks_ready=True 與 _needs_resubscribe=True，並清空舊 quote。
+    """
+    broker = CapitalFuturesBroker()
+    broker.live.quote.last_price = 46082.0
+    broker.live.quote.bid = 46080.0
+    broker.live.quote.ask = 46084.0
+    broker.live.quote.volume = 120
+    broker.live.quote.updated_at = "2026-09-11 05:00:00"
+
+    broker._quote_events_sink.OnConnection(3003, 0)
+
+    assert broker._stocks_ready is True
+    assert broker._needs_resubscribe is True
+    assert broker.live.quote.last_price is None
+    assert broker.live.quote.bid is None
+    assert broker.live.quote.ask is None
+    assert broker.live.quote.volume is None
+    assert broker.live.quote.updated_at == ""
+
+
+def test_on_connection_3001_and_3005_mark_needs_resubscribe_and_clear_stale_quote():
+    broker = CapitalFuturesBroker()
+    broker.live.quote.last_price = 46082.0
+
+    broker._quote_events_sink.OnConnection(3001, 0)
+    assert broker._needs_resubscribe is True
+    assert broker.live.quote.last_price is None
+
+    broker.live.quote.last_price = 46100.0
+    broker._quote_events_sink.OnConnection(3005, 0)
+    assert broker._needs_resubscribe is True
+    assert broker.live.quote.last_price is None
+
+
+def test_on_connection_3002_disconnect_marks_stocks_not_ready():
+    broker = CapitalFuturesBroker()
+    broker._stocks_ready = True
+    broker.live.quote.last_price = 46300.0
+
+    broker._quote_events_sink.OnConnection(3002, 0)
+    assert broker._stocks_ready is False
+    assert broker.live.quote.last_price is None
+
+
+def test_check_and_resubscribe_quotes_subscribes_and_resets_flag():
+    broker = CapitalFuturesBroker()
+    broker.live.subscribed_product = "TM2609"
+    broker._stocks_ready = True
+    broker._needs_resubscribe = True
+
+    broker.request_stocks = MagicMock(return_value=0)
+    broker.request_ticks = MagicMock(return_value=0)
+    broker._snapshot_quote = MagicMock()
+
+    result = broker.check_and_resubscribe_quotes()
+
+    assert result is True
+    assert broker._needs_resubscribe is False
+    broker.request_stocks.assert_called_once_with("TM2609", page=1)
+    broker.request_ticks.assert_called_once_with("TM2609", page=1)
+    broker._snapshot_quote.assert_called_once_with("TM2609")
+
+
+def test_check_and_resubscribe_quotes_noop_when_not_needed_or_not_ready():
+    broker = CapitalFuturesBroker()
+    broker.live.subscribed_product = "TM2609"
+    broker.request_stocks = MagicMock()
+
+    # 1. needs_resubscribe is False -> noop
+    broker._needs_resubscribe = False
+    broker._stocks_ready = True
+    assert broker.check_and_resubscribe_quotes() is False
+    broker.request_stocks.assert_not_called()
+
+    # 2. stocks_ready is False -> noop
+    broker._needs_resubscribe = True
+    broker._stocks_ready = False
+    assert broker.check_and_resubscribe_quotes() is False
+    broker.request_stocks.assert_not_called()
+
+
+def test_refresh_live_snapshot_triggers_resubscribe():
+    broker = CapitalFuturesBroker()
+    broker.live.active_account = "F0200006921941"
+    broker.live.subscribed_product = "TM2609"
+    broker._stocks_ready = True
+    broker._needs_resubscribe = True
+
+    broker.get_order_report = MagicMock()
+    broker.get_fulfill_report = MagicMock()
+    broker.get_open_interest = MagicMock()
+    broker.get_future_rights = MagicMock()
+    broker._pump_events = MagicMock()
+    broker.request_stocks = MagicMock(return_value=0)
+    broker.request_ticks = MagicMock(return_value=0)
+    broker._snapshot_quote = MagicMock()
+
+    broker.refresh_live_snapshot(force=True)
+
+    assert broker._needs_resubscribe is False
+    broker.request_stocks.assert_called_once_with("TM2609", page=1)
+

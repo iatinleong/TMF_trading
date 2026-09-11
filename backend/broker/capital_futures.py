@@ -398,6 +398,7 @@ class CapitalFuturesBroker:
         self._order_initialized = False
         self._quote_monitoring = False
         self._stocks_ready = False
+        self._needs_resubscribe = False
         self._last_snapshot_query_at: float = 0.0
         # 2026-08-30 實盤事故：OnOpenInterest 對「一次查詢」的回應，實際上是
         # 分成好幾次獨立事件呼叫送過來的（一筆部位資料一次呼叫，接著幾毫秒
@@ -600,12 +601,23 @@ class CapitalFuturesBroker:
                 msg = f"kind={nKind}({kind_msg}) code={nCode}({code_msg})"
                 logger.info("[OnConnection] %s", msg)
                 broker.live.add_message("quote_conn", msg)
-                if nKind == 3003:
+                # 官方文件《13.國內報價.docx》明確警告：
+                # 「OnConnection 事件處理函式內不可直接呼叫 RequestStocks / RequestTicks 等報價訂閱函式」
+                # 避免 COM 回呼重入 (re-entrancy) 與死鎖 (deadlock)。
+                # 此外官方對 OnNotifyTicksLONG 備註：「T盤切換T+1盤，不保留前一盤資料。開發者需自行清除前一盤資料。」
+                if nKind == 3003:  # SK_SUBJECT_CONNECTION_STOCKS_READY (商品檔下載完成)
                     broker._stocks_ready = True
-                    logger.info("OnConnection: 商品檔下載完成 (nKind=3003)")
-                    broker.live.add_message("quote_conn", "商品檔下載完成 (3003)")
-                elif nKind == 3002:
+                    broker._needs_resubscribe = True
+                    broker._clear_stale_quote(reason="商品檔就緒/跨盤重置 (3003)")
+                    logger.info("OnConnection: 商品檔下載完成 (nKind=3003)，已標記需重新訂閱報價")
+                    broker.live.add_message("quote_conn", "商品檔下載完成 (3003)，已標記重新訂閱")
+                elif nKind in (3001, 3005):  # 3001: 連線成功, 3005: 重新連線
+                    broker._needs_resubscribe = True
+                    broker._clear_stale_quote(reason=f"報價伺服器連線/重連 (nKind={nKind})")
+                    logger.info("OnConnection: 報價連線變更 (nKind=%s)，已標記需重新訂閱報價", nKind)
+                elif nKind == 3002:  # SK_SUBJECT_CONNECTION_DISCONNECT (斷線)
                     broker._stocks_ready = False
+                    broker._clear_stale_quote(reason="報價斷線 (3002)")
                     logger.warning("OnConnection: 報價斷線 (nKind=3002)")
 
             def OnNotifyQuoteLONG(self, sMarketNo, nIndex):  # noqa: N802
@@ -623,7 +635,8 @@ class CapitalFuturesBroker:
         self._center_events = comtypes_client.GetEvents(self.center, CenterEvents())
         self._reply_events = comtypes_client.GetEvents(self.reply, ReplyEvents())
         self._order_events = comtypes_client.GetEvents(self.order, OrderEvents())
-        self._quote_events = comtypes_client.GetEvents(self.quote, QuoteEvents())
+        self._quote_events_sink = QuoteEvents()
+        self._quote_events = comtypes_client.GetEvents(self.quote, self._quote_events_sink)
 
     def _configure_log_path(self) -> None:
         """設定 SKCOM log 路徑；官方要求此函式須於 Login 前最先呼叫。"""
@@ -1396,6 +1409,50 @@ class CapitalFuturesBroker:
         except Exception as exc:  # noqa: BLE001
             logger.warning("snapshot quote failed %s: %s", product_code, exc)
 
+    def _clear_stale_quote(self, reason: str = "") -> None:
+        """
+        清空目前過期/失效的即時報價資料。
+        官方文件《13.國內報價.docx》備註：「T盤切換T+1盤，不保留前一盤資料。開發者需自行清除前一盤資料。」
+        """
+        self.live.quote.last_price = None
+        self.live.quote.bid = None
+        self.live.quote.ask = None
+        self.live.quote.volume = None
+        self.live.quote.updated_at = ""
+        if reason:
+            logger.info("已清空過期報價快照: %s", reason)
+            self.live.add_message("quote_conn", f"清空過期報價: {reason}")
+
+    def check_and_resubscribe_quotes(self) -> bool:
+        """
+        在安全環境（非 COM 回呼事件處理函式內，如背景輪詢或 STA 執行緒主迴圈）檢查並執行重新訂閱。
+        避開 OnConnection 內部直接呼叫 RequestStocks 引發 COM STA 死鎖/重入風險。
+        """
+        if not self._needs_resubscribe:
+            return False
+        if not self._stocks_ready:
+            return False
+        product = self.live.subscribed_product or self.live.order_product_code
+        if not product:
+            return False
+
+        logger.info("跨盤/重連安全報價重新訂閱開始 (product=%s)", product)
+        self.live.add_message("quote_conn", f"執行跨盤/重連安全報價重新訂閱: {product}")
+        try:
+            stocks_code = self.request_stocks(product, page=1)
+            if stocks_code != 0:
+                logger.warning("重新訂閱 RequestStocks %s 失敗: %s", product, self._msg(stocks_code))
+            tick_code = self.request_ticks(product, page=1)
+            if tick_code != 0:
+                logger.warning("重新訂閱 RequestTicks %s 失敗: %s", product, self._msg(tick_code))
+            self._snapshot_quote(product)
+            self._needs_resubscribe = False
+            logger.info("跨盤/重連安全報價重新訂閱完成 (product=%s, stocks=%s, ticks=%s)", product, stocks_code, tick_code)
+            return True
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("check_and_resubscribe_quotes 失敗: %s", exc)
+            return False
+
     def wait_for_quote_price(self, timeout: float = 30.0) -> bool:
         """等到 last_price 有值（RequestStocks / Ticks / 快照任一來源）。"""
         deadline = time.time() + timeout
@@ -1466,6 +1523,7 @@ class CapitalFuturesBroker:
         account = account or self.live.active_account
         if not account:
             return
+        self.check_and_resubscribe_quotes()
         now = time.time()
         if not force and now - self._last_snapshot_query_at < 6.5:
             self._pump_events(0.3)
@@ -1505,6 +1563,7 @@ class CapitalFuturesBroker:
             "kline_api_block_reason": self.live.kline_api_block_reason,
             "kline_loaded_products": sorted(self._kline_loaded),
             "quote_ready": self._stocks_ready,
+            "needs_resubscribe": self._needs_resubscribe,
             "order_product_code": self.live.order_product_code,
             "quote_connected": self._quote_connection_status(),
             "messages": list(self.live.messages[-50:]),

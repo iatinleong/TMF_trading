@@ -351,10 +351,7 @@ async def poll_once() -> dict[str, Any] | None:
 
     if st.get("connected") and not st.get("quote_connected"):
         try:
-            def _sync_reconnect_quote() -> None:
-                _svc()._broker.enter_monitor()
-                _svc().subscribe(product)
-            await asyncio.to_thread(_sync_reconnect_quote)
+            await asyncio.to_thread(_svc().subscribe, product)
         except Exception as exc:  # noqa: BLE001
             logger.debug("auto quote reconnect failed: %s", exc)
 
