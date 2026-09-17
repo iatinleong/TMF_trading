@@ -15,6 +15,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
 def _base_status(*, subscribed_product: str) -> dict:
     return {
         "connected": True,
