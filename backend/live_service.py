@@ -304,6 +304,31 @@ async def poll_once() -> dict[str, Any] | None:
     if last is not None:
         price_cache[product] = float(last)
 
+    # 2026-09-17 實盤事故：TM2609 結算到期（每月第三個星期三）之後，市場上
+    # 已經沒有這個合約的報價，但 SKCOM 訂閱、儀表板都還停在這個舊代碼上，
+    # 導致圖表/K線一片空白。原本的換月判斷寫在 strategy_service._tick_one()
+    # 裡，有兩個問題：(1) 只有在「有策略被武裝」時才會執行到，只要使用者
+    # 把策略全部停用，就永遠不會被觸發；(2) 就算執行到了，也只是改
+    # StrategyState 自己的 product_code 欄位，從來沒有真的呼叫
+    # TradingService.subscribe() 去讓 SKCOM 連線層跟著換到新合約——兩個問題
+    # 疊加起來，代表換月這件事實際上從來沒有真正自動生效過。這裡獨立判斷、
+    # 不依賴任何策略是否啟動：只要目前訂閱的商品是過期的「TM+年月」代碼，
+    # 立刻重新訂閱新的近月合約，讓連線層本身（不只是個別策略）保持正確。
+    try:
+        from .strategy_service import resolve_strategy_product_code
+
+        resolved_product = resolve_strategy_product_code(product)
+    except Exception as exc:  # noqa: BLE001 - 換月判斷失敗不該影響其餘輪詢
+        logger.debug("換月判斷失敗（不影響主流程): %s", exc)
+        resolved_product = product
+    if resolved_product.upper() != product.upper():
+        logger.info("偵測到近月合約已換月：%s -> %s，自動重新訂閱", product, resolved_product)
+        try:
+            await asyncio.to_thread(set_product, resolved_product)
+            product = resolved_product
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("自動換月重新訂閱失敗: %s", exc)
+
     quote_product = resolve_quote_product_code(product)
     loaded = st.get("kline_loaded_products") or []
     # 2026-08-26：K 線只由共用的主行程負責讀寫（見

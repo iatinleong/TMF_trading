@@ -386,6 +386,20 @@ def _isolate_reconcile_audit_log(tmp_path, monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _pin_current_tmf_code(monkeypatch):
+    """
+    2026-09-17 實盤事故排查發現：這個檔案裡幾乎所有測試都寫死用 "TM2609"
+    當「目前近月合約」的假設，但 compute_current_tmf_code() 是照真實系統
+    時鐘算的——一旦 wall-clock 真的跨過當月結算日（每月第三個星期三），
+    "TM2609" 就不再是「目前近月」，_tick_one() 的自動換月邏輯會在測試裡
+    也被觸發，把這些測試的 product_code 偷偷改掉、連帶讓 last_signal_key
+    被預先標記，導致一堆看似無關的測試莫名其妙壞掉（9/17 當天實測發生過）。
+    這裡把「目前近月」釘死在 TM2609，讓測試結果不再看當下日期臉色。
+    """
+    monkeypatch.setattr(strategy_service, "compute_current_tmf_code", lambda: "TM2609")
+
+
 def test_stop_strategy_keeps_monitoring_when_holding_position(clean_armed):
     # 2026-08-21 修正：手上還有留倉時，手動關開關不能把策略整個從監控清單移除，
     # 否則停損停利保護會直接消失（沒有真正的券商端停損單在保護）。
@@ -1308,9 +1322,8 @@ def test_start_strategy_defaults_all_toggles_true_when_omitted(clean_armed):
 
 def test_resolve_strategy_product_code():
     from backend.strategy_service import resolve_strategy_product_code
-    from backend.trading_service import compute_current_tmf_code
 
-    current_tmf = compute_current_tmf_code()
+    current_tmf = strategy_service.compute_current_tmf_code()
     assert resolve_strategy_product_code(None) == current_tmf
     assert resolve_strategy_product_code("") == current_tmf
     assert resolve_strategy_product_code("TMF") == current_tmf
@@ -1322,9 +1335,8 @@ def test_resolve_strategy_product_code():
 
 def test_start_strategy_with_none_or_empty_product_code_resolves_to_front_month(clean_armed):
     from backend.strategy_service import start_strategy, _armed
-    from backend.trading_service import compute_current_tmf_code
 
-    current_tmf = compute_current_tmf_code()
+    current_tmf = strategy_service.compute_current_tmf_code()
     with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
         start_strategy("breakout_long", product_code=None)
 
@@ -1334,9 +1346,8 @@ def test_start_strategy_with_none_or_empty_product_code_resolves_to_front_month(
 
 def test_resolve_strategy_product_code_corrects_expired_tmf():
     from backend.strategy_service import resolve_strategy_product_code
-    from backend.trading_service import compute_current_tmf_code
 
-    current_tmf = compute_current_tmf_code()
+    current_tmf = strategy_service.compute_current_tmf_code()
     # 傳入過去已過期的 TM2608，應自動校正為當前近月
     assert resolve_strategy_product_code("TM2608") == current_tmf
 
