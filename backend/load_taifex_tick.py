@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import argparse
 import io
+import logging
+import os
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -37,9 +39,88 @@ try:
 except ImportError:  # pragma: no cover - script execution fallback
     from indicators import resample_to_60min  # type: ignore
 
+logger = logging.getLogger(__name__)
+
 BASE_URL = "https://www.taifex.com.tw/file/taifex/Dailydownload/DailydownloadCSV/Daily_{y}_{m:02d}_{d:02d}.zip"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 RAW_TICK_DIR = DATA_DIR / "raw_tick"
+
+# --- TMFR1 回測原始逐筆資料自動補檔（沿用專案既有的 Supabase 服務端金鑰，見
+# backend/secrets_store.py：同一個 SUPABASE_URL + SUPABASE_SECRET_KEY，不用
+# 再另外管理一組雲端憑證）。本機/VM 只要 .env 沒設定這兩個值就直接跳過，
+# 行為不變。
+#
+# 2026-09-17：原本用 GCS + GCE metadata token 實作，但上傳當下這台機器的
+# gcloud CLI 卡在本機 SSL 憑證驗證問題（跟這個功能本身無關），改用專案已經
+# 在用、且是走一般 requests（不是 gcloud 專用的憑證庫）的 Supabase Storage，
+# 順便讓這個功能不再綁死在「一定要部署在 GCE VM」這個前提上。
+_TMFR1_SUPABASE_BUCKET = os.environ.get("TMF_BACKTEST_DATA_BUCKET", "tmf-backtest-data")
+_TMFR1_SUPABASE_PREFIX = "TMFR1"
+
+
+def _supabase_config() -> tuple[str, str] | None:
+    url = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
+    key = os.environ.get("SUPABASE_SECRET_KEY", "").strip()
+    if not url or not key:
+        return None
+    return url, key
+
+
+def ensure_tmfr1_data_available(tmfr1_dir: Path | None = None) -> None:
+    """啟動/回測前檢查 data/raw_tick/TMFR1 是否齊全，缺檔時自動從 Supabase Storage 補回。
+
+    任何一步失敗都只記錄警告、不拋出例外——呼叫端原有的「找不到資料」錯誤
+    訊息會繼續生效，這裡只是盡量讓它不必發生。
+    """
+    tmfr1_dir = tmfr1_dir or (RAW_TICK_DIR / "TMFR1")
+    config = _supabase_config()
+    if not config:
+        return
+    supabase_url, service_key = config
+    headers = {"apikey": service_key, "Authorization": f"Bearer {service_key}"}
+
+    list_url = f"{supabase_url}/storage/v1/object/list/{_TMFR1_SUPABASE_BUCKET}"
+    try:
+        resp = requests.post(
+            list_url,
+            headers=headers,
+            json={"prefix": f"{_TMFR1_SUPABASE_PREFIX}/", "limit": 1000},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        entries = resp.json() or []
+        expected_files = [e["name"] for e in entries if str(e.get("name", "")).endswith(".parquet")]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Supabase TMFR1 檔案清單讀取失敗，略過自動補檔: %s", exc)
+        return
+
+    if not expected_files:
+        return
+
+    tmfr1_dir.mkdir(parents=True, exist_ok=True)
+    existing = {p.name for p in tmfr1_dir.glob("*.parquet")}
+    missing = sorted(name for name in expected_files if name not in existing)
+    if not missing:
+        return
+
+    logger.info("TMFR1 缺少 %d 個檔案，開始從 Supabase Storage 自動下載", len(missing))
+    downloaded = 0
+    for name in missing:
+        url = f"{supabase_url}/storage/v1/object/{_TMFR1_SUPABASE_BUCKET}/{_TMFR1_SUPABASE_PREFIX}/{name}"
+        dest = tmfr1_dir / name
+        tmp = dest.with_name(dest.name + ".part")
+        try:
+            with requests.get(url, headers=headers, timeout=30, stream=True) as r:
+                r.raise_for_status()
+                with open(tmp, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 1024):
+                        f.write(chunk)
+            tmp.replace(dest)
+            downloaded += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("下載 %s 失敗: %s", name, exc)
+            tmp.unlink(missing_ok=True)
+    logger.info("TMFR1 自動補檔完成：%d/%d 成功", downloaded, len(missing))
 
 # 逐筆成交檔案欄位（Big5 編碼，無中文欄名可直接沿用，改用英文別名）
 _TICK_COLUMNS = [
@@ -147,6 +228,10 @@ def load_tmfr1_60min_bars(start_date: str, end_date: str) -> pd.DataFrame:
         raise ValueError("start_date 必須早於或等於 end_date")
 
     tmfr1_dir = RAW_TICK_DIR / "TMFR1"
+    try:
+        ensure_tmfr1_data_available(tmfr1_dir)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("TMFR1 自動補檔檢查失敗（不影響既有備援流程): %s", exc)
     if tmfr1_dir.is_dir():
         daily_bars: list[pd.DataFrame] = []
         for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):
@@ -205,6 +290,10 @@ def load_tmfr1_range(start_date: str, end_date: str) -> pd.DataFrame:
         raise ValueError("start_date 必須早於或等於 end_date")
 
     tmfr1_dir = RAW_TICK_DIR / "TMFR1"
+    try:
+        ensure_tmfr1_data_available(tmfr1_dir)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("TMFR1 自動補檔檢查失敗（不影響既有備援流程): %s", exc)
     if tmfr1_dir.is_dir():
         frames: list[pd.DataFrame] = []
         for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):

@@ -19,6 +19,7 @@ data/*.log
 data/capital_logs/
 data/capital_logs.zip
 data/kline_cache/
+data/users/
 
 # venv、建置產物、編譯好的安裝檔——都是可以重新產生的東西，體積又大
 .venv_build/
