@@ -32,10 +32,16 @@ def generate_death_cross_signals(df: pd.DataFrame) -> pd.DataFrame:
     short_mask = cross_down & slope_down
     long_mask = pd.Series(False, index=df.index)  # 只做空，金叉不產生任何訊號
 
-    return _apply_signal_columns(df, long_mask=long_mask, short_mask=short_mask)
+    return _apply_signal_columns(
+        df,
+        long_mask=long_mask,
+        short_mask=short_mask,
+        suppress_repeat_same_direction=False,  # 見下方說明：不能用預設值 True
+    )
 ```
 
-- `suppress_repeat_same_direction=True`（預設值）：連續多根都滿足條件時只在第一根觸發一次。
+- **`suppress_repeat_same_direction` 必須明確傳 `False`，不能用預設值 `True`**（這是本文件第一版寫的錯誤，已用實際程式碼跑過驗證修正）。`_apply_signal_columns` 的 `suppress_repeat_same_direction=True` 設計原意是給 breakout 這種多空交替策略用：靠「跟上一次發出的訊號方向不同」判斷是否要重置。但這個策略 `long_mask` 永遠是 `False`，`last_emitted_signal` 一旦在第一次死叉後變成 `"short"`，之後就再也不會被重設成別的值——用預設值會導致**整個回測只有第一次死叉觸發訊號，之後所有死叉都被靜默吃掉**（已實測驗證：3 次獨立死叉事件，預設值只讓第 1 次通過）。
+  - 改成 `False` 是安全的：`cross_down` 是 edge-triggered 條件（用 `.shift(1)` 比較上一根），同一次穿越事件不可能連續兩根都成立，數學上不會重複觸發同一次死叉；「訊號重複但已有持倉」這件事本來就由回測引擎的 `if position is None` 進場判斷擋著，不需要靠這個旗標防護。
 - 只有 `short_mask`，沒有 long 訊號——回測引擎的 `direction_limit="short"` 本來就會擋掉任何非 short 訊號的進場，這裡多一層「金叉訊號根本不存在」是雙重保險。
 
 ## 持倉期間金叉的處理（已與使用者確認）
@@ -96,7 +102,7 @@ data/raw_tick/TMFR1/*.parquet（逐筆)
 
 ## 測試計畫
 
-- `tests/test_signals.py`：死叉但斜率向上不觸發／死叉+斜率向下觸發／連續死叉只觸發一次／全程不會出現 long 訊號。
+- `tests/test_signals.py`：死叉但斜率向上不觸發／死叉+斜率向下觸發／連續死叉只觸發一次／全程不會出現 long 訊號／**兩次時間上分開的獨立死叉事件都要各自觸發訊號**（防止 `suppress_repeat_same_direction` 設錯導致回測全程只成交一筆這個已經抓到過的 bug 回歸)。
 - `tests/test_indicators.py`：`resample_to_nmin(minutes=15)` 日盤/夜盤分別產生 20/56 根；`resample_to_60min()` 薄包裝跟改動前行為一致（既有測試應維持全過）。
 - `tests/test_backtest_engine.py`：`"death_cross"` 能跑完整個 `run_direction_limited_backtest`；持倉中出現金叉時position 不變、只靠 SL/TP 出場的行為驗證。
 - 最後用 TMFR1 全量歷史資料實際跑一次，產出勝率/期望值/最大回撤。
