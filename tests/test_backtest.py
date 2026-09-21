@@ -532,3 +532,68 @@ def test_generate_death_cross_signals_fires_on_each_independent_cross_event():
 
     signal_indices = result.index[result["signal"] == "short"].tolist()
     assert signal_indices == [1, 3]
+
+
+def test_backtest_engine_accepts_death_cross_strategy_with_default_risk_150() -> None:
+    engine = BacktestEngine(
+        strategy="death_cross",
+        contract=_TMF_CONTRACT,
+        cost=DEFAULT_COST,
+        strategy_cfg=DEFAULT_STRATEGY,
+        slippage_points=0.0,
+    )
+
+    assert engine.stop_loss_points == pytest.approx(150.0)
+    assert engine.take_profit_points == pytest.approx(150.0)
+
+
+def test_direction_limited_backtest_enters_short_on_death_cross_signal() -> None:
+    frame = make_signaled_frame(
+        opens=[100.0, 100.0, 95.0, 95.0],
+        highs=[100.5, 100.5, 95.5, 95.5],
+        lows=[99.5, 99.5, 94.5, 94.5],
+        closes=[100.0, 100.0, 95.0, 95.0],
+        signals=[None, "short", None, None],
+        signal_colors=[None, "green", None, None],
+    )
+
+    trades, _ = run_direction_limited_backtest(
+        frame,
+        strategy="death_cross",
+        direction_limit="short",
+        contract=_TMF_CONTRACT,
+        cost=DEFAULT_COST,
+        stop_loss_points=150.0,
+        take_profit_points=150.0,
+        reverse_signal_exit_enabled=False,
+    )
+
+    assert len(trades) == 1
+    assert trades[0].direction == "short"
+    assert trades[0].entry_price == pytest.approx(95.0)
+
+
+def test_direction_limited_backtest_death_cross_holds_through_golden_cross_signal() -> None:
+    frame = make_signaled_frame(
+        opens=[100.0, 100.0, 100.0, 100.0],
+        highs=[100.5, 100.5, 100.5, 100.5],
+        lows=[99.5, 99.5, 99.5, 99.5],
+        closes=[100.0, 100.0, 100.0, 100.0],
+        signals=[None, "short", "long", None],
+        signal_colors=[None, "green", "red", None],
+    )
+
+    trades, _ = run_direction_limited_backtest(
+        frame,
+        strategy="death_cross",
+        direction_limit="short",
+        contract=_TMF_CONTRACT,
+        cost=DEFAULT_COST,
+        stop_loss_points=1000.0,
+        take_profit_points=1000.0,
+        use_stop_take=True,
+        reverse_signal_exit_enabled=False,
+    )
+
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "end_of_data"

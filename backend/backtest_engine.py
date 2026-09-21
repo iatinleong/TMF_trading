@@ -32,7 +32,7 @@ try:
         CostConfig,
         StrategyConfig,
     )
-    from .signals import generate_breakout_signals, generate_pullback_signals
+    from .signals import generate_breakout_signals, generate_death_cross_signals, generate_pullback_signals
 except ImportError:  # pragma: no cover - script execution fallback
     from config import (  # type: ignore
         DEFAULT_CONTRACT,
@@ -42,12 +42,12 @@ except ImportError:  # pragma: no cover - script execution fallback
         CostConfig,
         StrategyConfig,
     )
-    from signals import generate_breakout_signals, generate_pullback_signals  # type: ignore
+    from signals import generate_breakout_signals, generate_death_cross_signals, generate_pullback_signals  # type: ignore
 
 
 Direction = Literal["long", "short"]
 ExitReason = Literal["stop_loss", "take_profit", "immediate_reverse", "signal_exit", "end_of_data"]
-StrategyName = Literal["breakout", "pullback"]
+StrategyName = Literal["breakout", "pullback", "death_cross"]
 
 _PRICE_COLUMNS = ("open", "high", "low", "close")
 _SIGNAL_COLUMNS = ("signal", "signal_color", "signal_bar_close_time")
@@ -88,8 +88,8 @@ class BacktestEngine:
         strategy_cfg: StrategyConfig,
         slippage_points: float,
     ) -> None:
-        if strategy not in {"breakout", "pullback"}:
-            raise ValueError("strategy must be 'breakout' or 'pullback'.")
+        if strategy not in {"breakout", "pullback", "death_cross"}:
+            raise ValueError("strategy must be 'breakout', 'pullback', or 'death_cross'.")
 
         self.strategy = strategy
         self.contract = contract
@@ -173,6 +173,8 @@ class BacktestEngine:
     def _generate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         if self.strategy == "breakout":
             return generate_breakout_signals(df)
+        if self.strategy == "death_cross":
+            return generate_death_cross_signals(df)
         return generate_pullback_signals(df)
 
     def _resolve_risk_parameters(self, strategy: StrategyName) -> tuple[float, float]:
@@ -181,6 +183,8 @@ class BacktestEngine:
                 float(self.strategy_cfg.breakout_stop_loss_points),
                 float(self.strategy_cfg.breakout_take_profit_points),
             )
+        if strategy == "death_cross":
+            return (150.0, 150.0)
         return (
             float(self.strategy_cfg.pullback_stop_loss_points),
             float(self.strategy_cfg.pullback_take_profit_points),
