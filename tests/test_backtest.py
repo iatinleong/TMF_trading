@@ -1,10 +1,10 @@
 import pandas as pd
 import pytest
 
-from backend.backtest_engine import run_backtest, run_direction_limited_backtest
-from backend.config import ContractSpec, DEFAULT_CONTRACT, DEFAULT_COST, StrategyConfig
+from backend.backtest_engine import BacktestEngine, run_backtest, run_direction_limited_backtest
+from backend.config import ContractSpec, DEFAULT_CONTRACT, DEFAULT_COST, DEFAULT_STRATEGY, StrategyConfig
 from backend.indicators import add_moving_averages
-from backend.signals import generate_breakout_signals, generate_pullback_signals
+from backend.signals import generate_breakout_signals, generate_death_cross_signals, generate_pullback_signals
 
 
 def make_index(length: int) -> pd.DatetimeIndex:
@@ -487,3 +487,48 @@ def test_direction_limited_backtest_reverse_signal_exit_disabled() -> None:
     )
     assert len(trades_disabled) == 1
     assert trades_disabled[0].exit_reason == "end_of_data"
+
+
+def test_generate_death_cross_signals_ignores_cross_when_slope_is_up():
+    df = pd.DataFrame({"ma_fast": [12.0, 9.0], "ma_mid": [10.0, 10.5]})
+
+    result = generate_death_cross_signals(df)
+
+    assert result["signal"].isna().all()
+
+
+def test_generate_death_cross_signals_fires_when_cross_and_slope_down_both_hold():
+    df = pd.DataFrame({"ma_fast": [12.0, 9.0], "ma_mid": [10.0, 9.5]})
+
+    result = generate_death_cross_signals(df)
+
+    assert pd.isna(result.iloc[0]["signal"])
+    assert result.iloc[1]["signal"] == "short"
+    assert result.iloc[1]["signal_color"] == "green"
+
+
+def test_generate_death_cross_signals_never_emits_long():
+    # fast crosses ABOVE mid (a "golden cross" shape) — must never produce "long".
+    df = pd.DataFrame({"ma_fast": [8.0, 11.0, 9.0, 12.0], "ma_mid": [10.0, 10.0, 9.5, 9.5]})
+
+    result = generate_death_cross_signals(df)
+
+    assert (result["signal"] != "long").all()
+
+
+def test_generate_death_cross_signals_fires_on_each_independent_cross_event():
+    # Two separate death-cross events with a recovery bar (fast back above mid) between
+    # them. This is the regression test for the suppress_repeat_same_direction bug: with
+    # the (wrong) default True, the second event would be silently dropped because
+    # last_emitted_signal is already "short" and never resets (long_mask is always False).
+    df = pd.DataFrame(
+        {
+            "ma_fast": [12.0, 9.0, 13.0, 9.0],
+            "ma_mid": [10.0, 9.5, 9.6, 9.5],
+        }
+    )
+
+    result = generate_death_cross_signals(df)
+
+    signal_indices = result.index[result["signal"] == "short"].tolist()
+    assert signal_indices == [1, 3]

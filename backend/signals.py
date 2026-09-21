@@ -149,3 +149,36 @@ def generate_pullback_signals(df: pd.DataFrame) -> pd.DataFrame:
         include_immediate_reverse=True,
         suppress_repeat_same_direction=False,
     )
+
+
+def generate_death_cross_signals(df: pd.DataFrame) -> pd.DataFrame:
+    """Generate confirmed short-only death-cross signals from precomputed MA5/MA20.
+
+    A short signal is confirmed when ``ma_fast`` crosses from ``>= ma_mid`` to
+    ``< ma_mid`` by the current bar's close (death cross), AND ``ma_mid`` itself
+    is lower than the previous bar's ``ma_mid`` (20MA slope is down) — the slope
+    filter excludes cross events that happen during sideways/ranging conditions.
+    This strategy never emits a long signal; a golden cross (opposite crossover)
+    produces no signal at all, it does not close-and-reverse.
+
+    As with the other signal functions, confirmation happens only at the current
+    bar's close; execution must occur at the next bar's open.
+    """
+
+    _validate_columns(df, ["ma_fast", "ma_mid"])
+
+    previous_fast = df["ma_fast"].shift(1)
+    previous_mid = df["ma_mid"].shift(1)
+
+    cross_down = previous_fast.ge(previous_mid) & df["ma_fast"].lt(df["ma_mid"])
+    slope_down = df["ma_mid"].lt(previous_mid)
+
+    short_mask = cross_down & slope_down
+    long_mask = pd.Series(False, index=df.index)
+
+    return _apply_signal_columns(
+        df,
+        long_mask=long_mask,
+        short_mask=short_mask,
+        suppress_repeat_same_direction=False,
+    )
