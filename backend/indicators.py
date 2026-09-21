@@ -27,20 +27,18 @@ def _prepare_ohlcv_frame(df: pd.DataFrame) -> pd.DataFrame:
     return prepared
 
 
-def resample_to_60min(df: pd.DataFrame) -> pd.DataFrame:
-    """Resample intraday Taiwan futures OHLCV data into session-aware 60-minute bars.
+def resample_to_nmin(df: pd.DataFrame, minutes: int) -> pd.DataFrame:
+    """Resample intraday Taiwan futures OHLCV data into session-aware N-minute bars.
 
     The input must contain ``open/high/low/close/volume`` plus either a
     ``DatetimeIndex`` or a ``datetime`` column. Taiwan Index Futures trade in two
     distinct sessions: day (08:45-13:45) and night (15:00-05:00 next day). This
-    function resamples each session independently, using 60-minute buckets
-    equivalent to ``label='right', closed='right'`` anchored to the session start
-    (day bars ending 09:45, 10:45, ..., 13:45; night bars ending 16:00, 17:00,
-    ..., 05:00).
-
-    Because the day and night sessions are split before aggregation, bars never
-    span the 13:45-15:00 break or the 05:00-08:45 break, and no bogus
-    non-trading-hour buckets are created. Empty bars are dropped automatically.
+    function resamples each session independently using ``minutes``-wide buckets
+    anchored to the session start, so bars never span the 13:45-15:00 break or
+    the 05:00-08:45 break, and no bogus non-trading-hour buckets are created.
+    Empty bars are dropped automatically. ``minutes`` must evenly divide both
+    session lengths (day=300min, night=840min) to avoid a ragged final bucket;
+    60 and 15 both divide evenly.
     """
 
     prepared = _prepare_ohlcv_frame(df)
@@ -76,10 +74,10 @@ def resample_to_60min(df: pd.DataFrame) -> pd.DataFrame:
     session_starts.loc[~day_mask] = session_starts.loc[~day_mask] + pd.Timedelta(hours=15)
 
     elapsed_minutes = (session_index - session_starts.to_numpy()) / pd.Timedelta(minutes=1)
-    bar_numbers = np.ceil(np.clip(elapsed_minutes, a_min=0, a_max=None) / 60.0).astype(int)
+    bar_numbers = np.ceil(np.clip(elapsed_minutes, a_min=0, a_max=None) / float(minutes)).astype(int)
     bar_numbers = np.where(bar_numbers == 0, 1, bar_numbers)
 
-    bar_close_times = session_starts.to_numpy() + pd.to_timedelta(bar_numbers * 60, unit="m")
+    bar_close_times = session_starts.to_numpy() + pd.to_timedelta(bar_numbers * minutes, unit="m")
     session_df["_bar_close_time"] = pd.DatetimeIndex(bar_close_times)
 
     resampled = (
@@ -95,6 +93,12 @@ def resample_to_60min(df: pd.DataFrame) -> pd.DataFrame:
     )
     resampled.index.name = "datetime"
     return resampled
+
+
+def resample_to_60min(df: pd.DataFrame) -> pd.DataFrame:
+    """Session-aware 60-minute resampling. Thin wrapper over ``resample_to_nmin``;
+    see that function's docstring for the full session-splitting rules."""
+    return resample_to_nmin(df, minutes=60)
 
 
 def add_moving_averages(df: pd.DataFrame, fast: int, mid: int, slow: int) -> pd.DataFrame:
