@@ -534,7 +534,7 @@ def test_generate_death_cross_signals_fires_on_each_independent_cross_event():
     assert signal_indices == [1, 3]
 
 
-def test_backtest_engine_accepts_death_cross_strategy_with_default_risk_150() -> None:
+def test_backtest_engine_accepts_death_cross_strategy_with_default_risk_130() -> None:
     engine = BacktestEngine(
         strategy="death_cross",
         contract=_TMF_CONTRACT,
@@ -543,8 +543,8 @@ def test_backtest_engine_accepts_death_cross_strategy_with_default_risk_150() ->
         slippage_points=0.0,
     )
 
-    assert engine.stop_loss_points == pytest.approx(150.0)
-    assert engine.take_profit_points == pytest.approx(150.0)
+    assert engine.stop_loss_points == pytest.approx(130.0)
+    assert engine.take_profit_points == pytest.approx(130.0)
 
 
 def test_direction_limited_backtest_enters_short_on_death_cross_signal() -> None:
@@ -563,8 +563,8 @@ def test_direction_limited_backtest_enters_short_on_death_cross_signal() -> None
         direction_limit="short",
         contract=_TMF_CONTRACT,
         cost=DEFAULT_COST,
-        stop_loss_points=150.0,
-        take_profit_points=150.0,
+        stop_loss_points=130.0,
+        take_profit_points=130.0,
         reverse_signal_exit_enabled=False,
     )
 

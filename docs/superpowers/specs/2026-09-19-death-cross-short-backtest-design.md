@@ -72,7 +72,7 @@ def resample_to_60min(df: pd.DataFrame) -> pd.DataFrame:
 
 1. `StrategyName = Literal["breakout", "pullback", "death_cross"]`
 2. `BacktestEngine.__init__` 的白名單 `if strategy not in {"breakout", "pullback", "death_cross"}: raise ValueError(...)`
-3. `_resolve_risk_parameters()`：`death_cross` 分支回傳 `(150.0, 150.0)` 作為預設值（呼叫端仍可用明確參數覆寫，跟現有兩個策略行為一致）
+3. `_resolve_risk_parameters()`：`death_cross` 分支回傳 `(130.0, 130.0)` 作為預設值（呼叫端仍可用明確參數覆寫，跟現有兩個策略行為一致）。130 點才是原始需求真正要的數字——原始需求訊息裡同時出現「TP/SL各130點」跟「精簡一點...停損停利都是150點」兩個不一致的數字，第一版 spec/實作誤用了 150，事後跟使用者確認才發現要用 130，已修正並重新跑過全量回測。
 4. `_generate_signals()`：`death_cross` 分支呼叫 `generate_death_cross_signals`
 
 呼叫時額外注意：`add_moving_averages(df, fast, mid, slow)` 三個參數都必填、無預設值，即使死叉策略只用 `fast=5`/`mid=20`，呼叫時仍要多傳 `slow=60`（值不會被用到，純粹滿足函式簽名，不改動共用函式簽名本身，風險最低）。

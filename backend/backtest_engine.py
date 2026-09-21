@@ -184,7 +184,7 @@ class BacktestEngine:
                 float(self.strategy_cfg.breakout_take_profit_points),
             )
         if strategy == "death_cross":
-            return (150.0, 150.0)
+            return (130.0, 130.0)
         return (
             float(self.strategy_cfg.pullback_stop_loss_points),
             float(self.strategy_cfg.pullback_take_profit_points),

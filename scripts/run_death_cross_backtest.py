@@ -50,12 +50,12 @@ def main() -> None:
         direction_limit="short",
         contract=CONTRACT,
         cost=DEFAULT_COST,
-        stop_loss_points=150.0,
-        take_profit_points=150.0,
+        stop_loss_points=130.0,
+        take_profit_points=130.0,
         reverse_signal_exit_enabled=False,
     )
 
-    print("\n=== 死叉做空（15分K，SL/TP=150/150）回測結果 ===")
+    print("\n=== 死叉做空（15分K，SL/TP=130/130）回測結果 ===")
     print(f"總交易數：{summary['total_trades']}")
     print(f"勝率：{summary['win_rate'] * 100:.1f}%")
     print(f"總損益：{summary['total_net_pnl_ntd']:,.0f} 元")
