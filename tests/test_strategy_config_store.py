@@ -177,13 +177,9 @@ def test_admin_upsert_omits_layer_toggles_when_not_specified(monkeypatch):
     assert "reverse_signal_exit_enabled" not in payload
 
 
-def test_admin_upsert_omits_product_code_and_qty_when_not_specified(monkeypatch):
-    """2026-09-29 實測抓到的 bug：user_strategy_configs.product_code 是
-    NOT NULL DEFAULT 'TM2608'——但 Postgres 的欄位預設值只在「完全不給這個
-    欄位」時才生效，明確送 null 會直接違反 NOT NULL、被 PostgREST 回
-    400。之前 4 個既有策略是用 SQL 種子資料直接種進去的，從沒真的走過
-    scripts/bind_strategy.py 不帶 --product-code 這條路徑，所以這個 bug
-    一直沒被踩到，直到綁定第 5 個新策略才第一次觸發。"""
+def test_admin_upsert_omits_qty_when_not_specified(monkeypatch):
+    """qty 是 nullable 欄位（沒有 NOT NULL 限制)，省略時安全地不送進 payload，
+    讓呼叫端可以「只更新其他欄位、不動 qty」而不會意外把既有值蓋成 null。"""
     monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
     monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
 
@@ -192,11 +188,29 @@ def test_admin_upsert_omits_product_code_and_qty_when_not_specified(monkeypatch)
     fake_response.raise_for_status.return_value = None
 
     with patch("backend.strategy_config_store.requests.post", return_value=fake_response) as mock_post:
-        admin_upsert_strategy_config("user-456", "death_cross_short", enabled=False)
+        admin_upsert_strategy_config("user-456", "death_cross_short", product_code="TMF", enabled=False)
 
     payload = mock_post.call_args.kwargs["json"]
-    assert "product_code" not in payload
+    assert payload["product_code"] == "TMF"
     assert "qty" not in payload
+
+
+def test_admin_upsert_raises_when_product_code_missing(monkeypatch):
+    """2026-09-30 最終審查抓到的問題：product_code 不能比照 qty 那樣「省略就安全」
+    ——user_strategy_configs.product_code 的資料庫欄位預設值目前已知損壞（實測讀回
+    來是字面字串 "'TMF'::text"，不是乾淨的 "TMF"),一旦真的被拿去下單，
+    resolve_strategy_product_code() 認不得這個格式，可能導致 _contract_from_product()
+    誤判成大台（point_value 200，是微台 10 的 20 倍),跟這個檔案上方註解記錄過的
+    2026-08-21 實盤事故是同一種風險。在資料庫欄位預設值修好之前，product_code
+    必須是呼叫端明確提供的必填參數，不能靠省略退回資料庫預設值。"""
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
+
+    with patch("backend.strategy_config_store.requests.post") as mock_post:
+        with pytest.raises(ValueError, match="product_code"):
+            admin_upsert_strategy_config("user-456", "death_cross_short", enabled=False)
+
+    mock_post.assert_not_called()
 
 
 def test_admin_upsert_omits_enabled_when_not_specified(monkeypatch):
@@ -216,7 +230,7 @@ def test_admin_upsert_omits_enabled_when_not_specified(monkeypatch):
     fake_response.raise_for_status.return_value = None
 
     with patch("backend.strategy_config_store.requests.post", return_value=fake_response) as mock_post:
-        admin_upsert_strategy_config("user-456", "death_cross_short", enabled=None)
+        admin_upsert_strategy_config("user-456", "death_cross_short", product_code="TMF", enabled=None)
 
     payload = mock_post.call_args.kwargs["json"]
     assert "enabled" not in payload

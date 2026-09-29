@@ -568,11 +568,15 @@ def _load_bars(
         live_bars = _bars_from_kline_store(product_code, interval_minutes=interval_minutes)
         if not live_bars.empty and len(live_bars) >= min_bars_required:
             return live_bars
-        if interval_minutes != 60:
-            # 沒有對應時間軸的 CSV 暖機檔可用；即時資料不足時直接回傳現況
-            # （可能是空的），不能退回 60 分鐘 CSV 合併，否則會把不同時間軸的
-            # K棒混在一起，弄亂 MA 計算。
-            return live_bars
+
+    if interval_minutes != 60:
+        # 沒有對應時間軸的 CSV 暖機檔可用；即時資料不足（甚至沒有 product_code）
+        # 時一律直接回傳現況（可能是空的），不能退回 60 分鐘 CSV 合併，否則會把
+        # 不同時間軸的K棒混在一起，弄亂 MA 計算。這個判斷刻意擺在 `if
+        # product_code` 區塊之外、不巢狀在裡面——2026-09-30 最終審查抓到：擺在
+        # 裡面時，如果哪天有個呼叫端漏傳 product_code，會直接漏接、意外落入
+        # 下面的 60 分鐘 CSV 合併分支，讓這個不變量只靠呼叫端自律而非結構保證。
+        return live_bars
 
     csv_bars = pd.DataFrame()
     candidates = [

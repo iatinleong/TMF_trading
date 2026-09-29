@@ -96,12 +96,22 @@ def admin_upsert_strategy_config(
     # 一樣違反 NOT NULL（2026-09-29 修 product_code 時漏看了這個同類欄位）。
     if enabled is not None:
         payload["enabled"] = bool(enabled)
-    # product_code 是 NOT NULL DEFAULT 'TM2608'：不能明確送 null，Postgres
-    # 的欄位預設值只在「完全不給這個欄位」時才生效，明確給 null 一律違反
-    # NOT NULL（2026-09-29 實測抓到：綁定新策略沒指定 --product-code 時
-    # 這裡送出 null，被 PostgREST 回 400）。
-    if product_code is not None:
-        payload["product_code"] = product_code
+    # product_code 不能比照 qty 那樣「省略就安全地退回資料庫預設值」——
+    # user_strategy_configs.product_code 的欄位預設值目前已知損壞（實測讀回
+    # 來是字面字串 "'TMF'::text"，不是乾淨的 "TMF"）。若讓它真的被拿去下單，
+    # resolve_strategy_product_code() 認不得這個格式，可能導致
+    # _contract_from_product() 誤判成大台（point_value 200，是微台 10 的
+    # 20 倍），是本檔案上方 2026-08-21 事故同一種風險。在資料庫欄位預設值
+    # 修好之前，product_code 是必填參數，不接受省略（2026-09-30 最終審查
+    # 抓到：product_code 曾經一度跟 qty 用同一套「省略就 OK」邏輯處理，
+    # 但兩者風險完全不同）。
+    if product_code is None:
+        raise ValueError(
+            "admin_upsert_strategy_config() 需要明確指定 product_code："
+            "user_strategy_configs.product_code 的資料庫欄位預設值目前已知"
+            "損壞，不能依賴省略時退回資料庫預設值（見上方註解）。"
+        )
+    payload["product_code"] = product_code
     if qty is not None:
         payload["qty"] = qty
     if stop_loss_points is not None:

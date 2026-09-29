@@ -1649,6 +1649,31 @@ def test_load_bars_death_cross_uses_15min_store_and_skips_csv_merge(monkeypatch)
     assert bars.empty
 
 
+def test_load_bars_15min_skips_csv_merge_even_without_product_code(monkeypatch):
+    """2026-09-30 最終審查抓到：CSV 合併分支的跳過判斷原本巢狀在 `if product_code`
+    裡面，只有「有傳 product_code」時才會生效——如果哪天有呼叫端漏傳
+    product_code，會直接漏接這個保護、意外落入 60 分鐘 CSV 合併分支，把不同
+    時間軸的K棒混在一起。這個判斷式已經搬到 `if product_code` 區塊外面，不管
+    有沒有 product_code 都要生效。用 spy 監看 Path.is_file 有沒有被拿去檢查
+    60分鐘 CSV 候選路徑，證明真的完全沒進到那個分支，不是「剛好結果也是空的」
+    這種弱驗證。"""
+    from pathlib import Path
+
+    checked_paths: list[str] = []
+    original_is_file = Path.is_file
+
+    def _spy_is_file(self):
+        checked_paths.append(str(self))
+        return original_is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", _spy_is_file)
+
+    bars = _load_bars("TMF", product_code=None, interval_minutes=15, min_bars_required=22)
+
+    assert bars.empty
+    assert not any("60min" in p for p in checked_paths)
+
+
 def test_load_bars_default_60min_behavior_unchanged(monkeypatch):
     """不傳 interval_minutes/min_bars_required 時，行為必須跟修改前完全一樣：讀 60 分鐘 store。"""
     calls = []
