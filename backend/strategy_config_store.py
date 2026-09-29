@@ -89,10 +89,16 @@ def admin_upsert_strategy_config(
     payload: dict[str, object] = {
         "user_id": user_id,
         "strategy_id": strategy_id,
-        "product_code": product_code,
-        "qty": qty,
         "enabled": enabled,
     }
+    # product_code 是 NOT NULL DEFAULT 'TM2608'：不能明確送 null，Postgres
+    # 的欄位預設值只在「完全不給這個欄位」時才生效，明確給 null 一律違反
+    # NOT NULL（2026-09-29 實測抓到：綁定新策略沒指定 --product-code 時
+    # 這裡送出 null，被 PostgREST 回 400）。
+    if product_code is not None:
+        payload["product_code"] = product_code
+    if qty is not None:
+        payload["qty"] = qty
     if stop_loss_points is not None:
         payload["stop_loss_points"] = float(stop_loss_points)
     if take_profit_points is not None:

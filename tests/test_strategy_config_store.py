@@ -175,3 +175,25 @@ def test_admin_upsert_omits_layer_toggles_when_not_specified(monkeypatch):
     assert "soft_stop_enabled" not in payload
     assert "risk_insurance_enabled" not in payload
     assert "reverse_signal_exit_enabled" not in payload
+
+
+def test_admin_upsert_omits_product_code_and_qty_when_not_specified(monkeypatch):
+    """2026-09-29 實測抓到的 bug：user_strategy_configs.product_code 是
+    NOT NULL DEFAULT 'TM2608'——但 Postgres 的欄位預設值只在「完全不給這個
+    欄位」時才生效，明確送 null 會直接違反 NOT NULL、被 PostgREST 回
+    400。之前 4 個既有策略是用 SQL 種子資料直接種進去的，從沒真的走過
+    scripts/bind_strategy.py 不帶 --product-code 這條路徑，所以這個 bug
+    一直沒被踩到，直到綁定第 5 個新策略才第一次觸發。"""
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
+
+    fake_response = MagicMock()
+    fake_response.json.return_value = [{"strategy_id": "death_cross_short"}]
+    fake_response.raise_for_status.return_value = None
+
+    with patch("backend.strategy_config_store.requests.post", return_value=fake_response) as mock_post:
+        admin_upsert_strategy_config("user-456", "death_cross_short", enabled=False)
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert "product_code" not in payload
+    assert "qty" not in payload
