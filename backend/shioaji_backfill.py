@@ -85,16 +85,24 @@ def _is_production() -> bool:
     return os.getenv("SJ_PRODUCTION", "true").strip().lower() in {"1", "true", "yes", "y"}
 
 
-def _expected_day_session_labels(day: pd.Timestamp) -> list[pd.Timestamp]:
-    """日盤收盤標籤 09:45..13:45（5 根），對齊 kline_engine.py 的分桶規則。"""
+def _expected_day_session_labels(
+    day: pd.Timestamp, interval_minutes: int = 60
+) -> list[pd.Timestamp]:
+    """日盤收盤標籤（08:45 開盤後每 interval_minutes 分鐘一根，到 13:45 收盤），
+    對齊 kline_engine.py 的分桶規則。"""
     base = day.normalize() + pd.Timedelta(hours=8, minutes=45)
-    return [base + pd.Timedelta(minutes=60 * i) for i in range(1, 6)]
+    count = 300 // interval_minutes  # 日盤 08:45~13:45 共 300 分鐘
+    return [base + pd.Timedelta(minutes=interval_minutes * i) for i in range(1, count + 1)]
 
 
-def _expected_night_session_labels(day: pd.Timestamp) -> list[pd.Timestamp]:
-    """夜盤收盤標籤 16:00..次日 05:00（14 根），對齊 kline_engine.py 的分桶規則。"""
+def _expected_night_session_labels(
+    day: pd.Timestamp, interval_minutes: int = 60
+) -> list[pd.Timestamp]:
+    """夜盤收盤標籤（15:00 開盤後每 interval_minutes 分鐘一根，到次日 05:00 收盤），
+    對齊 kline_engine.py 的分桶規則。"""
     base = day.normalize() + pd.Timedelta(hours=15)
-    return [base + pd.Timedelta(minutes=60 * i) for i in range(1, 15)]
+    count = 840 // interval_minutes  # 夜盤 15:00~次日05:00 共 840 分鐘
+    return [base + pd.Timedelta(minutes=interval_minutes * i) for i in range(1, count + 1)]
 
 
 def _session_query_dates(day: pd.Timestamp) -> list[tuple[str, pd.Timestamp]]:

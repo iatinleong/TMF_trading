@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from backend import kline_engine, shioaji_backfill
-from backend.kline_engine import LiveKlineStore, get_store
+from backend.kline_engine import LiveKlineStore, get_kline_store, get_store
 from backend.shioaji_backfill import (
     _expected_day_session_labels,
     _expected_night_session_labels,
@@ -102,6 +102,20 @@ def test_expected_night_session_labels():
     assert len(labels) == 14
     assert labels[0] == pd.Timestamp("2026-08-25 16:00")
     assert labels[-1] == pd.Timestamp("2026-08-26 05:00")
+
+
+def test_expected_day_session_labels_15min():
+    labels = _expected_day_session_labels(pd.Timestamp("2026-08-25"), interval_minutes=15)
+    assert len(labels) == 20
+    assert labels[0].strftime("%H:%M") == "09:00"
+    assert labels[-1].strftime("%H:%M") == "13:45"
+
+
+def test_expected_night_session_labels_15min():
+    labels = _expected_night_session_labels(pd.Timestamp("2026-08-25"), interval_minutes=15)
+    assert len(labels) == 56
+    assert labels[0] == pd.Timestamp("2026-08-25 15:15:00")
+    assert labels[-1] == pd.Timestamp("2026-08-26 05:00:00")
 
 
 def test_session_query_dates_night_session_queries_next_day():
