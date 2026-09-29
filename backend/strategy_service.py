@@ -663,16 +663,28 @@ def strategy_list() -> list[dict[str, Any]]:
     return [{"strategy_id": sid, **defs} for sid, defs in STRATEGY_DEFS.items()]
 
 
-def klines_with_signals(product_code: str, limit: int = 500) -> list[dict[str, Any]]:
-    """給圖表用：K 棒 + MA(5/20/60) + 突破/回測兩套策略各自的訊號欄位。"""
+def klines_with_signals(
+    product_code: str, limit: int = 500, interval_minutes: int = 60
+) -> list[dict[str, Any]]:
+    """給圖表用：K 棒 + MA(5/20/60) + 各策略訊號欄位。interval_minutes=60（預設）
+    只算突破/回測；interval_minutes=15 額外算死叉訊號。"""
     contract = _contract_from_product(product_code)
-    bars = _load_bars(contract, product_code=product_code)
+    min_bars_required = (
+        _min_bars_required_for_strategy("death_cross") if interval_minutes != 60 else None
+    )
+    bars = _load_bars(
+        contract,
+        product_code=product_code,
+        interval_minutes=interval_minutes,
+        min_bars_required=min_bars_required,
+    )
     if bars.empty:
         return []
     bars = bars.tail(limit)
 
     breakout = _signaled_frame("breakout", bars)
     pullback = _signaled_frame("pullback", bars)
+    death_cross = _signaled_frame("death_cross", bars) if interval_minutes != 60 else None
 
     def _num(value: Any) -> float | None:
         try:
@@ -683,20 +695,23 @@ def klines_with_signals(product_code: str, limit: int = 500) -> list[dict[str, A
 
     rows: list[dict[str, Any]] = []
     for i, (idx, row) in enumerate(bars.iterrows()):
-        rows.append(
-            {
-                "time": to_unix_seconds(idx),
-                "open": _num(row.get("open")),
-                "high": _num(row.get("high")),
-                "low": _num(row.get("low")),
-                "close": _num(row.get("close")),
-                "ma_fast": _num(row.get("ma_fast")),
-                "ma_mid": _num(row.get("ma_mid")),
-                "ma_slow": _num(row.get("ma_slow")),
-                "breakout_signal": breakout.iloc[i].get("signal") if i < len(breakout) else None,
-                "pullback_signal": pullback.iloc[i].get("signal") if i < len(pullback) else None,
-            }
-        )
+        row_dict: dict[str, Any] = {
+            "time": to_unix_seconds(idx),
+            "open": _num(row.get("open")),
+            "high": _num(row.get("high")),
+            "low": _num(row.get("low")),
+            "close": _num(row.get("close")),
+            "ma_fast": _num(row.get("ma_fast")),
+            "ma_mid": _num(row.get("ma_mid")),
+            "ma_slow": _num(row.get("ma_slow")),
+            "breakout_signal": breakout.iloc[i].get("signal") if i < len(breakout) else None,
+            "pullback_signal": pullback.iloc[i].get("signal") if i < len(pullback) else None,
+        }
+        if death_cross is not None:
+            row_dict["death_cross_signal"] = (
+                death_cross.iloc[i].get("signal") if i < len(death_cross) else None
+            )
+        rows.append(row_dict)
     return rows
 
 

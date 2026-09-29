@@ -25,7 +25,7 @@ from .capital_parse import (
     parse_order_report_raw,
 )
 from .config import app_base_dir
-from .kline_engine import DEFAULT_KLINE_LIMIT, get_store
+from .kline_engine import DEFAULT_KLINE_LIMIT, get_kline_store, get_store
 from .secrets_store import load_remote_secrets
 from .trading_service import (
     PRODUCT_CODE_BY_CONTRACT,
@@ -266,9 +266,11 @@ def get_ticker(product: str | None = None) -> dict[str, Any]:
     }
 
 
-def get_klines(product: str | None = None, limit: int = DEFAULT_KLINE_LIMIT) -> list[dict[str, Any]]:
+def get_klines(
+    product: str | None = None, limit: int = DEFAULT_KLINE_LIMIT, interval_minutes: int = 60
+) -> list[dict[str, Any]]:
     code = resolve_quote_product_code(product or current_product)
-    return get_store(code).get_klines(limit=limit)
+    return get_kline_store(code, interval_minutes=interval_minutes).get_klines(limit=limit)
 
 
 def set_product(product_code: str) -> dict[str, Any]:
@@ -382,6 +384,8 @@ async def poll_once() -> dict[str, Any] | None:
 
     klines = get_klines(quote_product, limit=1)
     kline = klines[-1] if klines else None
+    klines_15m = get_klines(quote_product, limit=1, interval_minutes=15)
+    kline_15m = klines_15m[-1] if klines_15m else None
 
     return {
         "type": "tick",
@@ -390,6 +394,7 @@ async def poll_once() -> dict[str, Any] | None:
         "bid": q.get("bid"),
         "ask": q.get("ask"),
         "kline": kline,
+        "kline_15m": kline_15m,
         "connected": True,
     }
 

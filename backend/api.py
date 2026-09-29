@@ -571,22 +571,22 @@ def live_ticker(product: str = "TM2608") -> dict[str, object]:
 
 
 @app.get("/api/klines")
-def live_klines(product: str = "", limit: int = 500) -> list[dict[str, object]]:
+def live_klines(product: str = "", limit: int = 500, interval: int = 60) -> list[dict[str, object]]:
     from .kline_engine import DEFAULT_KLINE_LIMIT
     from .strategy_service import resolve_strategy_product_code
 
     prod = resolve_strategy_product_code(product)
     effective = limit if limit > 0 else DEFAULT_KLINE_LIMIT
-    return get_klines(prod, limit=min(effective, 2000))
+    return get_klines(prod, limit=min(effective, 2000), interval_minutes=interval)
 
 
 @app.get("/api/klines/signals")
-def live_klines_signals(product: str = "", limit: int = 500) -> list[dict[str, object]]:
-    """K 棒 + MA(5/20/60) + 突破/回測策略訊號，給圖表疊圖用。"""
+def live_klines_signals(product: str = "", limit: int = 500, interval: int = 60) -> list[dict[str, object]]:
+    """K 棒 + MA(5/20/60) + 各策略訊號，給圖表疊圖用。interval=15 時額外含死叉訊號。"""
     from .strategy_service import resolve_strategy_product_code
 
     prod = resolve_strategy_product_code(product)
-    return klines_with_signals(prod, limit=min(limit, 2000))
+    return klines_with_signals(prod, limit=min(limit, 2000), interval_minutes=interval)
 
 
 @app.post("/api/klines/repair")

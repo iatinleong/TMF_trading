@@ -19,6 +19,7 @@ from backend.strategy_service import (
     _place_oco_protection_for_state,
     _settlement_month_from_tmf_code,
     _tick_one,
+    klines_with_signals,
     reconcile_after_manual_close,
     reconcile_orphan_stop_orders,
     strategy_config_defaults,
@@ -1749,3 +1750,40 @@ def test_tick_one_death_cross_ignores_golden_cross_when_reverse_exit_disabled(cl
     assert state.held_qty == 1
     assert state.held_direction == "short"
     assert "已關閉反向訊號出場" in state.last_action
+
+
+def test_klines_with_signals_60min_default_has_no_death_cross_field():
+    fake_bars = pd.DataFrame(
+        {
+            "open": [100.0], "high": [100.0], "low": [100.0], "close": [100.0],
+            "ma_fast": [100.0], "ma_mid": [100.0], "ma_slow": [100.0],
+        },
+        index=pd.date_range("2024-01-02 09:45:00", periods=1, freq="60min"),
+    )
+
+    with patch.object(strategy_service, "_load_bars", return_value=fake_bars) as mock_load, \
+         patch.object(strategy_service, "_signaled_frame", return_value=fake_bars.assign(signal=[None])):
+        rows = klines_with_signals("TM2609")
+
+    assert mock_load.call_args.kwargs["interval_minutes"] == 60
+    assert len(rows) == 1
+    assert "death_cross_signal" not in rows[0]
+
+
+def test_klines_with_signals_15min_includes_death_cross_field():
+    fake_bars = pd.DataFrame(
+        {
+            "open": [100.0], "high": [100.0], "low": [100.0], "close": [100.0],
+            "ma_fast": [100.0], "ma_mid": [100.0], "ma_slow": [100.0],
+        },
+        index=pd.date_range("2024-01-02 09:00:00", periods=1, freq="15min"),
+    )
+
+    with patch.object(strategy_service, "_load_bars", return_value=fake_bars) as mock_load, \
+         patch.object(strategy_service, "_signaled_frame", return_value=fake_bars.assign(signal=[None])):
+        rows = klines_with_signals("TM2609", interval_minutes=15)
+
+    assert mock_load.call_args.kwargs["interval_minutes"] == 15
+    assert mock_load.call_args.kwargs["min_bars_required"] == 22
+    assert len(rows) == 1
+    assert "death_cross_signal" in rows[0]
