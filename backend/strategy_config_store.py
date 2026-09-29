@@ -67,7 +67,7 @@ def admin_upsert_strategy_config(
     *,
     product_code: str | None = None,
     qty: int | None = None,
-    enabled: bool = False,
+    enabled: bool | None = None,
     stop_loss_points: float | None = None,
     take_profit_points: float | None = None,
     max_loss_ntd: float | None = None,
@@ -89,8 +89,13 @@ def admin_upsert_strategy_config(
     payload: dict[str, object] = {
         "user_id": user_id,
         "strategy_id": strategy_id,
-        "enabled": enabled,
     }
+    # enabled 也是 NOT NULL DEFAULT false，跟 product_code 同一種問題：
+    # scripts/bind_strategy.py 的 --enabled/--disabled 是共用 dest="enabled"、
+    # 預設值 None 的一對旗標，兩者都不帶時 args.enabled 是 None，明確送 null
+    # 一樣違反 NOT NULL（2026-09-29 修 product_code 時漏看了這個同類欄位）。
+    if enabled is not None:
+        payload["enabled"] = bool(enabled)
     # product_code 是 NOT NULL DEFAULT 'TM2608'：不能明確送 null，Postgres
     # 的欄位預設值只在「完全不給這個欄位」時才生效，明確給 null 一律違反
     # NOT NULL（2026-09-29 實測抓到：綁定新策略沒指定 --product-code 時

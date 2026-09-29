@@ -197,3 +197,26 @@ def test_admin_upsert_omits_product_code_and_qty_when_not_specified(monkeypatch)
     payload = mock_post.call_args.kwargs["json"]
     assert "product_code" not in payload
     assert "qty" not in payload
+
+
+def test_admin_upsert_omits_enabled_when_not_specified(monkeypatch):
+    """同一種 bug、同一個共用函式：user_strategy_configs.enabled 也是
+    NOT NULL DEFAULT false。scripts/bind_strategy.py 的 --enabled/--disabled
+    是共用 dest="enabled"、預設值 None 的一對旗標——這次任務實際執行
+    `bind_strategy.py --user-id ... --strategy-id death_cross_short
+    --no-reverse-signal-exit-enabled`（沒帶 --enabled/--disabled）時，
+    args.enabled 是 None，明確傳進 admin_upsert_strategy_config(enabled=None)
+    一樣會送出 null、被 PostgREST 回 400，是修 product_code/qty 那次沒一併
+    處理到的同一種問題。"""
+    monkeypatch.setenv("SUPABASE_URL", "https://example.supabase.co")
+    monkeypatch.setenv("SUPABASE_SECRET_KEY", "sb_secret_test")
+
+    fake_response = MagicMock()
+    fake_response.json.return_value = [{"strategy_id": "death_cross_short"}]
+    fake_response.raise_for_status.return_value = None
+
+    with patch("backend.strategy_config_store.requests.post", return_value=fake_response) as mock_post:
+        admin_upsert_strategy_config("user-456", "death_cross_short", enabled=None)
+
+    payload = mock_post.call_args.kwargs["json"]
+    assert "enabled" not in payload
