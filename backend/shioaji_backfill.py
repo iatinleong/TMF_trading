@@ -166,12 +166,14 @@ def find_missing_bars(
     return missing
 
 
-def _resample_ticks_to_bars(df: pd.DataFrame) -> list[dict]:
+def _resample_ticks_to_bars(df: pd.DataFrame, interval_minutes: int = 60) -> list[dict]:
     df = df.copy()
     df["ts"] = pd.to_datetime(df["ts"])
     # 2026-08-30 修正：按時間排序，避免 API 回傳亂序時 open/close 抓錯第一筆/最後一筆
     df = df.sort_values("ts")
-    df["bar_close"] = df["ts"].apply(bar_close_time_from_ts)
+    df["bar_close"] = df["ts"].apply(
+        lambda ts: bar_close_time_from_ts(ts, minutes=interval_minutes)
+    )
     df = df.dropna(subset=["bar_close"])
     if df.empty:
         return []

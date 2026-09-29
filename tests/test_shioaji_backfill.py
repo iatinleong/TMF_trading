@@ -293,3 +293,21 @@ def test_resample_ticks_to_bars_sorts_unsorted_ticks():
     assert bars[0]["high"] == 21700.0
     assert bars[0]["low"] == 21500.0
     assert bars[0]["volume"] == 35
+
+
+def test_resample_ticks_to_bars_15min_buckets_are_narrower():
+    """15分鐘分桶下，跨越 09:46~10:00 跟 10:01~10:15 的 tick 應該落在不同兩根，
+    不像 60 分鐘那樣全部併成一根——驗證 interval_minutes 真的有傳到分桶邏輯。"""
+    from backend.shioaji_backfill import _resample_ticks_to_bars
+
+    df = pd.DataFrame(
+        [
+            {"ts": "2026-08-25 09:50:00", "close": 21500.0, "volume": 5},
+            {"ts": "2026-08-25 10:10:00", "close": 21600.0, "volume": 10},
+        ]
+    )
+    bars_60 = _resample_ticks_to_bars(df, interval_minutes=60)
+    bars_15 = _resample_ticks_to_bars(df, interval_minutes=15)
+
+    assert len(bars_60) == 1  # 60分鐘下兩筆 tick 同屬 10:45 那根
+    assert len(bars_15) == 2  # 15分鐘下分屬 10:00 跟 10:15 兩根
