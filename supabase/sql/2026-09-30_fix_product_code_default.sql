@@ -1,0 +1,23 @@
+-- supabase/sql/2026-09-30_fix_product_code_default.sql
+-- 修正 user_strategy_configs.product_code 欄位預設值損壞的問題：目前實測讀回來
+-- 的預設值是字面字串 "'TMF'::text"（多了一層引號跟型別轉換語法混進值本身),
+-- 不是乾淨的 "TMF"。2026-09-29/30 實測抓到：綁定新策略時如果省略
+-- --product-code，PostgREST 會用這個壞掉的預設值寫進資料列，這個字串
+-- resolve_strategy_product_code() 完全認不得（開頭是引號,不是 "TM"),可能導致
+-- _contract_from_product() 誤判成大台（point_value 200，微台是10,風險曝露差
+-- 20倍),跟本專案 2026-08-21 那次真實事故是同一種風險等級（見
+-- backend/strategy_service.py 上方對應的事故註解）。
+--
+-- 這裡只改「欄位預設值」本身，不是 UPDATE/DELETE，不會動到任何已經存在的
+-- 資料列——純粹是「以後新插入、且沒指定這個欄位時」才會套用的值，零資料
+-- 流失風險。既有 4 個策略的列當初是種了明確的 'TM2608'（不是靠這個壞掉的
+-- 預設值),第 5 個死叉做空的列也已經在 2026-09-29 手動修正成明確的 'TMF'，
+-- 所以這次不需要額外的 UPDATE 補資料。
+--
+-- 後端程式碼已經在 2026-09-29 加了防呆（backend/strategy_config_store.py 的
+-- admin_upsert_strategy_config() 現在強制要求明確傳入 product_code，不會再
+-- 依賴這個欄位預設值),這份 migration 是把根本問題也修好，雙重保險——就算
+-- 以後有人繞過那層防呆或用別的工具直接寫這張表，資料庫層級的預設值本身也
+-- 是對的。
+alter table public.user_strategy_configs
+  alter column product_code set default 'TMF';
