@@ -14,6 +14,7 @@ from backend.strategy_service import (
     _canonical_position_product,
     _cancel_protection_order_for_state,
     _check_orphaned_fill,
+    _load_bars,
     _opposite_direction_position_exists,
     _place_oco_protection_for_state,
     _settlement_month_from_tmf_code,
@@ -712,7 +713,7 @@ def test_bars_from_kline_store_uses_taipei_local_time_not_utc():
     fake_store = MagicMock()
     fake_store.get_klines.return_value = fake_klines
 
-    with patch.object(strategy_service, "get_store", return_value=fake_store):
+    with patch.object(strategy_service, "get_kline_store", return_value=fake_store):
         bars = strategy_service._bars_from_kline_store("TM2609")
 
     assert bars.index[0] == taipei_close_time
@@ -1611,3 +1612,140 @@ def test_full_session_switch_simulation_end_to_end(clean_armed):
     # OCO 停利觸發價應該是 46390+250=46640，不是舊報價算出來的 46082+250=46332
     oco_kwargs = mock_svc.place_oco_order.call_args.args[0]
     assert oco_kwargs["trigger_price"] == "46640"
+
+
+def test_strategy_config_defaults_death_cross_uses_130_points_and_no_reverse_exit():
+    defaults = strategy_config_defaults("death_cross_short")
+    assert defaults["stop_loss_points"] == pytest.approx(130.0)
+    assert defaults["take_profit_points"] == pytest.approx(130.0)
+    assert defaults["reverse_signal_exit_enabled"] is False
+    assert defaults["strategy"] == "death_cross"
+    assert defaults["direction_limit"] == "short"
+
+
+def test_strategy_config_defaults_breakout_unaffected_by_death_cross_branch():
+    defaults = strategy_config_defaults("breakout_long")
+    assert defaults["stop_loss_points"] == pytest.approx(100.0)
+    assert defaults["take_profit_points"] == pytest.approx(250.0)
+    assert defaults["reverse_signal_exit_enabled"] is True
+
+
+def test_load_bars_death_cross_uses_15min_store_and_skips_csv_merge(monkeypatch):
+    """death_cross 傳 interval_minutes=15 時：(1) 讀的是 15 分鐘 store 不是 60 分鐘；
+    (2) 即時K棒不足時直接回傳現況，不觸發 60 分鐘 CSV 合併分支。"""
+    calls = []
+
+    def _fake_get_kline_store(product_code, interval_minutes=60):
+        calls.append(interval_minutes)
+        store = MagicMock()
+        store.get_klines.return_value = []  # 模擬即時資料完全不足
+        return store
+
+    monkeypatch.setattr(strategy_service, "get_kline_store", _fake_get_kline_store)
+    bars = _load_bars("TMF", product_code="TM2609", interval_minutes=15, min_bars_required=22)
+
+    assert calls == [15]
+    assert bars.empty
+
+
+def test_load_bars_default_60min_behavior_unchanged(monkeypatch):
+    """不傳 interval_minutes/min_bars_required 時，行為必須跟修改前完全一樣：讀 60 分鐘 store。"""
+    calls = []
+
+    def _fake_get_kline_store(product_code, interval_minutes=60):
+        calls.append(interval_minutes)
+        store = MagicMock()
+        store.get_klines.return_value = []
+        return store
+
+    monkeypatch.setattr(strategy_service, "get_kline_store", _fake_get_kline_store)
+    _load_bars("TMF", product_code="TM2609")
+
+    assert calls == [60]
+
+
+def _death_cross_short_state(**overrides) -> StrategyState:
+    defaults = dict(
+        strategy_id="death_cross_short",
+        product_code="TM2609",
+        strategy="death_cross",
+        direction_limit="short",
+        label="死叉做空",
+        qty=1,
+        initial_capital_ntd=100_000,
+        max_loss_ntd=10_000,
+        max_loss_pct=0.99,
+        stop_loss_points=130.0,
+        take_profit_points=130.0,
+        reverse_signal_exit_enabled=False,
+    )
+    defaults.update(overrides)
+    return StrategyState(**defaults)
+
+
+def test_tick_one_death_cross_enters_short_via_signal(clean_armed):
+    """跟現有 test_tick_one_entry_places_oco_protection 同款手法：mock
+    _latest_closed_signal/_load_bars/_signaled_frame，驗證死叉策略走同一套
+    generic 進場+OCO 機制，不需要真的產生死叉訊號的 K 棒資料。"""
+    state = _death_cross_short_state(held_qty=0, held_direction=None, entry_price=0.0)
+    state.last_signal_key = None
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    svc.place_oco_order.return_value = _oco_success_response()
+    st = {"quote": {"last_price": 21400.0}}
+
+    # 建構足夠的 fake bars，避免 quote staleness 檢查時把報價當成過期
+    bar_count = strategy_service.DEFAULT_STRATEGY.ma_slow + 2
+    fake_bars = pd.DataFrame(
+        {
+            "open": [21400.0] * bar_count,
+            "high": [21450.0] * bar_count,
+            "low": [21350.0] * bar_count,
+            "close": [21400.0] * bar_count,
+        }
+    )
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-08-25T09:00:00", "direction": "short", "key": "dc-1"},
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    assert state.held_qty == 1
+    assert state.held_direction == "short"
+    assert state.entry_price == pytest.approx(21400.0)
+    svc.place_oco_order.assert_called_once()
+    assert state.protection_order_smart_key == "26564233"
+
+
+def test_tick_one_death_cross_ignores_golden_cross_when_reverse_exit_disabled(clean_armed):
+    """跟現有 test_tick_one_reverse_signal_skipped_when_disabled 同款手法：已持有
+    死叉空單，遇到金叉（"long"）訊號，reverse_signal_exit_enabled=False 時應該
+    完全不動作，只靠 130 點 SL/TP 出場。"""
+    state = _death_cross_short_state(
+        held_qty=1, held_direction="short", entry_price=21500.0,
+    )
+    state.last_signal_key = "previous-key"
+    svc = MagicMock()
+    st = {"quote": {"last_price": 21500.0}}  # 沒有觸及130點SL/TP，不會被那條路徑攔截
+
+    fake_bars = MagicMock()
+    fake_bars.empty = False
+    fake_bars.__len__.return_value = 100
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-08-25T09:15:00", "direction": "long", "key": "dc-golden-1"},
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+    assert state.held_direction == "short"
+    assert "已關閉反向訊號出場" in state.last_action

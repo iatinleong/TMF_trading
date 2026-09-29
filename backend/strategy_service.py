@@ -25,9 +25,9 @@ import pandas as pd
 
 from .capital_parse import parse_order_report_raw
 from .config import DEFAULT_STRATEGY, ContractSpec, app_base_dir
-from .kline_engine import get_store
+from .kline_engine import get_kline_store, get_store
 from .indicators import add_moving_averages, resample_to_60min
-from .signals import generate_breakout_signals, generate_pullback_signals
+from .signals import generate_breakout_signals, generate_death_cross_signals, generate_pullback_signals
 from .timeutil import TAIPEI_TZ, to_unix_seconds
 from .trading_service import TradingService, compute_current_tmf_code
 
@@ -47,7 +47,16 @@ STRATEGY_DEFS: dict[str, dict[str, str]] = {
     "breakout_short": {"strategy": "breakout", "direction_limit": "short", "label": "突破做空"},
     "pullback_long": {"strategy": "pullback", "direction_limit": "long", "label": "回測做多"},
     "pullback_short": {"strategy": "pullback", "direction_limit": "short", "label": "回測做空"},
+    "death_cross_short": {"strategy": "death_cross", "direction_limit": "short", "label": "死叉做空"},
 }
+
+
+def _interval_minutes_for_strategy(strategy: str) -> int:
+    return 15 if strategy == "death_cross" else 60
+
+
+def _min_bars_required_for_strategy(strategy: str) -> int:
+    return DEFAULT_STRATEGY.ma_mid + 2 if strategy == "death_cross" else DEFAULT_STRATEGY.ma_slow + 2
 
 # 連續下單失敗達此次數就自動停止該策略（見 _tick_one）。
 MAX_CONSECUTIVE_FAILURES = 3
@@ -521,8 +530,8 @@ def _contract_from_product(product_code: str) -> str:
     return "TX"
 
 
-def _bars_from_kline_store(product_code: str) -> pd.DataFrame:
-    klines = get_store(product_code).get_klines(limit=500)
+def _bars_from_kline_store(product_code: str, interval_minutes: int = 60) -> pd.DataFrame:
+    klines = get_kline_store(product_code, interval_minutes=interval_minutes).get_klines(limit=500)
     if not klines:
         return pd.DataFrame()
     frame = pd.DataFrame(klines)
@@ -544,11 +553,25 @@ def _bars_from_kline_store(product_code: str) -> pd.DataFrame:
     )
 
 
-def _load_bars(contract: str, product_code: str | None = None) -> pd.DataFrame:
+def _load_bars(
+    contract: str,
+    product_code: str | None = None,
+    *,
+    interval_minutes: int = 60,
+    min_bars_required: int | None = None,
+) -> pd.DataFrame:
+    if min_bars_required is None:
+        min_bars_required = DEFAULT_STRATEGY.ma_slow + 2
+
     live_bars = pd.DataFrame()
     if product_code:
-        live_bars = _bars_from_kline_store(product_code)
-        if not live_bars.empty and len(live_bars) >= DEFAULT_STRATEGY.ma_slow + 2:
+        live_bars = _bars_from_kline_store(product_code, interval_minutes=interval_minutes)
+        if not live_bars.empty and len(live_bars) >= min_bars_required:
+            return live_bars
+        if interval_minutes != 60:
+            # 沒有對應時間軸的 CSV 暖機檔可用；即時資料不足時直接回傳現況
+            # （可能是空的），不能退回 60 分鐘 CSV 合併，否則會把不同時間軸的
+            # K棒混在一起，弄亂 MA 計算。
             return live_bars
 
     csv_bars = pd.DataFrame()
@@ -615,6 +638,8 @@ def _latest_closed_signal(signaled: pd.DataFrame) -> dict[str, Any] | None:
 def _signaled_frame(strategy: str, bars: pd.DataFrame) -> pd.DataFrame:
     if strategy == "breakout":
         return generate_breakout_signals(bars)
+    if strategy == "death_cross":
+        return generate_death_cross_signals(bars)
     return generate_pullback_signals(bars)
 
 
@@ -690,20 +715,22 @@ def _fetch_equity_basis(st: dict[str, Any] | None = None) -> float:
 
 def strategy_config_defaults(strategy_id: str | None = None) -> dict[str, Any]:
     defs = STRATEGY_DEFS.get(strategy_id, {}) if strategy_id else {}
+    strategy_kind = defs.get("strategy", "pullback")
+    is_death_cross = strategy_kind == "death_cross"
     return {
-        "strategy": defs.get("strategy", "pullback"),
+        "strategy": strategy_kind,
         "direction_limit": defs.get("direction_limit", "long"),
         "label": defs.get("label", strategy_id or ""),
         "qty": _env_int("STRATEGY_QTY", 1),
         "initial_capital_ntd": _fetch_equity_basis(),
         "max_loss_ntd": _env_float("STRATEGY_MAX_LOSS_NTD", 10_000.0),
         "max_loss_pct": _env_float("STRATEGY_MAX_LOSS_PCT", 0.10),
-        "stop_loss_points": _env_float("STRATEGY_STOP_LOSS_POINTS", 100.0),
-        "take_profit_points": _env_float("STRATEGY_TAKE_PROFIT_POINTS", 250.0),
+        "stop_loss_points": 130.0 if is_death_cross else _env_float("STRATEGY_STOP_LOSS_POINTS", 100.0),
+        "take_profit_points": 130.0 if is_death_cross else _env_float("STRATEGY_TAKE_PROFIT_POINTS", 250.0),
         "oco_enabled": True,
         "soft_stop_enabled": True,
         "risk_insurance_enabled": True,
-        "reverse_signal_exit_enabled": True,
+        "reverse_signal_exit_enabled": not is_death_cross,
     }
 
 
@@ -796,8 +823,13 @@ def start_strategy(
     # 啟動當下把「已經存在的舊訊號」預先標記為已消費，避免把啟動前就已成立的
     # MA 交叉狀態誤判成剛發生的新訊號，導致一開策略就對著舊狀態送出真實委託。
     contract = _contract_from_product(effective_product_code)
-    bars = _load_bars(contract, product_code=effective_product_code)
-    if not bars.empty and len(bars) >= DEFAULT_STRATEGY.ma_slow + 2:
+    bars = _load_bars(
+        contract,
+        product_code=effective_product_code,
+        interval_minutes=_interval_minutes_for_strategy(state.strategy),
+        min_bars_required=_min_bars_required_for_strategy(state.strategy),
+    )
+    if not bars.empty and len(bars) >= _min_bars_required_for_strategy(state.strategy):
         existing_signal = _latest_closed_signal(_signaled_frame(state.strategy, bars))
         if existing_signal:
             state.last_signal_key = existing_signal["key"]
@@ -996,8 +1028,13 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
             # 換約切換商品當下，必須重新對新商品預先標記「既有舊訊號為已消費」，
             # 避免把新商品換約前就已存在的歷史 MA 狀態誤判為剛產生的新訊號而誤發市價單！
             new_contract = _contract_from_product(current_tmf)
-            new_bars = _load_bars(new_contract, product_code=current_tmf)
-            if not new_bars.empty and len(new_bars) >= DEFAULT_STRATEGY.ma_slow + 2:
+            new_bars = _load_bars(
+                new_contract,
+                product_code=current_tmf,
+                interval_minutes=_interval_minutes_for_strategy(state.strategy),
+                min_bars_required=_min_bars_required_for_strategy(state.strategy),
+            )
+            if not new_bars.empty and len(new_bars) >= _min_bars_required_for_strategy(state.strategy):
                 existing_sig = _latest_closed_signal(_signaled_frame(state.strategy, new_bars))
                 state.last_signal_key = existing_sig["key"] if existing_sig else None
             else:
@@ -1139,8 +1176,13 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
         )
         return
 
-    bars = _load_bars(contract, product_code=state.product_code)
-    if bars.empty or len(bars) < DEFAULT_STRATEGY.ma_slow + 2:
+    bars = _load_bars(
+        contract,
+        product_code=state.product_code,
+        interval_minutes=_interval_minutes_for_strategy(state.strategy),
+        min_bars_required=_min_bars_required_for_strategy(state.strategy),
+    )
+    if bars.empty or len(bars) < _min_bars_required_for_strategy(state.strategy):
         state.last_action = "K 棒資料不足，略過本輪"
         return
 
