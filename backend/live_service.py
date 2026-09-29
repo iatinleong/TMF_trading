@@ -370,9 +370,18 @@ async def poll_once() -> dict[str, Any] | None:
         try:
             from .shioaji_backfill import backfill_via_shioaji
 
-            added = await asyncio.to_thread(backfill_via_shioaji, quote_product)
-            if added:
-                logger.info("Shioaji 定期補缺：%s 新增 %d 根", quote_product, added)
+            # 2026-09-30：60分鐘/15分鐘共用同一個節流節奏——backfill_via_shioaji
+            # 內部同一天的缺口跨時間軸只會真的查詢 Shioaji 一次，不需要各自
+            # 獨立的節流計時器。
+            added_by_interval = await asyncio.to_thread(
+                backfill_via_shioaji, quote_product, interval_minutes_list=(60, 15)
+            )
+            for interval_minutes, added in added_by_interval.items():
+                if added:
+                    logger.info(
+                        "Shioaji 定期補缺(%d分鐘)：%s 新增 %d 根",
+                        interval_minutes, quote_product, added,
+                    )
         except Exception as exc:  # noqa: BLE001
             logger.debug("Shioaji 定期補缺失敗（不影響主流程）: %s", exc)
 

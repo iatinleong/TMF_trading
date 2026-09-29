@@ -611,7 +611,10 @@ def repair_kline(product: str = "", bar_time: int | None = None) -> dict[str, ob
             store._bars.pop(removed_key, None)
     if removed_key is not None:
         store._persist()
-    added = backfill_via_shioaji(prod, lookback_days=1)
+    # 這個端點是手動熱修復「60分鐘」K棒用的（見 get_store 固定回傳 60分鐘的
+    # store)，backfill_via_shioaji 泛化成多時間軸、回傳 dict 之後，這裡只取
+    # 60分鐘那個 key，行為跟泛化前完全一樣，不因此開始處理15分鐘。
+    added = backfill_via_shioaji(prod, lookback_days=1).get(60, 0)
     return {
         "product": prod,
         "removed_bar_time": removed_key,
