@@ -207,6 +207,42 @@ def test_find_missing_bars_detects_gap_in_closed_session(monkeypatch):
     assert missing_labels_on_base_day[0].strftime("%H:%M") == "11:45"
 
 
+def test_find_missing_bars_checks_interval_specific_store():
+    """
+    interval_minutes=15 呼叫時必須讀寫 15 分鐘的 store（get_kline_store(...,
+    interval_minutes=15)），不能誤讀 60 分鐘的 store——否則兩個時間軸的缺口
+    偵測會互相污染（例如 15 分鐘明明缺，卻因為 60 分鐘那個時段有資料而被
+    誤判成不缺)。這裡刻意讓 60 分鐘的 store 保持全空，驗證它完全沒被動到。
+    """
+    product = "TESTINTERVALGAP"
+    store_15 = get_kline_store(product, interval_minutes=15)
+    store_15._bars.clear()
+    store_60 = get_kline_store(product, interval_minutes=60)
+    store_60._bars.clear()
+
+    base_day = pd.Timestamp.now().normalize() - pd.Timedelta(days=3)
+    while base_day.dayofweek >= 5:
+        base_day -= pd.Timedelta(days=1)
+    all_labels = _expected_day_session_labels(base_day, interval_minutes=15)
+    present_labels = [label for label in all_labels if label.strftime("%H:%M") != "10:00"]
+    for label in present_labels:
+        key = to_unix_seconds(label)
+        store_15._bars[key] = {
+            "time": key, "open": 100.0, "high": 100.0, "low": 100.0,
+            "close": 100.0, "volume": 1,
+        }
+
+    missing = find_missing_bars(product, lookback_days=6, interval_minutes=15)
+    missing_on_base_day = [
+        label for _, label in missing
+        if label.normalize() == base_day and label.strftime("%H:%M") in
+        [t.strftime("%H:%M") for t in all_labels]
+    ]
+    assert len(missing_on_base_day) == 1
+    assert missing_on_base_day[0].strftime("%H:%M") == "10:00"
+    assert store_60._bars == {}  # 60分鐘的 store 完全沒被動到
+
+
 def test_find_missing_bars_ignores_future_bars():
     """還沒收盤（未來）的時間點不該被當成缺口，不然每次啟動都會被判定『全缺』。"""
     product = "TESTGAPFUTURE"

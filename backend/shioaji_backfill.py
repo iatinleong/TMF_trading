@@ -27,7 +27,7 @@ import pandas as pd
 from dotenv import load_dotenv
 
 from .config import app_base_dir
-from .kline_engine import bar_close_time_from_ts, get_store
+from .kline_engine import bar_close_time_from_ts, get_kline_store
 from .secrets_store import load_remote_secrets
 from .timeutil import TAIPEI_TZ, to_unix_seconds
 
@@ -138,14 +138,16 @@ def _session_query_dates(
 
 
 def find_missing_bars(
-    product_code: str, *, lookback_days: int = 2
+    product_code: str, *, lookback_days: int = 2, interval_minutes: int = 60
 ) -> list[tuple[str, pd.Timestamp]]:
     """
     列出最近 lookback_days 天內，已經收盤、但目前 store 裡缺的 K 棒。
     只檢查「已經過去」的收盤時間點（還沒開始/正在成型中的那一根不算缺）。
-    回傳 (Shioaji 查詢用日期字串, 收盤標籤) 清單。
+    回傳 (Shioaji 查詢用日期字串, 收盤標籤) 清單。讀的是 interval_minutes
+    對應的那個 store（get_kline_store 內部依 (code, interval_minutes) 分開
+    快取，不會跟其他時間軸的資料混在一起）。
     """
-    store = get_store(product_code)
+    store = get_kline_store(product_code, interval_minutes=interval_minutes)
     existing = {int(b["time"]) for b in store.get_klines(limit=0)}
 
     # 2026-08-30 修正：使用台北時間（Naive Asia/Taipei），不能用裸 pd.Timestamp.now()
@@ -155,7 +157,7 @@ def find_missing_bars(
     missing: list[tuple[str, pd.Timestamp]] = []
     for delta in range(lookback_days, -1, -1):
         day = now.normalize() - pd.Timedelta(days=delta)
-        for query_date, label in _session_query_dates(day):
+        for query_date, label in _session_query_dates(day, interval_minutes=interval_minutes):
             if label >= now:
                 continue
             key = to_unix_seconds(label)
@@ -270,7 +272,7 @@ def backfill_via_shioaji(product_code: str, *, lookback_days: int = 2) -> int:
                     f"result=有 {len(df)} 筆 tick 但 resample 不出任何 K 棒（可能都不在交易時段內）"
                 )
                 continue
-            store = get_store(product_code)
+            store = get_kline_store(product_code, interval_minutes=60)
             added = store.merge_missing_bars(bars)
             added_total += added
             _append_audit(
