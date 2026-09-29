@@ -256,6 +256,7 @@ async function loadKlines() {
 const STRATEGY_SHORT_CODE = {
   breakout_long: 'BL', breakout_short: 'BS',
   pullback_long: 'PL', pullback_short: 'PS',
+  death_cross_short: 'DS',
 };
 
 async function loadSignals() {
