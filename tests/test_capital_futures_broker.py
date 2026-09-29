@@ -6,7 +6,7 @@ import pytest
 
 from backend.broker import capital_futures
 from backend.broker.capital_futures import CapitalFuturesBroker
-from backend.kline_engine import get_store
+from backend.kline_engine import get_kline_store, get_store
 from backend.timeutil import TAIPEI_TZ
 
 
@@ -242,6 +242,60 @@ def test_on_tick_for_kline_polling_path_uses_taipei_tz_not_system_clock():
     # 如果退回去用系統 naive now()，會被誤判成 2026-08-24 的夜盤，日期就錯了。
     assert bar_time.strftime("%Y-%m-%d") == "2026-08-25"
     assert bar_time.hour in (8, 9, 10, 11, 12, 13)
+
+
+def _patched_now_in_day_session():
+    """Returns a datetime subclass whose .now() is pinned to a fixed instant that
+    maps to Taiwan time 2026-08-25 10:00:00 (inside the day session), so tests
+    don't depend on when they actually run."""
+    fixed_utc = datetime(2026, 8, 25, 2, 0, 0, tzinfo=timezone.utc)
+
+    class _FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_utc.replace(tzinfo=None)
+            return fixed_utc.astimezone(tz)
+
+    return _FixedDatetime
+
+
+def test_on_tick_for_kline_feeds_both_60min_and_15min_stores():
+    broker = CapitalFuturesBroker()
+    broker.live.subscribed_product = "TM_TEST_DUAL"
+
+    with patch("backend.broker.capital_futures.datetime", _patched_now_in_day_session()):
+        broker._on_tick_for_kline(21500.0, 1, 0, 0)
+
+    bar_60 = get_store("TM_TEST_DUAL").latest_bar()
+    bar_15 = get_kline_store("TM_TEST_DUAL", interval_minutes=15).latest_bar()
+    assert bar_60 is not None
+    assert bar_15 is not None
+
+
+def test_on_tick_for_kline_60min_path_survives_15min_store_failure():
+    broker = CapitalFuturesBroker()
+    broker.live.subscribed_product = "TM_TEST_FAIL15"
+
+    def _fail_on_15min(*args, **kwargs):
+        """Fail only on 15-minute calls, let 60-minute calls through."""
+        interval = kwargs.get("interval_minutes", 60)
+        if interval == 15:
+            raise RuntimeError("boom")
+        # For non-15-minute calls (e.g., 60-minute), use the original function
+        from backend.kline_engine import _stores, LiveKlineStore
+        code = args[0].upper()
+        key = (code, interval)
+        if key not in _stores:
+            _stores[key] = LiveKlineStore(code, interval_minutes=interval)
+        return _stores[key]
+
+    with patch("backend.broker.capital_futures.datetime", _patched_now_in_day_session()), \
+         patch("backend.kline_engine.get_kline_store", side_effect=_fail_on_15min):
+        broker._on_tick_for_kline(21500.0, 1, 0, 0)  # must not raise
+
+    bar_60 = get_store("TM_TEST_FAIL15").latest_bar()
+    assert bar_60 is not None
 
 
 def test_parse_open_interest_does_not_commit_before_terminator():

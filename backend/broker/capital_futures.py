@@ -1684,10 +1684,10 @@ class CapitalFuturesBroker:
         if not product:
             return
         try:
-            from ..kline_engine import get_store
+            from ..kline_engine import get_kline_store, get_store
             from ..timeutil import TAIPEI_TZ
         except ImportError:
-            from kline_engine import get_store  # type: ignore
+            from kline_engine import get_kline_store, get_store  # type: ignore
             from timeutil import TAIPEI_TZ  # type: ignore
 
         # n_date<=0（如 request_stocks() 輪詢路徑）沒有券商給的交易所時間可用，
@@ -1701,6 +1701,10 @@ class CapitalFuturesBroker:
             else pd.Timestamp(datetime.now(TAIPEI_TZ))
         )
         get_store(product).on_tick(price, volume, ts)
+        try:
+            get_kline_store(product, interval_minutes=15).on_tick(price, volume, ts)
+        except Exception:  # noqa: BLE001 - 15分鐘聚合失敗絕不能影響既有60分鐘路徑或COM事件執行緒
+            logger.warning("15分鐘K棒聚合失敗（不影響既有60分鐘路徑）", exc_info=True)
 
     def _require_ready(self) -> None:
         if not self._logged_in:
