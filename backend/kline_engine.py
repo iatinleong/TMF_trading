@@ -30,13 +30,14 @@ _BAR_LIMIT = DEFAULT_KLINE_LIMIT
 _CACHE_DIR = app_base_dir(__file__) / "data" / "kline_cache"
 
 
-def _cache_path(product_code: str) -> Path:
+def _cache_path(product_code: str, interval_minutes: int = 60) -> Path:
     safe = re.sub(r"[^A-Za-z0-9_-]+", "_", product_code.upper())
-    return _CACHE_DIR / f"{safe}.json"
+    suffix = "" if interval_minutes == 60 else f"_{interval_minutes}min"
+    return _CACHE_DIR / f"{safe}{suffix}.json"
 
 
-def bar_close_time_from_ts(ts: pd.Timestamp) -> pd.Timestamp | None:
-    """台指期交易時段內，將時間對齊到 60 分 K 棒收盤時間。
+def bar_close_time_from_ts(ts: pd.Timestamp, minutes: int = 60) -> pd.Timestamp | None:
+    """台指期交易時段內，將時間對齊到 `minutes` 分鐘寬的 K 棒收盤時間（預設60分鐘）。
     過濾週末與非交易時段：
     1. 日盤 (08:45 ~ 13:45): 週一(0) ~ 週五(4)
     2. 夜盤 (15:00 ~ 05:00): 週一(0) 15:00 到週六(5) 05:00 結束
@@ -66,20 +67,21 @@ def bar_close_time_from_ts(ts: pd.Timestamp) -> pd.Timestamp | None:
         session_start = trade_date + pd.Timedelta(hours=15)
 
     elapsed = (ts - session_start) / pd.Timedelta(minutes=1)
-    bar_no = int(np.ceil(max(float(elapsed), 0.0) / 60.0))
+    bar_no = int(np.ceil(max(float(elapsed), 0.0) / float(minutes)))
     if bar_no == 0:
         bar_no = 1
-    return pd.Timestamp(session_start + pd.Timedelta(minutes=bar_no * 60))
+    return pd.Timestamp(session_start + pd.Timedelta(minutes=bar_no * minutes))
 
 
 class LiveKlineStore:
-    def __init__(self, product_code: str) -> None:
+    def __init__(self, product_code: str, interval_minutes: int = 60) -> None:
         self.product_code = product_code
+        self.interval_minutes = interval_minutes
         self._bars: dict[int, dict] = {}
         self._load_cache()
 
     def _load_cache(self) -> None:
-        path = _cache_path(self.product_code)
+        path = _cache_path(self.product_code, self.interval_minutes)
         if not path.exists():
             return
         try:
@@ -90,7 +92,7 @@ class LiveKlineStore:
 
     def _persist(self) -> None:
         try:
-            path = _cache_path(self.product_code)
+            path = _cache_path(self.product_code, self.interval_minutes)
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(".tmp")
             tmp.write_text(
@@ -119,7 +121,7 @@ class LiveKlineStore:
             return
         if ts is None or pd.isna(ts):
             ts = pd.Timestamp.now()
-        close_time = bar_close_time_from_ts(ts)
+        close_time = bar_close_time_from_ts(ts, minutes=self.interval_minutes)
         if close_time is None:
             return
         # 2026-08-24 實測抓到的 bug：close_time 是 naive 台灣本地時間，pandas
@@ -182,11 +184,16 @@ class LiveKlineStore:
         return added
 
 
-_stores: dict[str, LiveKlineStore] = {}
+_stores: dict[tuple[str, int], LiveKlineStore] = {}
+
+
+def get_kline_store(product_code: str, interval_minutes: int = 60) -> LiveKlineStore:
+    code = product_code.upper()
+    key = (code, interval_minutes)
+    if key not in _stores:
+        _stores[key] = LiveKlineStore(code, interval_minutes=interval_minutes)
+    return _stores[key]
 
 
 def get_store(product_code: str) -> LiveKlineStore:
-    code = product_code.upper()
-    if code not in _stores:
-        _stores[code] = LiveKlineStore(code)
-    return _stores[code]
+    return get_kline_store(product_code, interval_minutes=60)
