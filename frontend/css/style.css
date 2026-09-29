@@ -315,6 +315,14 @@ td { padding: 5px 8px; border-bottom: 1px solid var(--bg3); white-space: nowrap;
 .order-tab.active { background: var(--bg3); color: var(--text); font-weight: 600; }
 .order-tab:hover { color: var(--text); }
 
+.interval-tabs { display: flex; gap: 8px; align-items: center; }
+.interval-tab {
+  cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 11px; color: var(--muted);
+  transition: all .2s; user-select: none;
+}
+.interval-tab.active { background: var(--bg3); color: var(--text); font-weight: 600; }
+.interval-tab:hover { color: var(--text); }
+
 .action-btn {
   padding: 2px 8px;
   border-radius: 3px;

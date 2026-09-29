@@ -40,6 +40,7 @@ function escHtml(s) {
 
 let klinesCache = [];
 let signalRowsCache = [];
+let currentInterval = 60;
 
 function updateChartLegend(kline, sig) {
   const el = document.getElementById('chart-legend');
@@ -232,7 +233,7 @@ async function onProductChange() {
 }
 
 async function loadKlines() {
-  const res = await apiFetch(`${API}/api/klines?product=${currentProduct}&limit=500`);
+  const res = await apiFetch(`${API}/api/klines?product=${currentProduct}&limit=500&interval=${currentInterval}`);
   const data = await res.json();
   // 2026-08-21 實測抓到的 bug：後端在非預期情況（例如還沒完全連線）可能回傳
   // 一個物件而不是陣列，klinesCache = data || [] 這時候會把整個物件指派進去，
@@ -262,7 +263,7 @@ const STRATEGY_SHORT_CODE = {
 async function loadSignals() {
   try {
     const [sigRes, tradeRes] = await Promise.all([
-      apiFetch(`${API}/api/klines/signals?product=${currentProduct}&limit=500`),
+      apiFetch(`${API}/api/klines/signals?product=${currentProduct}&limit=500&interval=${currentInterval}`),
       apiFetch(`${API}/api/strategy/trades`),
     ]);
     const rows = await sigRes.json();
@@ -354,10 +355,11 @@ async function connectWS() {
       document.getElementById('ticker-bid-ask').textContent =
         `買 ${formatPrice(msg.bid)} / 賣 ${formatPrice(msg.ask)}`;
     }
-    if (msg.kline) {
+    const liveKline = currentInterval === 15 ? msg.kline_15m : msg.kline;
+    if (liveKline) {
       try {
-        candleSeries.update({ ...msg.kline });
-        updateLiveMA(msg.kline);
+        candleSeries.update({ ...liveKline });
+        updateLiveMA(liveKline);
       } catch (_) { /* ignore duplicate time */ }
     }
     refreshAccount();
@@ -468,6 +470,16 @@ function switchOrderTab(tab) {
   if (activeEl) activeEl.classList.toggle('active', tab === 'active');
   if (historyEl) historyEl.classList.toggle('active', tab === 'history');
   refreshOrders();
+}
+
+function switchInterval(interval) {
+  currentInterval = interval;
+  const tab60 = document.getElementById('tab-interval-60');
+  const tab15 = document.getElementById('tab-interval-15');
+  if (tab60) tab60.classList.toggle('active', interval === 60);
+  if (tab15) tab15.classList.toggle('active', interval === 15);
+  chartInitialFitted = false;
+  loadKlines();
 }
 
 async function refreshOrders() {

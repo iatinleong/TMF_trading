@@ -32,6 +32,10 @@
 
   <div class="main-grid">
     <div class="chart-panel">
+      <div class="interval-tabs">
+        <span id="tab-interval-60" class="interval-tab active" onclick="switchInterval(60)">60分</span>
+        <span id="tab-interval-15" class="interval-tab" onclick="switchInterval(15)">15分</span>
+      </div>
       <div id="chart"></div>
       <div id="chart-legend" class="chart-legend"></div>
     </div>
@@ -143,6 +147,6 @@
     </div>
   </div>
 
-  <script src="js/app.js?v=67"></script>
+  <script src="js/app.js?v=68"></script>
 </body>
 </html>
