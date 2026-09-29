@@ -132,6 +132,19 @@ def test_session_query_dates_night_session_queries_next_day():
     assert night_pairs[0][0] == "2026-08-26"
 
 
+def test_session_query_dates_15min_produces_more_labels_same_dates():
+    """15分鐘的查詢日期對照關係跟60分鐘一致（同一天日盤查當天、夜盤查隔天），
+    只是每個查詢日底下的標籤數量變多（20+56 而不是 5+14）。"""
+    pairs_60 = _session_query_dates(pd.Timestamp("2026-08-25"), interval_minutes=60)
+    pairs_15 = _session_query_dates(pd.Timestamp("2026-08-25"), interval_minutes=15)
+
+    query_dates_60 = {q for q, _ in pairs_60}
+    query_dates_15 = {q for q, _ in pairs_15}
+    assert query_dates_15 == query_dates_60  # 查詢日期集合不變，只有標籤密度變了
+    assert len(pairs_15) == 76  # 20 (日盤) + 56 (夜盤)
+    assert len(pairs_60) == 19  # 5 (日盤) + 14 (夜盤)
+
+
 def test_session_query_dates_excludes_weekends():
     """週末（週六與週日）沒有當日開盤的日盤與夜盤，不應產生查詢日期，避免誤判缺口。"""
     saturday_pairs = _session_query_dates(pd.Timestamp("2026-08-29"))  # 週六
