@@ -31,7 +31,7 @@ def test_backfill_via_shioaji_logs_why_it_skipped_when_no_keys(tmp_path, monkeyp
 
     added = backfill_via_shioaji("TESTAUDITSKIP")
 
-    assert added == 0
+    assert added == {60: 0}
     content = audit_path.read_text(encoding="utf-8")
     assert "TESTAUDITSKIP" in content
     assert "沒有可用的 SJ_API_KEY/SJ_SEC_KEY" in content
@@ -58,7 +58,7 @@ def test_backfill_via_shioaji_logs_login_failure(tmp_path, monkeypatch):
     with patch.dict("sys.modules", {"shioaji": fake_module}):
         added = backfill_via_shioaji("TESTAUDITLOGIN")
 
-    assert added == 0
+    assert added == {60: 0}
     content = audit_path.read_text(encoding="utf-8")
     assert "login 失敗" in content
     assert "模擬登入失敗" in content
@@ -311,3 +311,117 @@ def test_resample_ticks_to_bars_15min_buckets_are_narrower():
 
     assert len(bars_60) == 1  # 60分鐘下兩筆 tick 同屬 10:45 那根
     assert len(bars_15) == 2  # 15分鐘下分屬 10:00 跟 10:15 兩根
+
+
+def test_backfill_via_shioaji_shares_one_fetch_across_intervals(tmp_path, monkeypatch):
+    """
+    核心優化驗證：60分鐘跟15分鐘都缺同一個交易日時，api.ticks() 只能被呼叫
+    一次（不是各自呼叫各打一次)，但兩個時間軸各自的 store 都要拿到補進去
+    的資料。這是這次重構唯一真正的行為變更，必須有回歸測試釘住,不能只靠
+    看 code review。
+    """
+    audit_path = tmp_path / "shioaji_backfill_audit.log"
+    monkeypatch.setattr(shioaji_backfill, "_audit_log_path", lambda: audit_path)
+    monkeypatch.setattr(shioaji_backfill, "shioaji_available", lambda: True)
+    monkeypatch.setattr(shioaji_backfill, "_is_production", lambda: True)
+
+    product = "TESTSHAREDFETCH"
+    store_60 = get_kline_store(product, interval_minutes=60)
+    store_60._bars.clear()
+    store_15 = get_kline_store(product, interval_minutes=15)
+    store_15._bars.clear()
+
+    # 兩個時間軸都在同一天（2026-08-26）缺一根。
+    monkeypatch.setattr(
+        shioaji_backfill,
+        "find_missing_bars",
+        lambda product_code, *, lookback_days, interval_minutes: (
+            [("2026-08-26", pd.Timestamp("2026-08-26 09:45"))]
+            if interval_minutes == 60
+            else [("2026-08-26", pd.Timestamp("2026-08-26 09:00"))]
+        ),
+    )
+
+    ticks_call_count = {"n": 0}
+
+    class _FakeTicks:
+        def dict(self):
+            return [{"ts": "2026-08-26 09:30:00", "close": 21000.0, "volume": 1}]
+
+    class _FakeApi:
+        Contracts = type(
+            "C", (), {"Futures": type("F", (), {"TMF": type("T", (), {"TMFR1": object()})()})()}
+        )()
+
+        def login(self, **kwargs):
+            pass
+
+        def ticks(self, contract, date):
+            ticks_call_count["n"] += 1
+            return _FakeTicks()
+
+        def logout(self):
+            pass
+
+    fake_module = type("FakeShioaji", (), {"Shioaji": lambda self, simulation: _FakeApi()})()
+
+    with patch.dict("sys.modules", {"shioaji": fake_module}):
+        added = backfill_via_shioaji(product, interval_minutes_list=(60, 15))
+
+    assert ticks_call_count["n"] == 1  # 同一天只查一次，不是兩次
+    assert added[60] == 1
+    assert added[15] == 1
+
+
+def test_backfill_via_shioaji_only_updates_intervals_that_were_actually_missing(tmp_path, monkeypatch):
+    """
+    某一天如果只有 15 分鐘缺、60 分鐘不缺，抓回來的那份逐筆資料不該被拿去
+    補 60 分鐘的 store——不然等於無條件覆蓋式回補，跟 merge_missing_bars
+    『只補真正缺的』這個既有語意（見 kline_engine.py 檔頭註解)矛盾。
+    """
+    audit_path = tmp_path / "shioaji_backfill_audit.log"
+    monkeypatch.setattr(shioaji_backfill, "_audit_log_path", lambda: audit_path)
+    monkeypatch.setattr(shioaji_backfill, "shioaji_available", lambda: True)
+    monkeypatch.setattr(shioaji_backfill, "_is_production", lambda: True)
+
+    product = "TESTPARTIALFETCH"
+    store_60 = get_kline_store(product, interval_minutes=60)
+    store_60._bars.clear()
+    store_15 = get_kline_store(product, interval_minutes=15)
+    store_15._bars.clear()
+
+    # 只有 15 分鐘缺 2026-08-26；60 分鐘完全沒有缺口（回傳空清單）。
+    monkeypatch.setattr(
+        shioaji_backfill,
+        "find_missing_bars",
+        lambda product_code, *, lookback_days, interval_minutes: (
+            [] if interval_minutes == 60 else [("2026-08-26", pd.Timestamp("2026-08-26 09:00"))]
+        ),
+    )
+
+    class _FakeTicks:
+        def dict(self):
+            return [{"ts": "2026-08-26 09:30:00", "close": 21000.0, "volume": 1}]
+
+    class _FakeApi:
+        Contracts = type(
+            "C", (), {"Futures": type("F", (), {"TMF": type("T", (), {"TMFR1": object()})()})()}
+        )()
+
+        def login(self, **kwargs):
+            pass
+
+        def ticks(self, contract, date):
+            return _FakeTicks()
+
+        def logout(self):
+            pass
+
+    fake_module = type("FakeShioaji", (), {"Shioaji": lambda self, simulation: _FakeApi()})()
+
+    with patch.dict("sys.modules", {"shioaji": fake_module}):
+        added = backfill_via_shioaji(product, interval_minutes_list=(60, 15))
+
+    assert added[60] == 0  # 60分鐘本來就不缺，不該被動到
+    assert added[15] == 1
+    assert store_60._bars == {}  # 60分鐘的 store 完全沒被寫入任何資料

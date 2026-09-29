@@ -199,34 +199,59 @@ def _resample_ticks_to_bars(df: pd.DataFrame, interval_minutes: int = 60) -> lis
     return bars
 
 
-def backfill_via_shioaji(product_code: str, *, lookback_days: int = 2) -> int:
+def backfill_via_shioaji(
+    product_code: str,
+    *,
+    lookback_days: int = 2,
+    interval_minutes_list: tuple[int, ...] = (60,),
+) -> dict[int, int]:
     """
-    檢查缺口，有缺才連線 Shioaji 補；沒有缺口/沒設定金鑰/連線失敗都安靜跳過，
-    回傳實際補進去的根數（0 不代表失敗，可能就是沒有缺口）。每一步都落地
-    記一筆稽核 log（見 _append_audit 說明），失敗時才查得出卡在哪一步。
+    檢查每個時間軸各自的缺口，有缺才連線 Shioaji 補；沒有缺口/沒設定金鑰/
+    連線失敗都安靜跳過。回傳 {interval_minutes: 實際補進去的根數}（每個
+    interval_minutes_list 裡的值都保證有 key，0 不代表失敗，可能就是沒有
+    缺口)。
+
+    2026-09-30：改成一次處理多個時間軸、共用同一次抓回來的逐筆資料——
+    Shioaji ticks() 本來就是抓「整個交易日」的逐筆資料，重採樣成幾分鐘
+    一根純粹是本機運算，不影響抓幾次。這裡把每個時間軸各自的缺口日期
+    取聯集去重，同一天只查一次，再依「這個時間軸這天是否真的缺」個別
+    重採樣、寫入各自的 store，避免同一天被不同時間軸各自呼叫各打一次
+    api.ticks()。
+
+    每一步都落地記一筆稽核 log（見 _append_audit 說明），失敗時才查得出
+    卡在哪一步。
     """
+    added_by_interval: dict[int, int] = {m: 0 for m in interval_minutes_list}
+
     available = shioaji_available()
     if not available:
         _append_audit(f"product={product_code}\tskip=沒有可用的 SJ_API_KEY/SJ_SEC_KEY")
-        return 0
+        return added_by_interval
 
-    missing = find_missing_bars(product_code, lookback_days=lookback_days)
-    if not missing:
+    missing_by_interval = {
+        m: find_missing_bars(product_code, lookback_days=lookback_days, interval_minutes=m)
+        for m in interval_minutes_list
+    }
+    query_dates_by_interval = {
+        m: {query_date for query_date, _ in missing} for m, missing in missing_by_interval.items()
+    }
+    all_query_dates = sorted({qd for dates in query_dates_by_interval.values() for qd in dates})
+    if not all_query_dates:
         _append_audit(f"product={product_code}\tskip=沒有偵測到缺口")
-        return 0
+        return added_by_interval
 
-    _append_audit(f"product={product_code}\tmissing={len(missing)}\t開始連線查詢")
-    logger.info("Shioaji 補缺：偵測到 %d 根缺口，準備連線查詢 %s", len(missing), product_code)
+    total_missing = sum(len(m) for m in missing_by_interval.values())
+    _append_audit(f"product={product_code}\tmissing={total_missing}\t開始連線查詢")
+    logger.info("Shioaji 補缺：偵測到 %d 根缺口，準備連線查詢 %s", total_missing, product_code)
 
     try:
         import shioaji as sj
     except ImportError as exc:
         _append_audit(f"product={product_code}\tfail=shioaji 套件未安裝: {exc}")
         logger.warning("shioaji 套件未安裝，無法補缺口")
-        return 0
+        return added_by_interval
 
     api = sj.Shioaji(simulation=not _is_production())
-    added_total = 0
     try:
         try:
             # 2026-08-26 實測抓到：shioaji 1.7.3 的 login() 已經沒有
@@ -240,7 +265,7 @@ def backfill_via_shioaji(product_code: str, *, lookback_days: int = 2) -> int:
             )
         except Exception as exc:  # noqa: BLE001
             _append_audit(f"product={product_code}\tfail=login 失敗: {exc}")
-            return 0
+            return added_by_interval
 
         try:
             # 只驗證過 TMF（微型台指期貨）近月連續代碼；其他商品先不處理，
@@ -253,10 +278,9 @@ def backfill_via_shioaji(product_code: str, *, lookback_days: int = 2) -> int:
             contract = api.Contracts.Futures.TMF.TMFR1
         except Exception as exc:  # noqa: BLE001
             _append_audit(f"product={product_code}\tfail=取得合約失敗: {exc}")
-            return 0
+            return added_by_interval
 
-        query_dates = sorted({query_date for query_date, _ in missing})
-        for query_date in query_dates:
+        for query_date in all_query_dates:
             try:
                 ticks = api.ticks(contract=contract, date=query_date)
             except Exception as exc:  # noqa: BLE001
@@ -267,26 +291,30 @@ def backfill_via_shioaji(product_code: str, *, lookback_days: int = 2) -> int:
             if df.empty:
                 _append_audit(f"product={product_code}\tquery={query_date}\tresult=空資料")
                 continue
-            bars = _resample_ticks_to_bars(df)
-            if not bars:
+
+            for m in interval_minutes_list:
+                if query_date not in query_dates_by_interval[m]:
+                    continue  # 這個時間軸這天沒缺，不用重複補
+                bars = _resample_ticks_to_bars(df, interval_minutes=m)
+                if not bars:
+                    _append_audit(
+                        f"product={product_code}\tquery={query_date}\tinterval={m}\t"
+                        f"result=有 {len(df)} 筆 tick 但 resample 不出任何 K 棒（可能都不在交易時段內）"
+                    )
+                    continue
+                store = get_kline_store(product_code, interval_minutes=m)
+                added = store.merge_missing_bars(bars)
+                added_by_interval[m] += added
                 _append_audit(
-                    f"product={product_code}\tquery={query_date}\t"
-                    f"result=有 {len(df)} 筆 tick 但 resample 不出任何 K 棒（可能都不在交易時段內）"
+                    f"product={product_code}\tquery={query_date}\tinterval={m}\tticks={len(df)}\t"
+                    f"resampled={len(bars)}\tadded={added}"
                 )
-                continue
-            store = get_kline_store(product_code, interval_minutes=60)
-            added = store.merge_missing_bars(bars)
-            added_total += added
-            _append_audit(
-                f"product={product_code}\tquery={query_date}\tticks={len(df)}\t"
-                f"resampled={len(bars)}\tadded={added}"
-            )
-            logger.info("Shioaji 補缺：%s 查詢新增 %d 根", query_date, added)
+                logger.info("Shioaji 補缺(%d分鐘)：%s 查詢新增 %d 根", m, query_date, added)
     finally:
         try:
             api.logout()
         except Exception:  # noqa: BLE001
             pass
 
-    _append_audit(f"product={product_code}\t完成\tadded_total={added_total}")
-    return added_total
+    _append_audit(f"product={product_code}\t完成\tadded_by_interval={added_by_interval}")
+    return added_by_interval
