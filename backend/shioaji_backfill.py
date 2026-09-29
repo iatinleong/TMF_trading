@@ -240,7 +240,7 @@ def backfill_via_shioaji(
         _append_audit(f"product={product_code}\tskip=沒有偵測到缺口")
         return added_by_interval
 
-    total_missing = sum(len(m) for m in missing_by_interval.values())
+    total_missing = sum(len(missing_list) for missing_list in missing_by_interval.values())
     _append_audit(f"product={product_code}\tmissing={total_missing}\t開始連線查詢")
     logger.info("Shioaji 補缺：偵測到 %d 根缺口，準備連線查詢 %s", total_missing, product_code)
 

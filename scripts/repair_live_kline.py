@@ -46,7 +46,7 @@ def main() -> None:
         print("[1/2] 快取中無 K 棒可清除，直接執行回補檢查")
 
     print(f"[2/2] 開始由永豐 Shioaji 查詢完整逐筆資料回補 {prod}...")
-    added = backfill_via_shioaji(prod, lookback_days=1)
+    added = backfill_via_shioaji(prod, lookback_days=1).get(60, 0)
     print(f"✓ 修復完成！已由 Shioaji 成功回補 {added} 根 K 棒！")
 
 
