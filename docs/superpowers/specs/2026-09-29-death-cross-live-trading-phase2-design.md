@@ -27,7 +27,13 @@ except Exception:  # noqa: BLE001
     logger.warning("15分鐘K棒聚合失敗（不影響既有60分鐘路徑）", exc_info=True)
 ```
 
-**回補限制**：60 分鐘 K 棒有群益 `RequestKLineAMByDate` 官方回補 API，重開機時可以補洞；15 分鐘沒有對應的官方回補管道（群益不提供任意週期回補），15 分鐘 store 只能靠即時 tick 現場累積。後端重開機後，死叉策略要等重新累積出至少 `ma_slow(60) + 2` 根 15 分鐘K棒（約 5 小時的日盤+夜盤交易時間）才會開始出訊號，這段期間會顯示「K 棒資料不足，略過本輪」——這是既有邏輯的正常等待狀態，不是新問題。
+**回補限制**：60 分鐘 K 棒有群益 `RequestKLineAMByDate` 官方回補 API，重開機時可以補洞；15 分鐘沒有對應的官方回補管道（群益不提供任意週期回補），15 分鐘 store 只能靠即時 tick 現場累積。
+
+**K棒等待門檻要用 `ma_mid`，不是 `ma_slow`（設計審查時發現並修正）**：`strategy_service.py` 目前有 4 處寫死 `len(bars) < DEFAULT_STRATEGY.ma_slow + 2`（即 62 根)的判斷式（`_load_bars`/`_tick_one` 內的一般判斷與換約後的重判斷)，這是給 pullback 策略用的（`generate_pullback_signals` 真的需要 `ma_slow`)。死叉策略的訊號函式只驗證 `ma_fast`/`ma_mid` 兩欄（`_validate_columns(df, ["ma_fast", "ma_mid"])`)，完全不需要 `ma_slow`，62 根（15 分鐘×62 ≈ 15.5 小時,得跨過一整個日盤加半個夜盤)是不必要的等待。這 4 處判斷式都要改成依 `state.strategy` 決定門檻：死叉策略用 `ma_mid(20) + 2 = 22` 根（約 5.5 小時,跑完一個交易時段就緒),其他策略維持原本的 `ma_slow + 2 = 62` 根不變。
+
+**`_load_bars()` 的 CSV 暖機合併邏輯必須整條跳過，不能只是「門檻不夠」**：`_load_bars()` 目前在即時 K 棒不足時，會退回讀取 `{contract}_60min_real.csv`/`{contract}_60min.csv` 並用 `resample_to_60min()` 合併——這是 60 分鐘專用的暖機備援。死叉策略沒有對應的 15 分鐘 CSV，如果只調低門檻、不特別處理這個分支，K棒不足時反而可能誤觸發這條合併邏輯，把 60 分鐘歷史 K 棒硬併進 15 分鐘即時序列，徹底弄亂 MA 計算（間距不一致）。因此 `_load_bars()` 需要一個 `interval_minutes` 參數：`interval_minutes=15` 時完全跳過 CSV 合併分支，直接回傳 `add_moving_averages(live_bars, ...)`（`live_bars` 為空或不足也直接回傳，讓 `_tick_one()` 既有的「K 棒資料不足，略過本輪」邏輯接手，不嘗試補資料）。
+
+門檻調整後，死叉策略重開機只要跑完一個交易時段（約 5.5 小時）就會就緒，這段期間顯示「K 棒資料不足，略過本輪」——這是既有邏輯的正常等待狀態，不是新問題。
 
 ## 二、接進 `backend/strategy_service.py`
 
@@ -69,9 +75,13 @@ strategyDefs = allDefs.filter((d) => myStrategyConfigs[d.strategy_id]);
 
 **因此 Supabase 綁定是這次 Phase 2 的必要交付項目，不是可選**：部署完成後執行
 ```
-python scripts/bind_strategy.py --user-id 01e79d6d-a686-4588-bdd2-5329512b97ef --strategy-id death_cross_short
+python scripts/bind_strategy.py --user-id 01e79d6d-a686-4588-bdd2-5329512b97ef --strategy-id death_cross_short --no-reverse-signal-exit-enabled
 ```
-不加 `--enabled`（維持「只交付能力,預設不啟動」），欄位（`stop_loss_points`/`take_profit_points` 等）留空即可——留空時前端送出 `undefined`，後端 `strategy_config_defaults()` 會退回 130/130/`reverse_signal_exit_enabled=False` 這組正確的死叉專屬預設值。這一步做完後，Supabase `user_strategy_configs` 表會跟另外 4 個策略一樣有一筆對應紀錄，Dashboard 上正常顯示第 5 張策略卡片。
+`stop_loss_points`/`take_profit_points` 等數值欄位留空即可——留空時前端（`app.js:726-729`）送出 `undefined`，後端 `strategy_config_defaults()` 會退回 130/130 這組死叉專屬預設值。**但 `reverse_signal_exit_enabled` 這個布林欄位不能留空**（設計審查時發現並修正）：前端組裝啟動請求的程式碼是 `reverse_signal_exit_enabled: cfg.reverse_signal_exit_enabled !== false`（`app.js:733`）——留空/`null` 時 `null !== false` 結果是 `true`，會送出明確的 `true` 蓋掉後端的 `False` 預設值，導致金叉還是會平倉，跟已確認的「金叉忽略、只靠130點TP/SL」設計不符。`oco_enabled`/`soft_stop_enabled`/`risk_insurance_enabled` 這三個布林欄位用同一種前端寫法，但這三個死叉策略本來就要跟其他策略一樣預設開啟，留空剛好符合預期，不用額外處理。**不加 `--enabled`**（維持「只交付能力,預設不啟動」）。
+
+這一步做完後，Supabase `user_strategy_configs` 表會跟另外 4 個策略一樣有一筆對應紀錄，Dashboard 上正常顯示第 5 張策略卡片，且反向出場行為正確關閉。
+
+**順手優化（低風險,非必要)**：`frontend/js/app.js:256-259` 的 `STRATEGY_SHORT_CODE` 對照表（圖表買賣箭頭標籤用)目前只有 4 個既有策略的縮寫，沒有 `death_cross_short` 也不會壞（`STRATEGY_SHORT_CODE[sid] || sid` 有 fallback,只是箭頭文字會顯示完整 `death_cross_short` 而不是簡短代碼),補上 `death_cross_short: 'DS'` 讓圖表顯示更簡潔。
 
 ## 四、測試計畫
 
@@ -80,6 +90,7 @@ python scripts/bind_strategy.py --user-id 01e79d6d-a686-4588-bdd2-5329512b97ef -
 - `strategy_service.py`：
   - `strategy_config_defaults("death_cross_short")` 回傳 `stop_loss_points=130.0`、`take_profit_points=130.0`、`reverse_signal_exit_enabled=False`；同一個測試裡也斷言 `strategy_config_defaults("breakout_long")`（或其他既有策略）回傳值與這次修改前完全一致，明確證明兩者互不污染。
   - `_load_bars`/`_bars_from_kline_store` 依 `state.strategy` 正確切換 15/60 分鐘 store。
+  - 死叉策略的K棒充足門檻用 `ma_mid+2`（22 根），其他策略維持 `ma_slow+2`（62 根）不變的驗證；死叉策略在即時K棒不足時**不會**觸發 60 分鐘 CSV 合併分支（避免不同時間軸資料混在一起）。
   - 端到端模擬（比照這個 session 稍早修 9/17 事故時寫的 `test_full_session_switch_simulation_end_to_end` 手法）：假造 15 分鐘 K 棒序列出現死叉訊號 → `_tick_one()` 正確進場、掛 OCO（`stop_loss_points=130`/`take_profit_points=130`）、金叉出現時不平倉、SL/TP 觸發時正確出場。
 - Supabase 綁定：手動驗證步驟（非自動化測試）——執行 `bind_strategy.py` 後，用瀏覽器登入 Dashboard 確認第 5 張策略卡片正常顯示、開關可以正常打開/關閉。
 
