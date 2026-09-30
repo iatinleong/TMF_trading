@@ -1062,6 +1062,21 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
     contract = _contract_from_product(state.product_code)
     quote_info = st.get("quote") or {}
     quote = quote_info.get("last_price")
+    # 2026-09-30 抓到的架構缺陷：群益報價訂閱同時只能訂閱一個商品（見
+    # capital_futures.py 的 self.live.subscribed_product 是單一變數），所有
+    # 已武裝的策略共用同一份 st["quote"]，不是各自去查自己商品的報價。如果
+    # 操作者在 Dashboard 把商品代碼框切去看別的商品（例如切到大台 TX00），
+    # 這裡原本會直接拿切換後的商品價格，誤當成這個策略自己商品（例如TMF）的
+    # 現價去判斷停損停利/風控——TX/MTX/TMF 都追蹤同一個台指指數、價位接近，
+    # 這個錯誤不會一眼看出來是錯的，拿錯的商品價格做風控判斷比完全沒有報價
+    # 更危險。這裡偵測到報價來源標示的商品跟這個策略自己的商品不是同一種
+    # 合約類型時，直接當作沒有可用報價（等同真的沒收到報價），安全地跳過這
+    # 一輪的軟停損停利判斷，寧可靠掛著的真實 OCO 保護單頂著，也不要用錯的
+    # 商品價格做判斷。只在報價明確帶了 product_code 時才檢查——沒帶（例如
+    # 舊測試/尚未收到任何報價的空字串）維持原本行為，不無故擋掉。
+    quote_product_code = quote_info.get("product_code")
+    if quote_product_code and _contract_from_product(quote_product_code) != contract:
+        quote = None
 
     # 持倉點數停損停利：2026-08-07 改成純點數門檻（進場價 ±點數）為主要判斷依據。
     # 2026-08-07 再加回 NTD/%浮動損益門檻，當作「額外保險」：正常情況點數停損會先

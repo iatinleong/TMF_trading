@@ -183,6 +183,47 @@ def test_tick_one_forces_close_on_stop_loss_points():
     assert state.realized_pnl_ntd == -2000.0
 
 
+def test_tick_one_ignores_quote_when_product_mismatches_state_product():
+    """
+    2026-09-30 抓到的架構缺陷：群益報價訂閱同時只能訂閱一個商品，所有已武裝的
+    策略共用同一份 st["quote"]。如果操作者在 Dashboard 把商品代碼框切去看別的
+    商品（例如切到大台 TX00），這個策略明明是 TMF，卻會拿到 TX00 的報價，
+    當作自己的現價去判斷停損/停利——TX/TMF 都追蹤台指、價位接近，這個錯誤
+    不會一眼看出來是錯的，比完全沒有報價更危險。這裡驗證：quote 裡帶的
+    product_code 跟這個策略自己的商品不是同一種合約類型時，必須完全不信任
+    這個報價（等同沒收到報價），不能觸發停損平倉——即使報的價格數字本身，
+    照原本的（錯誤）邏輯算下去確實會超過停損門檻。
+    """
+    state = _open_long_state()  # product_code="TMFR1" -> contract "TMF"
+    svc = MagicMock()
+    # 19800 若真的被信任為 TMF 現價，會超過 stop_loss_points=100 門檻觸發強制平倉；
+    # 這裡驗證即使報價數字看起來會觸發，只要來源商品對不上，也不能真的動作。
+    st = {"quote": {"last_price": 19800.0, "product_code": "TXFH6"}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 1
+    assert state.stopped is False
+
+
+def test_tick_one_uses_quote_when_product_matches_state_product():
+    """跟上面那個測試對照組：product_code 有帶、而且跟這個策略自己的商品是
+    同一種合約類型（TMF）時，必須正常信任這份報價、照常觸發停損——證明這個
+    防呆不是無條件地把有 product_code 的報價都擋掉，只擋真的對不上的。"""
+    state = _open_long_state()  # product_code="TMFR1" -> contract "TMF"
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    st = {"quote": {"last_price": 19800.0, "product_code": "TM2610"}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_called_once()
+    assert state.held_qty == 0
+    assert state.stopped is True
+    assert "停損" in state.stop_reason
+
+
 def test_tick_one_forces_close_on_take_profit_points():
     # entry_price=20000，預設 take_profit_points=250，報價漲到 20400（漲400點）超過門檻，應強制停利平倉。
     state = _open_long_state()
