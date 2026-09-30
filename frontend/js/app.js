@@ -219,19 +219,6 @@ function initChart() {
 
 let chartInitialFitted = false;
 
-async function onProductChange() {
-  const sel = document.getElementById('product-select');
-  const code = (sel ? sel.value : '').trim().toUpperCase();
-  if (!code) return;
-  currentProduct = code;
-  chartInitialFitted = false;
-  try {
-    await apiFetch(`${API}/api/product?product=${encodeURIComponent(code)}`, { method: 'POST' });
-  } catch (_) { /* ignore */ }
-  await loadKlines();
-  await refreshConnection();
-}
-
 async function loadKlines() {
   const res = await apiFetch(`${API}/api/klines?product=${currentProduct}&limit=500&interval=${currentInterval}`);
   const data = await res.json();
@@ -876,6 +863,12 @@ async function onProductChange() {
   }
   input.value = code;
   currentProduct = code;
+  // 2026-09-30 抓到的bug：chartInitialFitted 只在頁面第一次載入時生效一次，
+  // 切換商品從來沒有重設過它，導致圖表對焦視角永遠鎖死在第一次載入當下的
+  // 範圍，不會跟著新商品的實際根數重新對焦（新商品根數差很多時，看起來
+  // 畫面空空的，其實資料都在，只是鏡頭沒有對準）。這裡切換商品時明確重設，
+  // 讓 loadKlines() 針對新商品的資料重新對焦一次。
+  chartInitialFitted = false;
   await apiFetch(`${API}/api/product?product=${encodeURIComponent(currentProduct)}`, { method: 'POST' });
   await loadKlines();
   connectWS();
