@@ -115,6 +115,12 @@ class LiveKlineStore:
             return
         self._bars[int(parsed["time"])] = parsed
         self._trim_bars()
+        # 2026-10-01 抓到的缺口：歷史回補（群益 OnNotifyKLineData / Shioaji
+        # merge_missing_bars）寫進來的每一根，原本都要等下一筆即時 tick 開出
+        # 新的一根（on_tick()）才會順便落地存檔。在那之前，剛補回來的歷史只
+        # 活在記憶體裡——這段期間後端重開機，就要重新跟券商/Shioaji 要一次，
+        # 等於每次切換商品都可能白跑一次回補。這裡補上立即存檔。
+        self._persist()
 
     def on_tick(self, price: float, volume: int, ts: pd.Timestamp | None = None) -> None:
         if price <= 0:

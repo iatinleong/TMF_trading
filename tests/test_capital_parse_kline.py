@@ -117,6 +117,28 @@ def test_live_kline_store_persists_closed_bar_across_restart(tmp_path, monkeypat
     assert open_bar_key not in times
 
 
+def test_live_kline_store_persists_history_backfill_row_immediately(tmp_path, monkeypatch):
+    """
+    2026-10-01 抓到的缺口：ingest_kline_row()（群益 OnNotifyKLineData 歷史回補
+    事件打進來的每一列)原本完全沒有呼叫 _persist()，只有 on_tick() 開出新一根
+    時才會順便落地存檔。這代表剛回補回來的歷史 K 棒，在下一筆即時 tick 真的
+    進來、開出下一根之前，只活在記憶體裡——這段期間如果後端重開機，剛補回來
+    的歷史會直接消失，等於每次都要重新跟群益/Shioaji 要一次。這裡驗證：
+    只呼叫 ingest_kline_row()（完全不呼叫 on_tick()），重開後（=全新的
+    LiveKlineStore 實例)也要讀得回這一根。
+    """
+    monkeypatch.setattr(kline_engine, "_CACHE_DIR", tmp_path)
+
+    store = LiveKlineStore("TESTBACKFILLPERSIST")
+    store.ingest_kline_row("2026/07/07,09:45,21500,21600,21450,21550,500")
+
+    restarted_store = LiveKlineStore("TESTBACKFILLPERSIST")
+    times = [b["time"] for b in restarted_store.get_klines()]
+
+    closed_bar_key = to_unix_seconds(pd.Timestamp("2026-07-07 09:45:00"))
+    assert closed_bar_key in times, "歷史回補寫入的 K 棒，重開後也應該讀得回來"
+
+
 def test_bar_close_time_from_ts_day_session():
     ts = pd.Timestamp("2026-07-07 10:30:00")
     close = bar_close_time_from_ts(ts)
