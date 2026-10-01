@@ -274,11 +274,33 @@ def get_klines(
 
 
 def set_product(product_code: str) -> dict[str, Any]:
-    global current_product
+    global current_product, _last_shioaji_backfill_attempt
     current_product = product_code
     st = _broker_state()
     if st.get("connected"):
         _svc().subscribe(product_code)
+    # 2026-10-01：切換商品時，使用者反應新合約（換月後）MA60 一直不出現，
+    # 查出來是因為 Shioaji 補缺本來要等 300 秒的定期節流才會跑——這裡切換
+    # 當下立刻額外補一次，不等節流，盡量讓新商品早點湊到算 MA60 需要的根數。
+    # lookback_days 對微台（TM 開頭)限制在「距離上次換月的天數」以內：
+    # Shioaji 查詢用的 TMFR1 是近月連續代碼，往回查的日期如果早於這次換月，
+    # 查到的其實是上一口舊合約那天的真實報價，若當成這口新合約存進去，等於
+    # 把舊合約的價格誤標成新合約、污染 K 線——這個上限保證不會查到換月之前。
+    # 非微台（TX/MTX 等)沒有這個換月邊界可以算，維持原本預設的 2 天，不冒進。
+    if not _is_worker_mode():
+        try:
+            from .shioaji_backfill import backfill_via_shioaji
+            from .trading_service import days_since_tmf_rollover
+
+            quote_product = resolve_quote_product_code(product_code)
+            if quote_product.upper().startswith("TM"):
+                lookback_days = min(5, days_since_tmf_rollover())
+            else:
+                lookback_days = 2
+            backfill_via_shioaji(quote_product, lookback_days=lookback_days)
+            _last_shioaji_backfill_attempt = time.time()
+        except Exception as exc:  # noqa: BLE001 - 補缺失敗不該讓切換商品本身失敗
+            logger.debug("切換商品時 Shioaji 補缺失敗（不影響主流程): %s", exc)
     return connection_meta()
 
 

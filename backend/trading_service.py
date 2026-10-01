@@ -126,6 +126,30 @@ def compute_current_tmf_code(today: date | None = None) -> str:
     return f"TM{target_year % 100:02d}{target_month:02d}"
 
 
+def days_since_tmf_rollover(today: date | None = None) -> int:
+    """
+    回傳「目前近月微台合約，已經當近月當了幾天」。
+
+    2026-10-01：切換商品時想讓 Shioaji 補缺抓遠一點的天數（湊到計算 MA60
+    需要的根數），但 Shioaji 查詢用的 TMFR1 是「近月連續代碼」——往回查的
+    日期如果早於這次換月，查到的其實是上一口舊合約那天的真實報價，若直接
+    用現在這口新合約的代碼存進去，等於把舊合約的價格誤標成新合約，污染
+    K 線資料。這個函式算出「安全的回溯天數上限」：从今天回推最多這麼多天，
+    保證不會查到換月之前的日期。
+    """
+    today = today or date.today()
+    settlement = third_wednesday(today.year, today.month)
+    if today <= settlement:
+        prior_year, prior_month = today.year, today.month - 1
+        if prior_month < 1:
+            prior_month = 12
+            prior_year -= 1
+    else:
+        prior_year, prior_month = today.year, today.month
+    rollover_start = third_wednesday(prior_year, prior_month) + timedelta(days=1)
+    return max(0, (today - rollover_start).days)
+
+
 def _tmf_month_code() -> str:
     """微台當月合約碼；優先 CAPITAL_TMF_CODE/LIVE_PRODUCT_CODE 手動覆蓋，否則自動算近月。"""
     _load_project_env()
