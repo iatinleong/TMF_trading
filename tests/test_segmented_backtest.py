@@ -25,10 +25,18 @@ def test_no_split_for_contiguous_data():
     assert len(split_at_data_gaps(bars)) == 1
 
 
-def test_short_holiday_gap_does_not_split():
-    first = _bars("2025-01-20 09:45", 20)
-    second = _bars("2025-01-28 09:45", 20)  # 春節前後約一週休市，不視為資料缺口
+def test_lunar_new_year_holiday_does_not_split():
+    # 2025 春節：1/22 最後一根，2/3 才恢復，間隔 12 天，是休市不是資料缺口
+    first = _bars("2025-01-21 09:45", 20)
+    second = _bars("2025-02-03 09:45", 20)
     assert len(split_at_data_gaps(pd.concat([first, second]))) == 1
+
+
+def test_real_data_gap_splits():
+    # 本機資料 2025-12-16 之後到 2026-05-12 沒有任何檔案，應該切段
+    first = _bars("2025-12-15 09:45", 20)
+    second = _bars("2026-05-12 09:45", 20)
+    assert len(split_at_data_gaps(pd.concat([first, second]))) == 2
 
 
 def test_empty_input_gives_no_segments():

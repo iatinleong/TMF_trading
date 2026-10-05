@@ -15,7 +15,7 @@ from .backtest_engine import Trade, build_summary, run_direction_limited_backtes
 from .config import DEFAULT_STRATEGY
 from .indicators import add_moving_averages
 
-DATA_GAP_THRESHOLD = pd.Timedelta(days=10)
+DATA_GAP_THRESHOLD = pd.Timedelta(days=14)
 
 
 def split_at_data_gaps(bars: pd.DataFrame, max_gap: pd.Timedelta = DATA_GAP_THRESHOLD) -> list[pd.DataFrame]:
