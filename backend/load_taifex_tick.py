@@ -239,9 +239,13 @@ def load_tmfr1_60min_bars(
             ensure_tmfr1_data_available(tmfr1_dir)
         except Exception as exc:  # noqa: BLE001
             logger.warning("TMFR1 自動補檔檢查失敗（不影響既有備援流程): %s", exc)
+    parquet_found = 0
+    parquet_failed = 0
+    first_error = ""
     if tmfr1_dir.is_dir():
         daily_bars: list[pd.DataFrame] = []
         for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):
+            parquet_found += 1
             date_str = path.stem[len("TMFR1_") :]
             try:
                 file_date = pd.Timestamp(date_str)
@@ -258,8 +262,11 @@ def load_tmfr1_60min_bars(
                 bars_day = resample_to_nmin(day_df, minutes=minutes)
                 if not bars_day.empty:
                     daily_bars.append(bars_day)
-            except Exception:
-                pass
+            except Exception as exc:  # noqa: BLE001 - 單一檔案壞掉不該整批失敗，但要留下紀錄
+                parquet_failed += 1
+                if not first_error:
+                    first_error = f"{path.name}: {exc}"
+                logger.warning("讀取 TMFR1 檔案失敗 %s: %s", path, exc)
             finally:
                 day_df = None
         if daily_bars:
@@ -289,7 +296,10 @@ def load_tmfr1_60min_bars(
                 pass
 
     raise RuntimeError(
-        f"{start_date} ~ {end_date} 區間內找不到可用的 TMFR1 歷史資料檔（請確認 data/raw_tick/TMFR1 或 TMFR1_parquet_60min.csv 是否存在）"
+        f"找不到可用的 TMFR1 K棒資料。實際讀取路徑：{tmfr1_dir}（資料夾存在：{tmfr1_dir.is_dir()}，"
+        f"parquet 檔數：{parquet_found}，讀取失敗：{parquet_failed}"
+        + (f"，第一個錯誤：{first_error}" if first_error else "")
+        + "）"
     )
 
 
