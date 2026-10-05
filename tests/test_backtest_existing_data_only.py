@@ -77,7 +77,7 @@ def test_web_backtest_runs_all_five_strategies_on_existing_data(tmp_path, monkey
 def test_death_cross_uses_its_own_stop_take_and_reverse_settings(tmp_path, monkeypatch):
     from unittest.mock import patch
 
-    from backend import api
+    from backend import api, segmented_backtest
     from backend.api import LiveStrategiesBacktestRequest
 
     tmfr1 = tmp_path / "TMFR1"
@@ -94,13 +94,13 @@ def test_death_cross_uses_its_own_stop_take_and_reverse_settings(tmp_path, monke
         dc_reverse_signal_exit_enabled=True,
     )
     calls = {}
-    real = api.run_direction_limited_backtest
+    real = segmented_backtest.run_direction_limited_backtest
 
     def spy(*args, **kwargs):
         calls.setdefault(kwargs["strategy"], kwargs)
         return real(*args, **kwargs)
 
-    with patch.object(api, "run_direction_limited_backtest", side_effect=spy):
+    with patch.object(segmented_backtest, "run_direction_limited_backtest", side_effect=spy):
         api.backtest_live_strategies(req)
 
     dc = calls["death_cross"]

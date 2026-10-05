@@ -323,33 +323,37 @@ class BacktestEngine:
         )
 
     def _build_summary(self, trades: list[Trade]) -> dict:
-        total_trades = len(trades)
-        net_pnls = [trade.net_pnl_ntd for trade in trades]
-        wins = [pnl for pnl in net_pnls if pnl > 0]
-        losses = [pnl for pnl in net_pnls if pnl < 0]
+        return build_summary(trades)
 
-        cumulative = 0.0
-        peak = 0.0
-        max_drawdown = 0.0
-        for pnl in net_pnls:
-            cumulative += pnl
-            peak = max(peak, cumulative)
-            max_drawdown = max(max_drawdown, peak - cumulative)
 
-        if losses:
-            profit_factor = sum(wins) / abs(sum(losses)) if wins else 0.0
-        else:
-            profit_factor = float("inf") if wins else 0.0
+def build_summary(trades: list[Trade]) -> dict:
+    total_trades = len(trades)
+    net_pnls = [trade.net_pnl_ntd for trade in trades]
+    wins = [pnl for pnl in net_pnls if pnl > 0]
+    losses = [pnl for pnl in net_pnls if pnl < 0]
 
-        return {
-            "total_trades": total_trades,
-            "win_rate": (len(wins) / total_trades) if total_trades else 0.0,
-            "total_net_pnl_ntd": float(sum(net_pnls)),
-            "max_drawdown_ntd": float(max_drawdown),
-            "profit_factor": float(profit_factor),
-            "avg_win_ntd": float(sum(wins) / len(wins)) if wins else 0.0,
-            "avg_loss_ntd": float(sum(losses) / len(losses)) if losses else 0.0,
-        }
+    cumulative = 0.0
+    peak = 0.0
+    max_drawdown = 0.0
+    for pnl in net_pnls:
+        cumulative += pnl
+        peak = max(peak, cumulative)
+        max_drawdown = max(max_drawdown, peak - cumulative)
+
+    if losses:
+        profit_factor = sum(wins) / abs(sum(losses)) if wins else 0.0
+    else:
+        profit_factor = float("inf") if wins else 0.0
+
+    return {
+        "total_trades": total_trades,
+        "win_rate": (len(wins) / total_trades) if total_trades else 0.0,
+        "total_net_pnl_ntd": float(sum(net_pnls)),
+        "max_drawdown_ntd": float(max_drawdown),
+        "profit_factor": float(profit_factor),
+        "avg_win_ntd": float(sum(wins) / len(wins)) if wins else 0.0,
+        "avg_loss_ntd": float(sum(losses) / len(losses)) if losses else 0.0,
+    }
 
 
 def run_backtest(

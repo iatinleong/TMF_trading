@@ -12,9 +12,9 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from backend.backtest_engine import run_direction_limited_backtest
+from backend.segmented_backtest import run_segmented_backtest
 from backend.config import ContractSpec, DEFAULT_COST
-from backend.indicators import add_moving_averages, resample_to_nmin
+from backend.indicators import resample_to_nmin
 from backend.signals import generate_death_cross_signals
 
 TMFR1_DIR = Path(__file__).resolve().parent.parent / "data" / "raw_tick" / "TMFR1"
@@ -41,11 +41,9 @@ def main() -> None:
     bars = load_15min_bars()
     print(f"載入 15 分鐘K棒：{len(bars)} 根，區間 {bars.index[0]} ~ {bars.index[-1]}")
 
-    enriched = add_moving_averages(bars, fast=5, mid=20, slow=60)
-    signaled = generate_death_cross_signals(enriched)
-
-    trades, summary = run_direction_limited_backtest(
-        signaled,
+    trades, summary = run_segmented_backtest(
+        bars,
+        generate_death_cross_signals,
         strategy="death_cross",
         direction_limit="short",
         contract=CONTRACT,

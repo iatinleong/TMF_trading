@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .backtest_engine import run_backtest, run_direction_limited_backtest
+from .backtest_engine import run_backtest
 from .config import (
     ContractSpec,
     CostConfig,
@@ -61,6 +61,7 @@ from .strategy_service import (
     strategy_tick,
     trade_log,
 )
+from .segmented_backtest import run_segmented_backtest
 from .signals import generate_breakout_signals, generate_death_cross_signals, generate_pullback_signals
 from .supabase_auth import InvalidSupabaseToken, verify_supabase_jwt
 from .timeutil import to_unix_seconds
@@ -1165,15 +1166,15 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
         enriched_15.index = pd.to_datetime(enriched_15.index)
         enriched_15 = enriched_15.sort_index()
 
-        signaled_by_strategy = {
-            "breakout": generate_breakout_signals(enriched),
-            "pullback": generate_pullback_signals(enriched),
-            "death_cross": generate_death_cross_signals(enriched_15),
+        signal_fns = {
+            "breakout": (bars, generate_breakout_signals),
+            "pullback": (bars, generate_pullback_signals),
+            "death_cross": (bars_15, generate_death_cross_signals),
         }
 
         strategies_out: dict[str, object] = {}
         for strategy_id, defs in STRATEGY_DEFS.items():
-            signaled = signaled_by_strategy[defs["strategy"]]
+            raw_bars, signal_fn = signal_fns[defs["strategy"]]
             # 死叉策略用自己的一組參數（預設 SL/TP=130/130、不反向出場，跟驗證時一樣），不吃通用的停損停利欄位。
             if defs["strategy"] == "death_cross":
                 stop_pts = float(request.dc_stop_loss_points)
@@ -1183,8 +1184,10 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
                 stop_pts = float(request.stop_loss_points)
                 take_pts = float(request.take_profit_points)
                 reverse_exit = request.reverse_signal_exit_enabled
-            trades, summary = run_direction_limited_backtest(
-                signaled,
+            # 按資料缺口切段回測，避免均線與訊號跨過缺口
+            trades, summary = run_segmented_backtest(
+                raw_bars,
+                signal_fn,
                 strategy=defs["strategy"],  # type: ignore[arg-type]
                 direction_limit=defs["direction_limit"],  # type: ignore[arg-type]
                 contract=contract,
@@ -1211,8 +1214,8 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
         return {
             "klines": _serialize_klines(enriched),
             "klines_15": _serialize_klines(enriched_15),
-            "breakout_signals": _serialize_signals(signaled_by_strategy["breakout"]),
-            "pullback_signals": _serialize_signals(signaled_by_strategy["pullback"]),
+            "breakout_signals": _serialize_signals(generate_breakout_signals(enriched)),
+            "pullback_signals": _serialize_signals(generate_pullback_signals(enriched)),
             "strategies": strategies_out,
             "data_span": [str(enriched.index[0]), str(enriched.index[-1])],
         }
