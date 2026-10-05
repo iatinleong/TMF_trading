@@ -6,7 +6,7 @@
   <title>台指期量化回測 Dashboard</title>
   <script src="js/supabase.js?v=1"></script>
   <script src="js/auth.js?v=3"></script>
-  <link rel="stylesheet" href="css/dashboard.css?v=4" />
+  <link rel="stylesheet" href="css/dashboard.css?v=5" />
 </head>
 <body>
   <div class="app-shell">
@@ -17,75 +17,99 @@
       </div>
       <div class="header-status">
         <a href="index.html" class="header-link">← 實盤交易 Dashboard</a>
-        <button type="button" class="header-link" onclick="logout()" style="cursor:pointer">登出</button>
+        <button type="button" class="logout-btn" onclick="logout()">登出</button>
         <span id="connection-status" class="status-pill">就緒</span>
       </div>
     </header>
 
     <section class="panel control-panel">
-      <div class="control-grid">
-        <label class="field">
-          <span>檢視範圍</span>
-          <select id="strategy-view-select">
-            <option value="all">全部五個策略（跟實盤同時運行一致）</option>
-            <option value="breakout_long">只看 突破做多（breakout_long）</option>
-            <option value="breakout_short">只看 突破做空（breakout_short）</option>
-            <option value="pullback_long">只看 回測做多（pullback_long）</option>
-            <option value="pullback_short">只看 回測做空（pullback_short）</option>
-            <option value="death_cross_short">只看 死叉做空（death_cross_short，15分K）</option>
-          </select>
-        </label>
-        <label class="field">
-          <span>資料範圍（本機現有 TMFR1 資料，不能自選）</span>
-          <span id="live4-data-range">回測後顯示</span>
-        </label>
-        <label class="field">
-          <span>舊四策略 停損點數</span>
-          <input id="live4-stop-loss-points" type="number" min="0" step="10" value="100" />
-        </label>
-        <label class="field">
-          <span>舊四策略 停利點數</span>
-          <input id="live4-take-profit-points" type="number" min="0" step="10" value="300" />
-        </label>
-        <label class="field">
-          <span>死叉策略 停損點數</span>
-          <input id="live4-dc-stop-loss-points" type="number" min="0" step="10" value="130" />
-        </label>
-        <label class="field">
-          <span>死叉策略 停利點數</span>
-          <input id="live4-dc-take-profit-points" type="number" min="0" step="10" value="130" />
-        </label>
-        <label class="field checkbox-field">
-          <input id="live4-dc-reverse-exit-checkbox" type="checkbox" />
-          <span>死叉策略 啟用反向訊號出場（預設關閉，跟驗證時一樣）</span>
-        </label>
-        <label class="field checkbox-field">
-          <input id="live4-reverse-exit-checkbox" type="checkbox" checked />
-          <span>舊四策略 啟用反向訊號出場（Layer 4：出現反向訊號時平倉出場；關閉則只靠停損停利出場）</span>
-        </label>
-        <label class="field checkbox-field">
-          <input id="live4-stop-take-checkbox" type="checkbox" checked />
-          <span>啟用點數停損停利（Layer 1/2：點數 SL / TP 觸價出場）</span>
-        </label>
-        <label class="field">
-          <span>單策略起始本金</span>
-          <input id="live4-capital-input" type="number" min="0" step="10000" value="100000" />
-        </label>
-        <label class="field">
-          <span>風控保險上限（元 / %）</span>
-          <div class="inline-fields">
-            <input id="live4-max-loss-ntd" type="number" min="0" step="1000" value="10000" />
-            <input id="live4-max-loss-pct" type="number" min="0" max="100" step="1" value="10" />
-          </div>
-        </label>
-        <label class="field checkbox-field">
-          <input id="live4-risk-stop-checkbox" type="checkbox" checked />
-          <span>啟用風控保險（Layer 3：點數停損之外的額外金額/比例浮動損益硬保險）</span>
-        </label>
+      <div class="control-groups">
+        <div class="control-group">
+          <h3 class="group-title">檢視</h3>
+          <label class="field">
+            <span>檢視範圍</span>
+            <select id="strategy-view-select">
+              <option value="all">全部五個策略</option>
+              <option value="breakout_long">突破做多</option>
+              <option value="breakout_short">突破做空</option>
+              <option value="pullback_long">回測做多</option>
+              <option value="pullback_short">回測做空</option>
+              <option value="death_cross_short">死叉做空（15 分K）</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>資料範圍（本機現有資料）</span>
+            <span id="live4-data-range" class="field-value">回測後顯示</span>
+          </label>
+        </div>
+
+        <div class="control-group">
+          <h3 class="group-title">舊四策略（60 分K）</h3>
+          <label class="field">
+            <span>停損點數</span>
+            <input id="live4-stop-loss-points" type="number" min="0" step="10" value="100" />
+          </label>
+          <label class="field">
+            <span>停利點數</span>
+            <input id="live4-take-profit-points" type="number" min="0" step="10" value="300" />
+          </label>
+          <label class="field checkbox-field">
+            <input id="live4-stop-take-checkbox" type="checkbox" checked />
+            <span>點數停損停利觸價即出場</span>
+          </label>
+          <label class="field checkbox-field">
+            <input id="live4-reverse-exit-checkbox" type="checkbox" checked />
+            <span>出現反向訊號時平倉</span>
+          </label>
+        </div>
+
+        <div class="control-group">
+          <h3 class="group-title">死叉做空（15 分K）</h3>
+          <label class="field">
+            <span>停損點數</span>
+            <input id="live4-dc-stop-loss-points" type="number" min="0" step="10" value="130" />
+          </label>
+          <label class="field">
+            <span>停利點數</span>
+            <input id="live4-dc-take-profit-points" type="number" min="0" step="10" value="130" />
+          </label>
+          <label class="field checkbox-field">
+            <input id="live4-dc-reverse-exit-checkbox" type="checkbox" />
+            <span>出現反向訊號時平倉（預設關閉，與驗證時一致）</span>
+          </label>
+        </div>
+
+        <div class="control-group">
+          <h3 class="group-title">資金與風控</h3>
+          <label class="field">
+            <span>起始本金</span>
+            <span class="input-unit">
+              <span class="unit">NT$</span>
+              <input id="live4-capital-input" type="number" min="0" step="10000" value="100000" />
+            </span>
+          </label>
+          <label class="field">
+            <span>最大虧損</span>
+            <div class="inline-fields">
+              <span class="input-unit">
+                <span class="unit">NT$</span>
+                <input id="live4-max-loss-ntd" type="number" min="0" step="1000" value="10000" />
+              </span>
+              <span class="input-unit">
+                <input id="live4-max-loss-pct" type="number" min="0" max="100" step="1" value="10" />
+                <span class="unit">%</span>
+              </span>
+            </div>
+          </label>
+          <label class="field checkbox-field">
+            <input id="live4-risk-stop-checkbox" type="checkbox" checked />
+            <span>超過金額或比例上限時強制平倉</span>
+          </label>
+        </div>
       </div>
 
       <div class="control-actions">
-        <div id="dataset-meta" class="dataset-meta">單一策略跟四策略用的是同一套引擎（backend/backtest_engine.py run_direction_limited_backtest），只差在畫面只顯示哪幾個策略，不是兩套不同邏輯</div>
+        <p id="dataset-meta" class="dataset-meta">五個策略使用同一份本機逐筆資料，差別只在K線週期與參數。</p>
         <button id="run-button" class="primary-button" type="button">執行回測</button>
       </div>
     </section>
@@ -115,7 +139,10 @@
       </article>
       <article class="stat-card">
         <span class="stat-label">平均獲利 / 平均虧損</span>
-        <strong id="summary-avg-win-loss">—</strong>
+        <div class="split-values">
+          <span class="split-line"><em>平均獲利</em><b id="summary-avg-win" class="positive">—</b></span>
+          <span class="split-line"><em>平均虧損</em><b id="summary-avg-loss" class="negative">—</b></span>
+        </div>
       </article>
     </section>
 

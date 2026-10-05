@@ -39,7 +39,8 @@ const elements = {
   summaryTotalNetPnl: document.getElementById('summary-total-net-pnl'),
   summaryMaxDrawdown: document.getElementById('summary-max-drawdown'),
   summaryProfitFactor: document.getElementById('summary-profit-factor'),
-  summaryAvgWinLoss: document.getElementById('summary-avg-win-loss'),
+  summaryAvgWin: document.getElementById('summary-avg-win'),
+  summaryAvgLoss: document.getElementById('summary-avg-loss'),
   candleChart: document.getElementById('candle-chart'),
   equityChart: document.getElementById('equity-chart'),
   live4DataRange: document.getElementById('live4-data-range'),
@@ -337,10 +338,20 @@ function updateSummary(summary = DEFAULT_SUMMARY) {
   elements.summaryProfitFactor.textContent = summary.profit_factor == null
     ? '—'
     : Number(summary.profit_factor).toFixed(2);
-  elements.summaryAvgWinLoss.textContent = `${formatCurrency(summary.avg_win_ntd)} / ${formatCurrency(summary.avg_loss_ntd)}`;
+  elements.summaryAvgWin.textContent = formatCurrency(summary.avg_win_ntd);
+  elements.summaryAvgLoss.textContent = formatCurrency(summary.avg_loss_ntd);
+  applyProfitFactorClass(summary.profit_factor);
 
   applySignedClass(elements.summaryTotalNetPnl, summary.total_net_pnl_ntd);
   applySignedClass(elements.summaryMaxDrawdown, summary.max_drawdown_ntd != null ? -Math.abs(summary.max_drawdown_ntd) : null);
+}
+
+function applyProfitFactorClass(value) {
+  elements.summaryProfitFactor.classList.remove('positive', 'negative');
+  if (value == null || Number.isNaN(Number(value))) {
+    return;
+  }
+  elements.summaryProfitFactor.classList.add(Number(value) >= 1 ? 'positive' : 'negative');
 }
 
 function applySignedClass(element, value) {
@@ -548,7 +559,7 @@ function renderResult(result) {
   state.equityChart.timeScale().fitContent();
 
   renderTrades(trades);
-  elements.tradeLogCaption.textContent = `共 ${trades.length} 筆交易｜API: ${state.lastApiBase || 'same-origin'}`;
+  elements.tradeLogCaption.textContent = `共 ${trades.length} 筆交易`;
 
   elements.live4SummaryPanel.style.display = isAll ? '' : 'none';
   if (isAll) {
@@ -597,7 +608,7 @@ async function runBacktest() {
       elements.live4DataRange.textContent = `${result.data_span[0]} ~ ${result.data_span[1]}`;
     }
     renderResult(result);
-    setIdleStatus(`回測完成 (${state.lastApiBase || 'same-origin'})`);
+    setIdleStatus('回測完成');
   } catch (error) {
     showError(`回測失敗：${error.message}`);
   } finally {
