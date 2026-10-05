@@ -215,23 +215,29 @@ def load_recent_ticks(symbol: str, days: int = 30) -> pd.DataFrame:
     return combined
 
 
-def load_tmfr1_60min_bars(start_date: str, end_date: str) -> pd.DataFrame:
+def load_tmfr1_60min_bars(
+    start_date: str | None = None,
+    end_date: str | None = None,
+    *,
+    fetch_missing: bool = True,
+) -> pd.DataFrame:
     """
     高效串流讀取指定日期區間的 TMFR1 60 分鐘 K 棒資料：
     - 逐檔（逐日）讀取 parquet 檔，在記憶體內直接重採樣為當日 60 分鐘 K 棒，隨即釋放該日原始 Tick 資料。
     - 峰值記憶體從 ~4GB 暴降至 ~20MB，徹底杜絕多月/年回測導致的 MemoryError 與 OOM。
     - 若無 parquet 原始檔，自動無縫退回讀取預先聚合的 TMFR1_parquet_60min.csv。
     """
-    start = pd.Timestamp(start_date)
-    end = pd.Timestamp(end_date)
-    if start > end:
+    start = pd.Timestamp(start_date) if start_date else None
+    end = pd.Timestamp(end_date) if end_date else None
+    if start is not None and end is not None and start > end:
         raise ValueError("start_date 必須早於或等於 end_date")
 
     tmfr1_dir = RAW_TICK_DIR / "TMFR1"
-    try:
-        ensure_tmfr1_data_available(tmfr1_dir)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("TMFR1 自動補檔檢查失敗（不影響既有備援流程): %s", exc)
+    if fetch_missing:
+        try:
+            ensure_tmfr1_data_available(tmfr1_dir)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("TMFR1 自動補檔檢查失敗（不影響既有備援流程): %s", exc)
     if tmfr1_dir.is_dir():
         daily_bars: list[pd.DataFrame] = []
         for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):
@@ -240,7 +246,7 @@ def load_tmfr1_60min_bars(start_date: str, end_date: str) -> pd.DataFrame:
                 file_date = pd.Timestamp(date_str)
             except ValueError:
                 continue
-            if file_date < start or file_date > end:
+            if (start is not None and file_date < start) or (end is not None and file_date > end):
                 continue
             try:
                 day_df = pd.read_parquet(path, columns=["ts", "close", "volume"])
@@ -268,7 +274,11 @@ def load_tmfr1_60min_bars(start_date: str, end_date: str) -> pd.DataFrame:
                 if "datetime" in df.columns:
                     df["datetime"] = pd.to_datetime(df["datetime"])
                     df = df.sort_values("datetime")
-                    mask = (df["datetime"] >= start) & (df["datetime"] <= (end + pd.Timedelta(days=1)))
+                    mask = pd.Series(True, index=df.index)
+                    if start is not None:
+                        mask &= df["datetime"] >= start
+                    if end is not None:
+                        mask &= df["datetime"] <= (end + pd.Timedelta(days=1))
                     filtered = df.loc[mask].copy()
                     if not filtered.empty:
                         return resample_to_60min(filtered)

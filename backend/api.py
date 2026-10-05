@@ -241,8 +241,6 @@ class BacktestRequest(BaseModel):
 
 
 class LiveStrategiesBacktestRequest(BaseModel):
-    start_date: str
-    end_date: str
     contract: str = "TMF"
     slippage_points: float = 0.0
     commission_per_side: float | None = None
@@ -1129,21 +1127,22 @@ def backtest(request: BacktestRequest) -> dict[str, object]:
 @app.post("/api/backtest/live_strategies")
 def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str, object]:
     """
-    用真實 TMFR1 逐筆資料回測「跟實盤一致」的 4 個獨立方向策略（見
+    只用本機現有的 TMFR1 逐筆資料回測（全部檔案，不能指定日期、不會自動補檔），
+    跟實盤一致的 4 個獨立方向策略（見
     backend/strategy_service.py 的 STRATEGY_DEFS）：breakout_long/short、
     pullback_long/short，支援 4 道獨立分層保護開關（反向訊號出場、點數 SL/TP、
     金額風控保險），資料來源優先為本機 data/raw_tick/TMFR1/*.parquet，
     若無逐筆檔則自動無縫降級讀取 TMFR1_parquet_60min.csv。
     """
     try:
-        bars = load_tmfr1_60min_bars(request.start_date, request.end_date)
+        bars = load_tmfr1_60min_bars(fetch_missing=False)
     except Exception as exc:
         logger.exception("讀取回測歷史資料失敗: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     try:
         if bars.empty:
-            raise HTTPException(status_code=400, detail="該區間內沒有可用的K棒資料。")
+            raise HTTPException(status_code=400, detail="本機沒有可用的 TMFR1 K棒資料。")
 
         enriched = add_moving_averages(
             bars, fast=DEFAULT_STRATEGY.ma_fast, mid=DEFAULT_STRATEGY.ma_mid, slow=DEFAULT_STRATEGY.ma_slow,

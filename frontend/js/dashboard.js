@@ -42,8 +42,7 @@ const elements = {
   summaryAvgWinLoss: document.getElementById('summary-avg-win-loss'),
   candleChart: document.getElementById('candle-chart'),
   equityChart: document.getElementById('equity-chart'),
-  live4StartDate: document.getElementById('live4-start-date'),
-  live4EndDate: document.getElementById('live4-end-date'),
+  live4DataRange: document.getElementById('live4-data-range'),
   live4StopLossPoints: document.getElementById('live4-stop-loss-points'),
   live4TakeProfitPoints: document.getElementById('live4-take-profit-points'),
   live4ReverseExitCheckbox: document.getElementById('live4-reverse-exit-checkbox'),
@@ -548,8 +547,6 @@ function buildBacktestPayload() {
   const reverseExitChecked = elements.live4ReverseExitCheckbox ? elements.live4ReverseExitCheckbox.checked : true;
 
   return {
-    start_date: elements.live4StartDate.value,
-    end_date: elements.live4EndDate.value,
     contract: 'TMF',
     stop_loss_points: Number(elements.live4StopLossPoints.value || 100),
     take_profit_points: Number(elements.live4TakeProfitPoints.value || 300),
@@ -568,11 +565,6 @@ function buildBacktestPayload() {
 async function runBacktest() {
   clearError();
 
-  if (!elements.live4StartDate.value || !elements.live4EndDate.value) {
-    showError('請先設定起訖日期。');
-    return;
-  }
-
   setLoading(true, '回測執行中（真實逐筆資料，約需數十秒）…');
 
   try {
@@ -583,6 +575,9 @@ async function runBacktest() {
     });
     const result = await parseJsonResponse(response);
     state.lastResult = result;
+    if (elements.live4DataRange && Array.isArray(result.data_span)) {
+      elements.live4DataRange.textContent = `${result.data_span[0]} ~ ${result.data_span[1]}`;
+    }
     renderResult(result);
     setIdleStatus(`回測完成 (${state.lastApiBase || 'same-origin'})`);
   } catch (error) {
