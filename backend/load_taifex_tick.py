@@ -35,14 +35,21 @@ import pandas as pd
 import requests
 
 try:
+    from .config import app_base_dir
     from .indicators import resample_to_60min, resample_to_nmin
 except ImportError:  # pragma: no cover - script execution fallback
+    from config import app_base_dir  # type: ignore
     from indicators import resample_to_60min, resample_to_nmin  # type: ignore
 
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.taifex.com.tw/file/taifex/Dailydownload/DailydownloadCSV/Daily_{y}_{m:02d}_{d:02d}.zip"
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+_LEGACY_DATA_DIR = Path(__file__).resolve().parent.parent / "data"  # 打包後指到 _internal 內
+_DATA_DIR_CANDIDATES = [app_base_dir(__file__) / "data", _LEGACY_DATA_DIR]
+DATA_DIR = next(
+    (d for d in _DATA_DIR_CANDIDATES if (d / "raw_tick" / "TMFR1").is_dir()),
+    _DATA_DIR_CANDIDATES[0],
+)
 RAW_TICK_DIR = DATA_DIR / "raw_tick"
 
 # --- TMFR1 回測原始逐筆資料自動補檔（沿用專案既有的 Supabase 服務端金鑰，見
