@@ -119,3 +119,22 @@ def test_death_cross_defaults_match_validated_settings():
     assert req.dc_stop_loss_points == 130.0
     assert req.dc_take_profit_points == 130.0
     assert req.dc_reverse_signal_exit_enabled is False
+
+
+def test_web_backtest_returns_both_60m_and_15m_klines(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+
+    from backend.api import LiveStrategiesBacktestRequest, backtest_live_strategies
+
+    tmfr1 = tmp_path / "TMFR1"
+    tmfr1.mkdir()
+    _write_multi_day(tmfr1, ["2024-07-29", "2024-07-30", "2024-07-31", "2024-08-01", "2024-08-02"])
+    monkeypatch.setattr(load_taifex_tick, "RAW_TICK_DIR", tmp_path)
+
+    body = backtest_live_strategies(LiveStrategiesBacktestRequest())
+
+    assert body["klines"] and body["klines_15"]
+    assert len(body["klines_15"]) > len(body["klines"])
+    for bar in body["klines_15"]:
+        minute = datetime.fromtimestamp(bar["time"], tz=timezone.utc).minute
+        assert minute % 15 == 0

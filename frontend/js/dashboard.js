@@ -516,24 +516,35 @@ function buildEquityCurve(klines, trades) {
 }
 
 function renderResult(result) {
-  const candleData = result.klines.map((item) => ({
+  const viewId = elements.strategyViewSelect.value;
+  // 死叉策略用 15 分K 的圖；其他策略用 60 分K 的圖。標記只放在自己週期的圖上，
+  // 否則 15 分K 的交易時間在 60 分K 的圖上對不到 K 棒。
+  const useFifteen = viewId === 'death_cross_short';
+  const klines = (useFifteen && result.klines_15) ? result.klines_15 : result.klines;
+
+  const candleData = klines.map((item) => ({
     time: item.time, open: item.open, high: item.high, low: item.low, close: item.close,
   }));
   state.candleSeries.setData(candleData);
-  state.maFastSeries.setData(lineDataFromKlines(result.klines, 'ma_fast'));
-  state.maMidSeries.setData(lineDataFromKlines(result.klines, 'ma_mid'));
-  state.maSlowSeries.setData(lineDataFromKlines(result.klines, 'ma_slow'));
+  state.maFastSeries.setData(lineDataFromKlines(klines, 'ma_fast'));
+  state.maMidSeries.setData(lineDataFromKlines(klines, 'ma_mid'));
+  state.maSlowSeries.setData(lineDataFromKlines(klines, 'ma_slow'));
 
   const { trades, markerStrategies, isAll } = selectedView(result);
-  state.candleSeries.setMarkers(markersFromStrategies(markerStrategies));
+  let chartMarkers = markerStrategies;
+  if (isAll) {
+    chartMarkers = Object.fromEntries(Object.entries(markerStrategies).filter(([id]) => id !== 'death_cross_short'));
+  }
+  state.candleSeries.setMarkers(markersFromStrategies(chartMarkers));
   state.candleChart.timeScale().fitContent();
+  const intervalLabel = useFifteen ? '15 分K' : '60 分K';
   elements.chartCaption.textContent =
-    `K 線 ${formatInteger(result.klines.length)} 根｜資料區間 ${(result.data_span || []).join(' ~ ')}`;
+    `${intervalLabel} ${formatInteger(klines.length)} 根｜資料區間 ${(result.data_span || []).join(' ~ ')}`;
 
   const summary = summarizeTrades(trades);
   updateSummary(summary);
 
-  state.equitySeries.setData(buildEquityCurve(result.klines, trades).map((p) => ({ time: p.time, value: p.equity })));
+  state.equitySeries.setData(buildEquityCurve(klines, trades).map((p) => ({ time: p.time, value: p.equity })));
   state.equityChart.timeScale().fitContent();
 
   renderTrades(trades);

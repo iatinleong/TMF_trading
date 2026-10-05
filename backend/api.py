@@ -1210,6 +1210,7 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
 
         return {
             "klines": _serialize_klines(enriched),
+            "klines_15": _serialize_klines(enriched_15),
             "breakout_signals": _serialize_signals(signaled_by_strategy["breakout"]),
             "pullback_signals": _serialize_signals(signaled_by_strategy["pullback"]),
             "strategies": strategies_out,
