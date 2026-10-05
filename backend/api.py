@@ -256,6 +256,9 @@ class LiveStrategiesBacktestRequest(BaseModel):
     soft_stop_enabled: bool = True
     risk_insurance_enabled: bool = True
     reverse_signal_exit_enabled: bool = True
+    dc_stop_loss_points: float = 130.0
+    dc_take_profit_points: float = 130.0
+    dc_reverse_signal_exit_enabled: bool = False
 
 
 class TradingConnectRequest(BaseModel):
@@ -1171,9 +1174,11 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
         strategies_out: dict[str, object] = {}
         for strategy_id, defs in STRATEGY_DEFS.items():
             signaled = signaled_by_strategy[defs["strategy"]]
-            # 死叉策略用它驗證過的參數（SL/TP=130/130、反向訊號不出場），不吃畫面上的通用停損停利設定。
+            # 死叉策略用自己的一組參數（預設 SL/TP=130/130、不反向出場，跟驗證時一樣），不吃通用的停損停利欄位。
             if defs["strategy"] == "death_cross":
-                stop_pts, take_pts, reverse_exit = 130.0, 130.0, False
+                stop_pts = float(request.dc_stop_loss_points)
+                take_pts = float(request.dc_take_profit_points)
+                reverse_exit = request.dc_reverse_signal_exit_enabled
             else:
                 stop_pts = float(request.stop_loss_points)
                 take_pts = float(request.take_profit_points)

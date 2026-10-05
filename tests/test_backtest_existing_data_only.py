@@ -72,3 +72,50 @@ def test_web_backtest_runs_all_five_strategies_on_existing_data(tmp_path, monkey
     assert set(body["strategies"].keys()) == {
         "breakout_long", "breakout_short", "pullback_long", "pullback_short", "death_cross_short",
     }
+
+
+def test_death_cross_uses_its_own_stop_take_and_reverse_settings(tmp_path, monkeypatch):
+    from unittest.mock import patch
+
+    from backend import api
+    from backend.api import LiveStrategiesBacktestRequest
+
+    tmfr1 = tmp_path / "TMFR1"
+    tmfr1.mkdir()
+    _write_multi_day(tmfr1, ["2024-07-29", "2024-07-30", "2024-07-31", "2024-08-01", "2024-08-02"])
+    monkeypatch.setattr(load_taifex_tick, "RAW_TICK_DIR", tmp_path)
+
+    req = LiveStrategiesBacktestRequest(
+        stop_loss_points=100.0,
+        take_profit_points=300.0,
+        reverse_signal_exit_enabled=True,
+        dc_stop_loss_points=55.0,
+        dc_take_profit_points=77.0,
+        dc_reverse_signal_exit_enabled=True,
+    )
+    calls = {}
+    real = api.run_direction_limited_backtest
+
+    def spy(*args, **kwargs):
+        calls.setdefault(kwargs["strategy"], kwargs)
+        return real(*args, **kwargs)
+
+    with patch.object(api, "run_direction_limited_backtest", side_effect=spy):
+        api.backtest_live_strategies(req)
+
+    dc = calls["death_cross"]
+    assert dc["stop_loss_points"] == 55.0
+    assert dc["take_profit_points"] == 77.0
+    assert dc["reverse_signal_exit_enabled"] is True
+    assert calls["breakout"]["stop_loss_points"] == 100.0
+    assert calls["breakout"]["take_profit_points"] == 300.0
+    assert calls["breakout"]["reverse_signal_exit_enabled"] is True
+
+
+def test_death_cross_defaults_match_validated_settings():
+    from backend.api import LiveStrategiesBacktestRequest
+
+    req = LiveStrategiesBacktestRequest()
+    assert req.dc_stop_loss_points == 130.0
+    assert req.dc_take_profit_points == 130.0
+    assert req.dc_reverse_signal_exit_enabled is False
