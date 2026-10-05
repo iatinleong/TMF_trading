@@ -61,7 +61,7 @@ from .strategy_service import (
     strategy_tick,
     trade_log,
 )
-from .segmented_backtest import run_segmented_backtest
+from .segmented_backtest import enrich_by_segments, run_segmented_backtest
 from .signals import generate_breakout_signals, generate_death_cross_signals, generate_pullback_signals
 from .supabase_auth import InvalidSupabaseToken, verify_supabase_jwt
 from .timeutil import to_unix_seconds
@@ -462,6 +462,7 @@ def _serialize_klines(frame: pd.DataFrame) -> list[dict[str, object]]:
             "ma_fast": _json_number(row.get("ma_fast")),
             "ma_mid": _json_number(row.get("ma_mid")),
             "ma_slow": _json_number(row.get("ma_slow")),
+            "gap_after": bool(row.get("gap_after", False)),
         }
         for index, row in frame.iterrows()
     ]
@@ -1148,11 +1149,7 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
         if bars.empty:
             raise HTTPException(status_code=400, detail="本機沒有可用的 TMFR1 K棒資料。")
 
-        enriched = add_moving_averages(
-            bars, fast=DEFAULT_STRATEGY.ma_fast, mid=DEFAULT_STRATEGY.ma_mid, slow=DEFAULT_STRATEGY.ma_slow,
-        )
-        enriched.index = pd.to_datetime(enriched.index)
-        enriched = enriched.sort_index()
+        enriched = enrich_by_segments(bars)
 
         contract = _resolve_contract(request.contract)
         cost = _build_cost_config(request)
@@ -1160,11 +1157,7 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
         bars_15 = load_tmfr1_60min_bars(fetch_missing=False, minutes=15)
         if bars_15.empty:
             raise HTTPException(status_code=400, detail="本機沒有可用的 TMFR1 15分K資料。")
-        enriched_15 = add_moving_averages(
-            bars_15, fast=DEFAULT_STRATEGY.ma_fast, mid=DEFAULT_STRATEGY.ma_mid, slow=DEFAULT_STRATEGY.ma_slow,
-        )
-        enriched_15.index = pd.to_datetime(enriched_15.index)
-        enriched_15 = enriched_15.sort_index()
+        enriched_15 = enrich_by_segments(bars_15)
 
         signal_fns = {
             "breakout": (bars, generate_breakout_signals),

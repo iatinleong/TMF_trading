@@ -49,3 +49,22 @@ def run_segmented_backtest(
         trades.extend(segment_trades)
     trades.sort(key=lambda trade: trade.entry_time)
     return trades, build_summary(trades)
+
+
+def enrich_by_segments(bars: pd.DataFrame) -> pd.DataFrame:
+    """每段各自計算均線，並在段尾標記 gap_after，讓圖表在缺口處斷開。"""
+    enriched_segments: list[pd.DataFrame] = []
+    segments = split_at_data_gaps(bars)
+    for position, segment in enumerate(segments):
+        enriched = add_moving_averages(
+            segment, fast=DEFAULT_STRATEGY.ma_fast, mid=DEFAULT_STRATEGY.ma_mid, slow=DEFAULT_STRATEGY.ma_slow,
+        )
+        enriched["gap_after"] = False
+        if position < len(segments) - 1 and not enriched.empty:
+            enriched.iloc[-1, enriched.columns.get_loc("gap_after")] = True
+        enriched_segments.append(enriched)
+    if not enriched_segments:
+        return bars.assign(gap_after=False)
+    combined = pd.concat(enriched_segments)
+    combined.index = pd.to_datetime(combined.index)
+    return combined.sort_index()

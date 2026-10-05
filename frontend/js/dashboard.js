@@ -410,10 +410,19 @@ function renderTrades(trades) {
   }).join('');
 }
 
+// 資料缺口處（gap_after）插入一個沒有數值的空白點，讓線在那裡斷開，不跨過缺口直連。
+function seriesWithBreaks(klines, toPoint) {
+  const points = [];
+  for (const item of klines) {
+    const point = toPoint(item);
+    if (point) points.push(point);
+    if (item.gap_after) points.push({ time: item.time + 1 });
+  }
+  return points;
+}
+
 function lineDataFromKlines(klines, key) {
-  return klines
-    .filter((item) => item[key] != null)
-    .map((item) => ({ time: item.time, value: item[key] }));
+  return seriesWithBreaks(klines, (item) => (item[key] != null ? { time: item.time, value: item[key] } : null));
 }
 
 function renderLive4StrategyCards(strategies) {
@@ -539,7 +548,7 @@ function renderResult(result) {
   const useFifteen = viewId === 'death_cross_short';
   const klines = (useFifteen && result.klines_15) ? result.klines_15 : result.klines;
 
-  const candleData = klines.map((item) => ({
+  const candleData = seriesWithBreaks(klines, (item) => ({
     time: item.time, open: item.open, high: item.high, low: item.low, close: item.close,
   }));
   state.candleSeries.setData(candleData);

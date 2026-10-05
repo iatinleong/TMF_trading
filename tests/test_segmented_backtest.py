@@ -41,3 +41,17 @@ def test_real_data_gap_splits():
 
 def test_empty_input_gives_no_segments():
     assert split_at_data_gaps(pd.DataFrame()) == []
+
+
+def test_enrich_marks_gap_and_restarts_indicators_per_segment():
+    from backend.segmented_backtest import enrich_by_segments
+
+    first = _bars("2024-07-29 09:45", 80)
+    second = _bars("2026-05-12 09:45", 80)
+    enriched = enrich_by_segments(pd.concat([first, second]))
+
+    assert enriched["gap_after"].sum() == 1
+    assert bool(enriched["gap_after"].iloc[79]) is True
+    # 第二段的慢線要從第二段自己的第 60 根才有值，不能拿第一段的價格來算
+    assert enriched["ma_slow"].iloc[80:139].isna().all()
+    assert enriched["ma_slow"].iloc[139:].notna().all()
