@@ -25,7 +25,17 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE_PROJECT = ROOT.parent / "台股量化"
 sys.path.insert(0, str(SOURCE_PROJECT / "src"))
 
-from shioaji_client import login, usage_mb  # noqa: E402
+from shioaji_client import require_keys, is_production, usage_mb  # noqa: E402
+
+import shioaji as sj  # noqa: E402
+
+
+def login():
+    """shioaji 1.7.3 的 login() 已沒有 fetch_contract 參數，這裡自己登入。"""
+    api_key, secret_key = require_keys()
+    api = sj.Shioaji(simulation=not is_production())
+    api.login(api_key=api_key, secret_key=secret_key)
+    return api
 
 GAP_START = date(2025, 4, 28)  # 已知缺口起點（前一天 2025-04-25 已存在）
 OUT_DIR = ROOT / "data" / "raw_tick" / "TMFR1"
@@ -132,7 +142,7 @@ def main() -> None:
     print(f"區間: {start} ~ {end} | 工作日總數: {len(days)} | 待下載: {len(todo)}")
     print()
 
-    api = login(fetch_contract=True)
+    api = login()
     try:
         contract = api.Contracts.Futures.TMF.TMFR1
         print("合約:", contract)
