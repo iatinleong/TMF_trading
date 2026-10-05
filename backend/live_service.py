@@ -297,7 +297,7 @@ def set_product(product_code: str) -> dict[str, Any]:
                 lookback_days = min(5, days_since_tmf_rollover())
             else:
                 lookback_days = 2
-            backfill_via_shioaji(quote_product, lookback_days=lookback_days)
+            backfill_via_shioaji(quote_product, lookback_days=lookback_days, interval_minutes_list=(60, 15))
             _last_shioaji_backfill_attempt = time.time()
         except Exception as exc:  # noqa: BLE001 - 補缺失敗不該讓切換商品本身失敗
             logger.debug("切換商品時 Shioaji 補缺失敗（不影響主流程): %s", exc)

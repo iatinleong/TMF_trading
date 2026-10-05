@@ -29,7 +29,7 @@ def test_set_product_triggers_shioaji_backfill_capped_by_days_since_rollover():
         set_product("TMF")
 
     mock_days.assert_called_once()
-    mock_backfill.assert_called_once_with("TM2610", lookback_days=2)
+    mock_backfill.assert_called_once_with("TM2610", lookback_days=2, interval_minutes_list=(60, 15))
 
 
 def test_set_product_caps_tmf_lookback_at_5_days_even_long_after_rollover():
@@ -43,7 +43,7 @@ def test_set_product_caps_tmf_lookback_at_5_days_even_long_after_rollover():
 
         set_product("TMF")
 
-    mock_backfill.assert_called_once_with("TM2610", lookback_days=5)
+    mock_backfill.assert_called_once_with("TM2610", lookback_days=5, interval_minutes_list=(60, 15))
 
 
 def test_set_product_uses_fixed_2day_lookback_for_non_tmf_products():
@@ -58,7 +58,7 @@ def test_set_product_uses_fixed_2day_lookback_for_non_tmf_products():
         set_product("TX")
 
     mock_days.assert_not_called()
-    mock_backfill.assert_called_once_with("TX", lookback_days=2)
+    mock_backfill.assert_called_once_with("TX", lookback_days=2, interval_minutes_list=(60, 15))
 
 
 def test_set_product_skips_shioaji_backfill_in_worker_mode():
