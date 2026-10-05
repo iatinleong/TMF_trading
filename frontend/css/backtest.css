@@ -1,6 +1,6 @@
 /* 回測頁版面：配色與元件沿用 style.css（即時儀表板），這裡只補回測專用的排版。 */
 
-html, body { height: auto; min-height: 100%; }
+html, body { height: auto; min-height: 100%; overflow-x: hidden; overflow-y: auto; }
 body { display: block; padding: 12px 16px 32px; }
 header { margin-bottom: 12px; }
 
