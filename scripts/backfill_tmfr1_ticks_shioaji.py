@@ -99,6 +99,10 @@ def main() -> None:
     parser.add_argument("--start", default="", help="YYYY-MM-DD，預設 2025-04-28")
     parser.add_argument("--end", default="", help="YYYY-MM-DD，預設昨天（略過週末）")
     parser.add_argument("--max-mb", type=float, default=420.0)
+    parser.add_argument(
+        "--overwrite-start", default="", help="YYYY-MM-DD：此區間內的日期即使已有檔案也重抓（舊檔改名為 .bak）"
+    )
+    parser.add_argument("--overwrite-end", default="", help="YYYY-MM-DD：覆蓋區間的結束日")
     parser.add_argument("--sleep", type=float, default=0.25)
     parser.add_argument("--retry", type=int, default=3)
     parser.add_argument(
@@ -121,10 +125,21 @@ def main() -> None:
     empty = set(state.get("empty", []))
     failed = set(state.get("failed", []))
 
+    ow_start = date.fromisoformat(args.overwrite_start) if args.overwrite_start else None
+    ow_end = date.fromisoformat(args.overwrite_end) if args.overwrite_end else None
+
+    def in_overwrite(d: date) -> bool:
+        return ow_start is not None and ow_end is not None and ow_start <= d <= ow_end
+
     days = [d for d in daterange(start, end) if is_weekday(d)]
     todo = []
     for d in days:
         key = d.isoformat()
+        if in_overwrite(d):
+            done.discard(key)
+            empty.discard(key)
+            todo.append(d)
+            continue
         if day_path(d).exists():
             done.add(key)
             continue
@@ -195,6 +210,8 @@ def main() -> None:
             else:
                 df.insert(0, "code", "TMFR1")
                 df.insert(1, "date", key)
+                if path.exists():
+                    path.replace(path.with_name(path.name + ".bak"))
                 df.to_parquet(path, index=False)
                 ok_n += 1
                 rows_total += n
