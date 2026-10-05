@@ -59,6 +59,7 @@ const elements = {
 const STRATEGY_SHORT_CODE = {
   breakout_long: 'BL', breakout_short: 'BS',
   pullback_long: 'PL', pullback_short: 'PS',
+  death_cross_short: 'DC',
 };
 
 function getCandidateApiBases() {
@@ -396,7 +397,7 @@ function lineDataFromKlines(klines, key) {
 }
 
 function renderLive4StrategyCards(strategies) {
-  const order = ['breakout_long', 'breakout_short', 'pullback_long', 'pullback_short'];
+  const order = ['breakout_long', 'breakout_short', 'pullback_long', 'pullback_short', 'death_cross_short'];
   elements.live4StrategyCards.innerHTML = order.map((strategyId) => {
     const entry = strategies[strategyId];
     if (!entry) return '';

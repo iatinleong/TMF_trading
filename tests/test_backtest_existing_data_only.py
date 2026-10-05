@@ -47,3 +47,28 @@ def test_backtest_loader_never_triggers_auto_download_by_default(raw_tick_dir):
 
     mock_ensure.assert_not_called()
     assert not bars.empty
+
+
+def _write_multi_day(dir_path, days) -> None:
+    import numpy as np
+
+    for day in days:
+        ts = pd.date_range(f"{day} 08:45:00", periods=180, freq="min")
+        wave = np.sin(np.arange(180) / 6.0) * 40
+        df = pd.DataFrame({"ts": ts, "close": 20000.0 + wave, "volume": 1})
+        df.to_parquet(dir_path / f"TMFR1_{day}.parquet", index=False)
+
+
+def test_web_backtest_runs_all_five_strategies_on_existing_data(tmp_path, monkeypatch):
+    from backend.api import LiveStrategiesBacktestRequest, backtest_live_strategies
+
+    tmfr1 = tmp_path / "TMFR1"
+    tmfr1.mkdir()
+    _write_multi_day(tmfr1, ["2024-07-29", "2024-07-30", "2024-07-31", "2024-08-01", "2024-08-02"])
+    monkeypatch.setattr(load_taifex_tick, "RAW_TICK_DIR", tmp_path)
+
+    body = backtest_live_strategies(LiveStrategiesBacktestRequest())
+
+    assert set(body["strategies"].keys()) == {
+        "breakout_long", "breakout_short", "pullback_long", "pullback_short", "death_cross_short",
+    }

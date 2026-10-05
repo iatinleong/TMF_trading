@@ -61,7 +61,7 @@ from .strategy_service import (
     strategy_tick,
     trade_log,
 )
-from .signals import generate_breakout_signals, generate_pullback_signals
+from .signals import generate_breakout_signals, generate_death_cross_signals, generate_pullback_signals
 from .supabase_auth import InvalidSupabaseToken, verify_supabase_jwt
 from .timeutil import to_unix_seconds
 from .trading_service import (
@@ -1153,14 +1153,31 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
         contract = _resolve_contract(request.contract)
         cost = _build_cost_config(request)
 
+        bars_15 = load_tmfr1_60min_bars(fetch_missing=False, minutes=15)
+        if bars_15.empty:
+            raise HTTPException(status_code=400, detail="本機沒有可用的 TMFR1 15分K資料。")
+        enriched_15 = add_moving_averages(
+            bars_15, fast=DEFAULT_STRATEGY.ma_fast, mid=DEFAULT_STRATEGY.ma_mid, slow=DEFAULT_STRATEGY.ma_slow,
+        )
+        enriched_15.index = pd.to_datetime(enriched_15.index)
+        enriched_15 = enriched_15.sort_index()
+
         signaled_by_strategy = {
             "breakout": generate_breakout_signals(enriched),
             "pullback": generate_pullback_signals(enriched),
+            "death_cross": generate_death_cross_signals(enriched_15),
         }
 
         strategies_out: dict[str, object] = {}
         for strategy_id, defs in STRATEGY_DEFS.items():
             signaled = signaled_by_strategy[defs["strategy"]]
+            # 死叉策略用它驗證過的參數（SL/TP=130/130、反向訊號不出場），不吃畫面上的通用停損停利設定。
+            if defs["strategy"] == "death_cross":
+                stop_pts, take_pts, reverse_exit = 130.0, 130.0, False
+            else:
+                stop_pts = float(request.stop_loss_points)
+                take_pts = float(request.take_profit_points)
+                reverse_exit = request.reverse_signal_exit_enabled
             trades, summary = run_direction_limited_backtest(
                 signaled,
                 strategy=defs["strategy"],  # type: ignore[arg-type]
@@ -1168,8 +1185,8 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
                 contract=contract,
                 cost=cost,
                 slippage_points=float(request.slippage_points),
-                stop_loss_points=float(request.stop_loss_points),
-                take_profit_points=float(request.take_profit_points),
+                stop_loss_points=stop_pts,
+                take_profit_points=take_pts,
                 use_stop_take=request.use_stop_take,
                 initial_capital_ntd=float(request.initial_capital_ntd),
                 max_loss_ntd=float(request.max_loss_ntd),
@@ -1178,7 +1195,7 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
                 oco_enabled=request.oco_enabled,
                 soft_stop_enabled=request.soft_stop_enabled,
                 risk_insurance_enabled=request.risk_insurance_enabled,
-                reverse_signal_exit_enabled=request.reverse_signal_exit_enabled,
+                reverse_signal_exit_enabled=reverse_exit,
             )
             strategies_out[strategy_id] = {
                 "label": defs["label"],

@@ -35,9 +35,9 @@ import pandas as pd
 import requests
 
 try:
-    from .indicators import resample_to_60min
+    from .indicators import resample_to_60min, resample_to_nmin
 except ImportError:  # pragma: no cover - script execution fallback
-    from indicators import resample_to_60min  # type: ignore
+    from indicators import resample_to_60min, resample_to_nmin  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -220,6 +220,7 @@ def load_tmfr1_60min_bars(
     end_date: str | None = None,
     *,
     fetch_missing: bool = True,
+    minutes: int = 60,
 ) -> pd.DataFrame:
     """
     高效串流讀取指定日期區間的 TMFR1 60 分鐘 K 棒資料：
@@ -254,7 +255,7 @@ def load_tmfr1_60min_bars(
                 day_df["open"] = day_df["close"]
                 day_df["high"] = day_df["close"]
                 day_df["low"] = day_df["close"]
-                bars_day = resample_to_60min(day_df)
+                bars_day = resample_to_nmin(day_df, minutes=minutes)
                 if not bars_day.empty:
                     daily_bars.append(bars_day)
             except Exception:
@@ -265,7 +266,9 @@ def load_tmfr1_60min_bars(
             combined = pd.concat(daily_bars)
             return combined.sort_index(kind="stable")
 
-    # 備援：若無 parquet 檔，嘗試從現有的 60min CSV 讀取
+    # 備援：若無 parquet 檔，嘗試從現有的 60min CSV 讀取（CSV 只有 60 分K，其他週期不能用）
+    if minutes != 60:
+        return pd.DataFrame()
     for candidate_name in ("TMFR1_parquet_60min.csv", "TMF_60min_real.csv"):
         fallback_csv = DATA_DIR / candidate_name
         if fallback_csv.exists():
