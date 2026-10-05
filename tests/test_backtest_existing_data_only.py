@@ -138,3 +138,18 @@ def test_web_backtest_returns_both_60m_and_15m_klines(tmp_path, monkeypatch):
     for bar in body["klines_15"]:
         minute = datetime.fromtimestamp(bar["time"], tz=timezone.utc).minute
         assert minute % 15 == 0
+
+
+def test_loaded_bars_have_unique_ascending_times(tmp_path, monkeypatch):
+    tmfr1 = tmp_path / "TMFR1"
+    tmfr1.mkdir()
+    # 兩個檔案的時間範圍重疊（10:00 那段兩邊都有），重採樣後會產生重複的K棒時間
+    a = pd.DataFrame({"ts": pd.date_range("2024-07-29 09:00:00", periods=60, freq="min"), "close": 20000.0, "volume": 1})
+    b = pd.DataFrame({"ts": pd.date_range("2024-07-29 09:30:00", periods=60, freq="min"), "close": 20010.0, "volume": 1})
+    a.to_parquet(tmfr1 / "TMFR1_2024-07-29.parquet", index=False)
+    b.to_parquet(tmfr1 / "TMFR1_2024-07-30.parquet", index=False)
+    monkeypatch.setattr(load_taifex_tick, "RAW_TICK_DIR", tmp_path)
+    for minutes in (15, 60):
+        bars = load_taifex_tick.load_tmfr1_60min_bars(fetch_missing=False, minutes=minutes)
+        assert bars.index.is_unique
+        assert bars.index.is_monotonic_increasing

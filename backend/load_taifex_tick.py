@@ -277,8 +277,9 @@ def load_tmfr1_60min_bars(
             finally:
                 day_df = None
         if daily_bars:
-            combined = pd.concat(daily_bars)
-            return combined.sort_index(kind="stable")
+            combined = pd.concat(daily_bars).sort_index(kind="stable")
+            # 相鄰兩天的檔案會在邊界重複產生同一根K棒，圖表要求時間唯一且遞增，否則整張圖不畫
+            return combined[~combined.index.duplicated(keep="last")]
 
     # 備援：若無 parquet 檔，嘗試從現有的 60min CSV 讀取（CSV 只有 60 分K，其他週期不能用）
     if minutes != 60:
