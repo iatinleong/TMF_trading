@@ -6,21 +6,19 @@
   <title>台指期量化回測 Dashboard</title>
   <script src="js/supabase.js?v=1"></script>
   <script src="js/auth.js?v=3"></script>
-  <link rel="stylesheet" href="css/dashboard.css?v=5" />
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/backtest.css?v=1" />
 </head>
 <body>
-  <div class="app-shell">
-    <header class="page-header">
-      <div>
-        <p class="eyebrow">Taiwan Index Futures Backtest</p>
-        <h1>台指期量化回測 Dashboard</h1>
-      </div>
-      <div class="header-status">
-        <a href="index.html" class="header-link">← 實盤交易 Dashboard</a>
-        <button type="button" class="logout-btn" onclick="logout()">登出</button>
-        <span id="connection-status" class="status-pill">就緒</span>
-      </div>
-    </header>
+  <header>
+    <div class="logo">
+      台指期量化回測 <span id="connection-status" class="status-pill">就緒</span>
+    </div>
+    <div class="controls">
+      <a href="index.html" class="action-btn">← 實盤儀表板</a>
+      <button type="button" class="action-btn" onclick="logout()">登出</button>
+    </div>
+  </header>
 
     <section class="panel control-panel">
       <div class="control-groups">
@@ -132,6 +130,7 @@
       <article class="stat-card">
         <span class="stat-label">最大回撤</span>
         <strong id="summary-max-drawdown">—</strong>
+        <small id="summary-max-drawdown-sub">從權益高點回落的最大幅度</small>
       </article>
       <article class="stat-card">
         <span class="stat-label">Profit Factor</span>
@@ -147,7 +146,7 @@
     </section>
 
     <section class="panel" id="live4-summary-panel" style="display:none">
-      <div class="panel-heading">
+      <div class="panel-header">
         <div>
           <h2>四策略績效總覽（各自獨立本金起算）</h2>
           <p>比照 backend/strategy_service.py 的 breakout_long / breakout_short / pullback_long / pullback_short</p>
@@ -157,7 +156,7 @@
     </section>
 
     <section class="panel chart-panel">
-      <div class="panel-heading">
+      <div class="panel-header">
         <div>
           <h2>K 線與訊號</h2>
           <p>顯示 K 線、均線與多空訊號箭頭</p>
@@ -168,7 +167,7 @@
     </section>
 
     <section class="panel chart-panel secondary-panel">
-      <div class="panel-heading">
+      <div class="panel-header">
         <div>
           <h2>資金曲線</h2>
           <p>依回測結果繪製淨值變化</p>
@@ -178,7 +177,7 @@
     </section>
 
     <section class="panel table-panel">
-      <div class="panel-heading">
+      <div class="panel-header">
         <div>
           <h2>交易紀錄</h2>
           <p id="trade-log-caption">尚未執行回測</p>
@@ -211,7 +210,6 @@
         </table>
       </div>
     </section>
-  </div>
 
   <div id="loading-overlay" class="loading-overlay hidden">
     <div class="spinner"></div>
@@ -219,6 +217,6 @@
   </div>
 
   <script src="js/lightweight-charts.js"></script>
-  <script src="js/dashboard.js?v=10"></script>
+  <script src="js/dashboard.js?v=11"></script>
 </body>
 </html>

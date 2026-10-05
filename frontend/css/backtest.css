@@ -1,0 +1,131 @@
+/* 回測頁版面：配色與元件沿用 style.css（即時儀表板），這裡只補回測專用的排版。 */
+
+html, body { height: auto; min-height: 100%; }
+body { display: block; padding: 12px 16px 32px; }
+header { margin-bottom: 12px; }
+
+.control-panel, .panel { margin-bottom: 12px; }
+
+.control-groups {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.control-group {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg2);
+}
+
+.group-title {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue);
+}
+
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+.field select, .field input[type="number"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.field-value { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
+.checkbox-field { flex-direction: row; align-items: center; gap: 6px; color: var(--text); font-size: 12px; }
+.checkbox-field input[type="checkbox"] { width: 14px; height: 14px; accent-color: var(--blue); }
+
+.input-unit { display: flex; align-items: center; gap: 6px; }
+.input-unit input { flex: 1; min-width: 0; }
+.unit { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.inline-fields { display: flex; gap: 6px; }
+
+.control-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+.dataset-meta { margin: 0; font-size: 11px; color: var(--muted); }
+
+.primary-button {
+  padding: 8px 18px;
+  border: 1px solid var(--blue);
+  border-radius: 4px;
+  background: var(--blue);
+  color: #0d1117;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.primary-button:hover { filter: brightness(1.1); }
+.primary-button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.error-banner {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  background: var(--red-bg);
+  color: var(--red);
+  font-size: 13px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg2);
+}
+.stat-label { font-size: 11px; color: var(--muted); }
+.stat-card strong { font-size: 18px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.stat-card small { font-size: 10px; color: var(--muted); }
+.stat-card .positive { color: var(--green); }
+.stat-card .negative { color: var(--red); }
+
+.split-values { display: grid; gap: 2px; }
+.split-line { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.split-line em { font-style: normal; font-size: 11px; color: var(--muted); }
+.split-line b { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.chart-surface { height: 420px; }
+.equity-surface { height: 220px; }
+
+.table-wrap { overflow: auto; max-height: 420px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+th { color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--bg2); }
+td:first-child, th:first-child { text-align: left; }
+
+.status-pill { font-size: 11px; color: var(--muted); }
+.status-pill.success { color: var(--green); }
+.status-pill.error { color: var(--red); }
+
+@media (max-width: 1100px) {
+  .control-groups { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .control-groups, .stats-grid { grid-template-columns: 1fr; }
+}

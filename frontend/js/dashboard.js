@@ -38,6 +38,7 @@ const elements = {
   summaryWinRate: document.getElementById('summary-win-rate'),
   summaryTotalNetPnl: document.getElementById('summary-total-net-pnl'),
   summaryMaxDrawdown: document.getElementById('summary-max-drawdown'),
+  summaryMaxDrawdownSub: document.getElementById('summary-max-drawdown-sub'),
   summaryProfitFactor: document.getElementById('summary-profit-factor'),
   summaryAvgWin: document.getElementById('summary-avg-win'),
   summaryAvgLoss: document.getElementById('summary-avg-loss'),
@@ -341,6 +342,11 @@ function updateSummary(summary = DEFAULT_SUMMARY) {
   elements.summaryAvgWin.textContent = formatCurrency(summary.avg_win_ntd);
   elements.summaryAvgLoss.textContent = formatCurrency(summary.avg_loss_ntd);
   applyProfitFactorClass(summary.profit_factor);
+
+  const capital = Number(elements.live4CapitalInput.value) || 0;
+  elements.summaryMaxDrawdownSub.textContent = (summary.max_drawdown_ntd != null && capital > 0)
+    ? `從權益高點回落的最大幅度｜約佔本金 ${(Math.abs(summary.max_drawdown_ntd) / capital * 100).toFixed(1)}%`
+    : '從權益高點回落的最大幅度';
 
   applySignedClass(elements.summaryTotalNetPnl, summary.total_net_pnl_ntd);
   applySignedClass(elements.summaryMaxDrawdown, summary.max_drawdown_ntd != null ? -Math.abs(summary.max_drawdown_ntd) : null);
