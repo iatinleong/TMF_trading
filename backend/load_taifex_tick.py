@@ -222,6 +222,21 @@ def load_recent_ticks(symbol: str, days: int = 30) -> pd.DataFrame:
     return combined
 
 
+# 行程內的 K 棒快取（key 含 parquet 檔案指紋，檔案有變就不會命中）。只存最近幾組，記憶體很小。
+_TMFR1_BARS_CACHE: dict[tuple, pd.DataFrame] = {}
+_TMFR1_BARS_CACHE_MAX = 4
+
+
+def _tmfr1_fingerprint(tmfr1_dir) -> tuple:
+    if not tmfr1_dir.is_dir():
+        return ()
+    fingerprint = []
+    for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):
+        stat = path.stat()
+        fingerprint.append((path.name, stat.st_mtime_ns, stat.st_size))
+    return tuple(fingerprint)
+
+
 def load_tmfr1_60min_bars(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -246,6 +261,13 @@ def load_tmfr1_60min_bars(
             ensure_tmfr1_data_available(tmfr1_dir)
         except Exception as exc:  # noqa: BLE001
             logger.warning("TMFR1 自動補檔檢查失敗（不影響既有備援流程): %s", exc)
+    # 同一組 parquet 檔（路徑、修改時間、大小都沒變）重算結果一定相同，直接回傳快取，
+    # 避免每次回測都重讀 389 個檔案、重新重採樣（實測約 60 秒以上）。
+    cache_key = (str(tmfr1_dir), minutes, start_date, end_date, _tmfr1_fingerprint(tmfr1_dir))
+    cached = _TMFR1_BARS_CACHE.get(cache_key)
+    if cached is not None:
+        return cached.copy()
+
     parquet_found = 0
     parquet_failed = 0
     first_error = ""
@@ -279,7 +301,11 @@ def load_tmfr1_60min_bars(
         if daily_bars:
             combined = pd.concat(daily_bars).sort_index(kind="stable")
             # 相鄰兩天的檔案會在邊界重複產生同一根K棒，圖表要求時間唯一且遞增，否則整張圖不畫
-            return combined[~combined.index.duplicated(keep="last")]
+            result = combined[~combined.index.duplicated(keep="last")]
+            if len(_TMFR1_BARS_CACHE) >= _TMFR1_BARS_CACHE_MAX:
+                _TMFR1_BARS_CACHE.pop(next(iter(_TMFR1_BARS_CACHE)))
+            _TMFR1_BARS_CACHE[cache_key] = result
+            return result.copy()
 
     # 備援：若無 parquet 檔，嘗試從現有的 60min CSV 讀取（CSV 只有 60 分K，其他週期不能用）
     if minutes != 60:
