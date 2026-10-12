@@ -6,7 +6,6 @@ const DEFAULT_SUMMARY = {
   total_trades: null,
   win_rate: null,
   total_net_pnl_ntd: null,
-  max_drawdown_ntd: null,
   profit_factor: null,
   avg_win_ntd: null,
   avg_loss_ntd: null,
@@ -15,11 +14,7 @@ const DEFAULT_SUMMARY = {
 const state = {
   lastApiBase: API_BASE,
   lastResult: null,
-  candleChart: null,
-  candleSeries: null,
-  maFastSeries: null,
-  maMidSeries: null,
-  maSlowSeries: null,
+  candleCharts: [],
   equityChart: null,
   equitySeries: null,
 };
@@ -37,8 +32,6 @@ const elements = {
   summaryTotalTrades: document.getElementById('summary-total-trades'),
   summaryWinRate: document.getElementById('summary-win-rate'),
   summaryTotalNetPnl: document.getElementById('summary-total-net-pnl'),
-  summaryMaxDrawdown: document.getElementById('summary-max-drawdown'),
-  summaryMaxDrawdownSub: document.getElementById('summary-max-drawdown-sub'),
   summaryProfitFactor: document.getElementById('summary-profit-factor'),
   summaryAvgWin: document.getElementById('summary-avg-win'),
   summaryAvgLoss: document.getElementById('summary-avg-loss'),
@@ -153,57 +146,6 @@ async function parseJsonResponse(response) {
 }
 
 function initializeCharts() {
-  state.candleChart = LightweightCharts.createChart(elements.candleChart, {
-    layout: {
-      background: { color: '#0b1220' },
-      textColor: '#cbd5e1',
-    },
-    grid: {
-      vertLines: { color: '#1f2937' },
-      horzLines: { color: '#1f2937' },
-    },
-    rightPriceScale: {
-      borderColor: '#334155',
-    },
-    timeScale: {
-      borderColor: '#334155',
-      timeVisible: true,
-      secondsVisible: false,
-    },
-    crosshair: {
-      mode: LightweightCharts.CrosshairMode.Normal,
-    },
-    width: elements.candleChart.clientWidth,
-    height: elements.candleChart.clientHeight,
-  });
-
-  state.candleSeries = state.candleChart.addCandlestickSeries({
-    upColor: '#ef4444',
-    downColor: '#22c55e',
-    borderVisible: false,
-    wickUpColor: '#ef4444',
-    wickDownColor: '#22c55e',
-  });
-
-  state.maFastSeries = state.candleChart.addLineSeries({
-    color: '#f59e0b',
-    lineWidth: 2,
-    priceLineVisible: false,
-    lastValueVisible: false,
-  });
-  state.maMidSeries = state.candleChart.addLineSeries({
-    color: '#38bdf8',
-    lineWidth: 2,
-    priceLineVisible: false,
-    lastValueVisible: false,
-  });
-  state.maSlowSeries = state.candleChart.addLineSeries({
-    color: '#a78bfa',
-    lineWidth: 2,
-    priceLineVisible: false,
-    lastValueVisible: false,
-  });
-
   state.equityChart = LightweightCharts.createChart(elements.equityChart, {
     layout: {
       background: { color: '#0b1220' },
@@ -216,10 +158,14 @@ function initializeCharts() {
     rightPriceScale: {
       borderColor: '#334155',
     },
+    localization: {
+      timeFormatter: formatBarTime,
+    },
     timeScale: {
       borderColor: '#334155',
       timeVisible: true,
       secondsVisible: false,
+      tickMarkFormatter: formatTickTime,
     },
     crosshair: {
       mode: LightweightCharts.CrosshairMode.Magnet,
@@ -234,10 +180,12 @@ function initializeCharts() {
   });
 
   const resizeCharts = () => {
-    state.candleChart.applyOptions({
-      width: elements.candleChart.clientWidth,
-      height: elements.candleChart.clientHeight,
-    });
+    for (const { chart, surface } of state.candleCharts) {
+      chart.applyOptions({
+        width: surface.clientWidth,
+        height: surface.clientHeight,
+      });
+    }
     state.equityChart.applyOptions({
       width: elements.equityChart.clientWidth,
       height: elements.equityChart.clientHeight,
@@ -321,7 +269,8 @@ function formatDateTime(unixSeconds) {
   }
   const date = new Date(unixSeconds * 1000);
   return date.toLocaleString('zh-TW', {
-    hour12: false,
+    timeZone: TAIPEI_TIME_ZONE,
+    hourCycle: 'h23',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -335,7 +284,6 @@ function updateSummary(summary = DEFAULT_SUMMARY) {
   elements.summaryTotalTrades.textContent = formatInteger(summary.total_trades);
   elements.summaryWinRate.textContent = formatPercent(summary.win_rate);
   elements.summaryTotalNetPnl.textContent = formatCurrency(summary.total_net_pnl_ntd);
-  elements.summaryMaxDrawdown.textContent = formatCurrency(summary.max_drawdown_ntd);
   elements.summaryProfitFactor.textContent = summary.profit_factor == null
     ? '—'
     : Number(summary.profit_factor).toFixed(2);
@@ -343,13 +291,7 @@ function updateSummary(summary = DEFAULT_SUMMARY) {
   elements.summaryAvgLoss.textContent = formatCurrency(summary.avg_loss_ntd);
   applyProfitFactorClass(summary.profit_factor);
 
-  const capital = Number(elements.live4CapitalInput.value) || 0;
-  elements.summaryMaxDrawdownSub.textContent = (summary.max_drawdown_ntd != null && capital > 0)
-    ? `從權益高點回落的最大幅度｜約佔本金 ${(Math.abs(summary.max_drawdown_ntd) / capital * 100).toFixed(1)}%`
-    : '從權益高點回落的最大幅度';
-
   applySignedClass(elements.summaryTotalNetPnl, summary.total_net_pnl_ntd);
-  applySignedClass(elements.summaryMaxDrawdown, summary.max_drawdown_ntd != null ? -Math.abs(summary.max_drawdown_ntd) : null);
 }
 
 function applyProfitFactorClass(value) {
@@ -410,19 +352,144 @@ function renderTrades(trades) {
   }).join('');
 }
 
-// 資料缺口處（gap_after）插入一個沒有數值的空白點，讓線在那裡斷開，不跨過缺口直連。
-function seriesWithBreaks(klines, toPoint) {
-  const points = [];
+// 資料缺口（gap_after）處切段：每一段各畫一張圖，段與段之間不跨過缺口直連。
+function splitKlinesAtGaps(klines) {
+  const segments = [];
+  let current = [];
   for (const item of klines) {
-    const point = toPoint(item);
-    if (point) points.push(point);
-    if (item.gap_after) points.push({ time: item.time + 1 });
+    current.push(item);
+    if (item.gap_after) {
+      segments.push(current);
+      current = [];
+    }
   }
-  return points;
+  if (current.length) segments.push(current);
+  return segments;
 }
 
-function lineDataFromKlines(klines, key) {
-  return seriesWithBreaks(klines, (item) => (item[key] != null ? { time: item.time, value: item[key] } : null));
+// 後端的 unix 秒是正確的時刻（台北時間換算），所有顯示一律用台北時區格式化。
+// 圖表預設用 UTC 顯示，會比台北時間少 8 小時，所以圖表時間軸與十字線也要改用這裡的格式。
+const TAIPEI_TIME_ZONE = 'Asia/Taipei';
+
+function formatBarTime(unixSeconds) {
+  return new Date(unixSeconds * 1000).toLocaleString('zh-TW', {
+    timeZone: TAIPEI_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+}
+
+// 圖表 X 軸刻度：平常顯示 HH:MM，午夜刻度改顯示日期，方便辨識換日。
+function formatTickTime(unixSeconds) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TAIPEI_TIME_ZONE,
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date(unixSeconds * 1000));
+  const get = (type) => parts.find((p) => p.type === type).value;
+  if (get('hour') === '00' && get('minute') === '00') {
+    return `${get('month')}/${get('day')}`;
+  }
+  return `${get('hour')}:${get('minute')}`;
+}
+
+function clearCandleCharts() {
+  for (const { chart } of state.candleCharts) {
+    chart.remove();
+  }
+  state.candleCharts = [];
+  elements.candleChart.innerHTML = '';
+}
+
+// 每一段各自一張圖（K 線 + 三條均線 + 該段內的交易標記），並排列在同一個容器裡。
+// 均線在各段內獨立計算，所以段與段之間不會有跨缺口的假均線。
+function renderCandleSegments(klines, markers) {
+  clearCandleCharts();
+  const segments = splitKlinesAtGaps(klines);
+  const showLabels = segments.length > 1;
+
+  segments.forEach((segment, index) => {
+    if (showLabels) {
+      const label = document.createElement('div');
+      label.className = 'segment-label';
+      const first = formatBarTime(segment[0].time);
+      const last = formatBarTime(segment[segment.length - 1].time);
+      label.textContent = `第 ${index + 1} / ${segments.length} 段｜${first} ~ ${last}｜${formatInteger(segment.length)} 根`;
+      elements.candleChart.appendChild(label);
+    }
+
+    const surface = document.createElement('div');
+    surface.className = 'chart-surface segment-surface';
+    elements.candleChart.appendChild(surface);
+
+    const chart = LightweightCharts.createChart(surface, {
+      layout: {
+        background: { color: '#0b1220' },
+        textColor: '#cbd5e1',
+      },
+      grid: {
+        vertLines: { color: '#1f2937' },
+        horzLines: { color: '#1f2937' },
+      },
+      rightPriceScale: {
+        borderColor: '#334155',
+      },
+      localization: {
+        timeFormatter: formatBarTime,
+      },
+      timeScale: {
+        borderColor: '#334155',
+        timeVisible: true,
+        secondsVisible: false,
+        tickMarkFormatter: formatTickTime,
+      },
+      crosshair: {
+        mode: LightweightCharts.CrosshairMode.Normal,
+      },
+      width: surface.clientWidth,
+      height: surface.clientHeight,
+    });
+
+    const candleSeries = chart.addCandlestickSeries({
+      upColor: '#ef4444',
+      downColor: '#22c55e',
+      borderVisible: false,
+      wickUpColor: '#ef4444',
+      wickDownColor: '#22c55e',
+    });
+    candleSeries.setData(segment.map((item) => ({
+      time: item.time, open: item.open, high: item.high, low: item.low, close: item.close,
+    })));
+
+    const maSpecs = [['ma_fast', '#f59e0b'], ['ma_mid', '#38bdf8'], ['ma_slow', '#a78bfa']];
+    for (const [key, color] of maSpecs) {
+      const line = chart.addLineSeries({
+        color,
+        lineWidth: 2,
+        priceLineVisible: false,
+        lastValueVisible: false,
+      });
+      line.setData(segment
+        .filter((item) => item[key] != null)
+        .map((item) => ({ time: item.time, value: item[key] })));
+    }
+
+    const first = segment[0].time;
+    const last = segment[segment.length - 1].time;
+    candleSeries.setMarkers(markers.filter((m) => m.time >= first && m.time <= last));
+    chart.timeScale().fitContent();
+
+    state.candleCharts.push({ chart, surface });
+  });
+
+  return segments.length;
 }
 
 function renderLive4StrategyCards(strategies) {
@@ -437,7 +504,7 @@ function renderLive4StrategyCards(strategies) {
         <span class="stat-label">${entry.label}（${STRATEGY_SHORT_CODE[strategyId]}）</span>
         <strong>${formatInteger(summary.total_trades)} 筆　勝率 ${formatPercent(summary.win_rate)}</strong>
         <span class="${pnlClass}">淨損益 ${formatCurrency(summary.total_net_pnl_ntd)}</span>
-        <span class="stat-label">最大回撤 ${formatCurrency(summary.max_drawdown_ntd)}　PF ${summary.profit_factor == null ? '—' : Number(summary.profit_factor).toFixed(2)}</span>
+        <span class="stat-label">PF ${summary.profit_factor == null ? '—' : Number(summary.profit_factor).toFixed(2)}</span>
       </article>
     `;
   }).join('');
@@ -500,15 +567,6 @@ function summarizeTrades(trades) {
   const wins = netPnls.filter((v) => v > 0);
   const losses = netPnls.filter((v) => v < 0);
 
-  let cumulative = 0;
-  let peak = 0;
-  let maxDrawdown = 0;
-  for (const pnl of netPnls) {
-    cumulative += pnl;
-    peak = Math.max(peak, cumulative);
-    maxDrawdown = Math.max(maxDrawdown, peak - cumulative);
-  }
-
   const sumWins = wins.reduce((a, b) => a + b, 0);
   const sumLosses = losses.reduce((a, b) => a + b, 0);
   let profitFactor;
@@ -522,7 +580,6 @@ function summarizeTrades(trades) {
     total_trades: trades.length,
     win_rate: trades.length ? wins.length / trades.length : 0,
     total_net_pnl_ntd: netPnls.reduce((a, b) => a + b, 0),
-    max_drawdown_ntd: maxDrawdown,
     profit_factor: profitFactor,
     avg_win_ntd: wins.length ? sumWins / wins.length : 0,
     avg_loss_ntd: losses.length ? sumLosses / losses.length : 0,
@@ -548,24 +605,16 @@ function renderResult(result) {
   const useFifteen = viewId === 'death_cross_short';
   const klines = (useFifteen && result.klines_15) ? result.klines_15 : result.klines;
 
-  const candleData = seriesWithBreaks(klines, (item) => ({
-    time: item.time, open: item.open, high: item.high, low: item.low, close: item.close,
-  }));
-  state.candleSeries.setData(candleData);
-  state.maFastSeries.setData(lineDataFromKlines(klines, 'ma_fast'));
-  state.maMidSeries.setData(lineDataFromKlines(klines, 'ma_mid'));
-  state.maSlowSeries.setData(lineDataFromKlines(klines, 'ma_slow'));
-
   const { trades, markerStrategies, isAll } = selectedView(result);
   let chartMarkers = markerStrategies;
   if (isAll) {
     chartMarkers = Object.fromEntries(Object.entries(markerStrategies).filter(([id]) => id !== 'death_cross_short'));
   }
-  state.candleSeries.setMarkers(markersFromStrategies(chartMarkers));
-  state.candleChart.timeScale().fitContent();
+  const segmentCount = renderCandleSegments(klines, markersFromStrategies(chartMarkers));
   const intervalLabel = useFifteen ? '15 分K' : '60 分K';
+  const segmentNote = segmentCount > 1 ? `｜${segmentCount} 段（資料缺口處分開）` : '';
   elements.chartCaption.textContent =
-    `${intervalLabel} ${formatInteger(klines.length)} 根｜資料區間 ${(result.data_span || []).join(' ~ ')}`;
+    `${intervalLabel} ${formatInteger(klines.length)} 根${segmentNote}｜資料區間 ${(result.data_span || []).join(' ~ ')}`;
 
   const summary = summarizeTrades(trades);
   updateSummary(summary);

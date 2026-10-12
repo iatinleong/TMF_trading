@@ -49,6 +49,7 @@ from .live_service import (
     ws_clients,
 )
 from .load_taifex_tick import load_tmfr1_60min_bars
+from .roll_adjust import adjust_roll_prices
 from .strategy_config_store import list_user_strategy_configs
 from .strategy_service import (
     STRATEGY_DEFS,
@@ -521,7 +522,6 @@ def _serialize_summary(summary: dict) -> dict[str, float | int | None]:
         "total_trades": int(summary.get("total_trades", 0)),
         "win_rate": _json_number(summary.get("win_rate")),
         "total_net_pnl_ntd": _json_number(summary.get("total_net_pnl_ntd")),
-        "max_drawdown_ntd": _json_number(summary.get("max_drawdown_ntd")),
         "profit_factor": _json_number(summary.get("profit_factor")),
         "avg_win_ntd": _json_number(summary.get("avg_win_ntd")),
         "avg_loss_ntd": _json_number(summary.get("avg_loss_ntd")),
@@ -1157,6 +1157,9 @@ def backtest_live_strategies(request: LiveStrategiesBacktestRequest) -> dict[str
         bars_15 = load_tmfr1_60min_bars(fetch_missing=False, minutes=15)
         if bars_15.empty:
             raise HTTPException(status_code=400, detail="本機沒有可用的 TMFR1 15分K資料。")
+        # 換月價差調整：結算日換月處把舊合約價格接到新合約，避免均線與交叉被換月跳空扭曲
+        bars = adjust_roll_prices(bars)
+        bars_15 = adjust_roll_prices(bars_15)
         enriched_15 = enrich_by_segments(bars_15)
 
         signal_fns = {

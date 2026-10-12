@@ -332,14 +332,6 @@ def build_summary(trades: list[Trade]) -> dict:
     wins = [pnl for pnl in net_pnls if pnl > 0]
     losses = [pnl for pnl in net_pnls if pnl < 0]
 
-    cumulative = 0.0
-    peak = 0.0
-    max_drawdown = 0.0
-    for pnl in net_pnls:
-        cumulative += pnl
-        peak = max(peak, cumulative)
-        max_drawdown = max(max_drawdown, peak - cumulative)
-
     if losses:
         profit_factor = sum(wins) / abs(sum(losses)) if wins else 0.0
     else:
@@ -349,7 +341,6 @@ def build_summary(trades: list[Trade]) -> dict:
         "total_trades": total_trades,
         "win_rate": (len(wins) / total_trades) if total_trades else 0.0,
         "total_net_pnl_ntd": float(sum(net_pnls)),
-        "max_drawdown_ntd": float(max_drawdown),
         "profit_factor": float(profit_factor),
         "avg_win_ntd": float(sum(wins) / len(wins)) if wins else 0.0,
         "avg_loss_ntd": float(sum(losses) / len(losses)) if losses else 0.0,
@@ -432,50 +423,57 @@ def run_direction_limited_backtest(
         loss_pct_limit_ntd = abs(float(max_loss_pct)) * float(initial_capital_ntd)
         return min(loss_ntd_limit, loss_pct_limit_ntd) / float(contract.point_value)
 
+    def _check_stop_take(bar: pd.Series, bar_time: pd.Timestamp) -> None:
+        # 開盤即進場的那一根 K 棒，整根的高低點都發生在進場之後，所以進場當根也要檢查停損停利
+        # （以前只在下一根檢查，會漏掉進場當根就已經穿過停損的情況）。
+        nonlocal position
+        if position is None or not (has_point_sl_tp or has_risk_insurance):
+            return
+        open_price = float(bar["open"])
+        high_price = float(bar["high"])
+        low_price = float(bar["low"])
+        stop_reason = active_stop_reason
+
+        if position.direction == "long":
+            if open_price <= position.stop_loss_price:
+                exit_price = engine._apply_slippage(open_price, "long", is_entry=False)  # noqa: SLF001
+                trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
+                position = None
+            elif has_point_sl_tp and open_price >= position.take_profit_price:
+                exit_price = engine._apply_slippage(open_price, "long", is_entry=False)  # noqa: SLF001
+                trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
+                position = None
+            elif low_price <= position.stop_loss_price:
+                exit_price = engine._apply_slippage(position.stop_loss_price, "long", is_entry=False)  # noqa: SLF001
+                trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
+                position = None
+            elif has_point_sl_tp and high_price >= position.take_profit_price:
+                exit_price = engine._apply_slippage(position.take_profit_price, "long", is_entry=False)  # noqa: SLF001
+                trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
+                position = None
+        else:
+            if open_price >= position.stop_loss_price:
+                exit_price = engine._apply_slippage(open_price, "short", is_entry=False)  # noqa: SLF001
+                trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
+                position = None
+            elif has_point_sl_tp and open_price <= position.take_profit_price:
+                exit_price = engine._apply_slippage(open_price, "short", is_entry=False)  # noqa: SLF001
+                trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
+                position = None
+            elif high_price >= position.stop_loss_price:
+                exit_price = engine._apply_slippage(position.stop_loss_price, "short", is_entry=False)  # noqa: SLF001
+                trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
+                position = None
+            elif has_point_sl_tp and low_price <= position.take_profit_price:
+                exit_price = engine._apply_slippage(position.take_profit_price, "short", is_entry=False)  # noqa: SLF001
+                trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
+                position = None
+
     for index in range(len(prepared)):
         bar = prepared.iloc[index]
         bar_time = pd.Timestamp(prepared.index[index])
 
-        if position is not None and (has_point_sl_tp or has_risk_insurance):
-            open_price = float(bar["open"])
-            high_price = float(bar["high"])
-            low_price = float(bar["low"])
-            stop_reason = active_stop_reason
-
-            if position.direction == "long":
-                if open_price <= position.stop_loss_price:
-                    exit_price = engine._apply_slippage(open_price, "long", is_entry=False)  # noqa: SLF001
-                    trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
-                    position = None
-                elif has_point_sl_tp and open_price >= position.take_profit_price:
-                    exit_price = engine._apply_slippage(open_price, "long", is_entry=False)  # noqa: SLF001
-                    trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
-                    position = None
-                elif low_price <= position.stop_loss_price:
-                    exit_price = engine._apply_slippage(position.stop_loss_price, "long", is_entry=False)  # noqa: SLF001
-                    trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
-                    position = None
-                elif has_point_sl_tp and high_price >= position.take_profit_price:
-                    exit_price = engine._apply_slippage(position.take_profit_price, "long", is_entry=False)  # noqa: SLF001
-                    trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
-                    position = None
-            else:
-                if open_price >= position.stop_loss_price:
-                    exit_price = engine._apply_slippage(open_price, "short", is_entry=False)  # noqa: SLF001
-                    trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
-                    position = None
-                elif has_point_sl_tp and open_price <= position.take_profit_price:
-                    exit_price = engine._apply_slippage(open_price, "short", is_entry=False)  # noqa: SLF001
-                    trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
-                    position = None
-                elif high_price >= position.stop_loss_price:
-                    exit_price = engine._apply_slippage(position.stop_loss_price, "short", is_entry=False)  # noqa: SLF001
-                    trades.append(engine._close_trade(position, bar_time, exit_price, stop_reason))  # noqa: SLF001
-                    position = None
-                elif has_point_sl_tp and low_price <= position.take_profit_price:
-                    exit_price = engine._apply_slippage(position.take_profit_price, "short", is_entry=False)  # noqa: SLF001
-                    trades.append(engine._close_trade(position, bar_time, exit_price, "take_profit"))  # noqa: SLF001
-                    position = None
+        _check_stop_take(bar, bar_time)
 
         if index > 0:
             signal_row = prepared.iloc[index - 1]
@@ -511,6 +509,7 @@ def run_direction_limited_backtest(
                             take_profit_price=take_profit_price,
                         )
                         active_stop_reason = stop_reason
+                        _check_stop_take(bar, bar_time)
                     # else: 同向已持倉，不動作（比照實盤「同向訊號不動作」）
                 elif position is not None and reverse_signal_exit_enabled:
                     exit_price = engine._apply_slippage(current_open, position.direction, is_entry=False)  # noqa: SLF001

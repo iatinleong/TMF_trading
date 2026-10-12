@@ -57,7 +57,6 @@ def main() -> None:
     print(f"總交易數：{summary['total_trades']}")
     print(f"勝率：{summary['win_rate'] * 100:.1f}%")
     print(f"總損益：{summary['total_net_pnl_ntd']:,.0f} 元")
-    print(f"最大回撤：{summary['max_drawdown_ntd']:,.0f} 元")
     print(f"獲利因子：{summary['profit_factor']:.2f}")
     print(f"平均獲利：{summary['avg_win_ntd']:,.0f} 元")
     print(f"平均虧損：{summary['avg_loss_ntd']:,.0f} 元")

@@ -89,6 +89,24 @@ def ticks_to_df(ticks) -> pd.DataFrame:
     return df
 
 
+def session_check(df: pd.DataFrame, d: date) -> tuple[bool, dict]:
+    """檢查單日資料的日盘（08:45–13:45）與夜盘（前一晚 15:00 至當日 05:00）是否齊全。
+
+    2026-10-06 實測：Shioaji 的 ticks(date) 會只回一段（例如只有夜盘、或只有日盘），
+    舊版腳本拿到什麼就存、直接標記 done，造成資料缺口。這裡要求：
+    - 平日一定要有日盘；
+    - 前一天是平日（非週一）時，當天也要有夜盘（週一的夜盘在週日，不存在）。
+    """
+    ts = pd.to_datetime(df["ts"])
+    tod = ts - ts.dt.normalize()
+    day_n = int(((tod >= pd.Timedelta(hours=8, minutes=45)) & (tod <= pd.Timedelta(hours=13, minutes=45))).sum())
+    night_n = int(((tod >= pd.Timedelta(hours=15)) | (tod <= pd.Timedelta(hours=5))).sum())
+    need_day = d.weekday() < 5
+    need_night = (d - timedelta(days=1)).weekday() < 5
+    ok = (day_n > 0 or not need_day) and (night_n > 0 or not need_night)
+    return ok, {"day": day_n, "night": night_n, "need_day": need_day, "need_night": need_night}
+
+
 def fetch_one(api, contract, d: date) -> pd.DataFrame:
     ticks = api.ticks(contract=contract, date=d.isoformat())
     return ticks_to_df(ticks)
@@ -124,6 +142,7 @@ def main() -> None:
     done = set(state.get("done", []))
     empty = set(state.get("empty", []))
     failed = set(state.get("failed", []))
+    partial: dict = state.get("partial", {})  # {日期: 各時段筆數}，不完整的資料不寫檔、不標記 done
 
     ow_start = date.fromisoformat(args.overwrite_start) if args.overwrite_start else None
     ow_end = date.fromisoformat(args.overwrite_end) if args.overwrite_end else None
@@ -143,7 +162,7 @@ def main() -> None:
         if day_path(d).exists():
             done.add(key)
             continue
-        if key in empty:
+        if key in empty or key in partial:
             continue
         todo.append(d)
     if args.reverse:
@@ -207,6 +226,11 @@ def main() -> None:
                 state["failed"] = sorted(failed)
                 save_state(state)
                 print(f"[{i}/{len(todo)}] {key} empty | rem={remaining_mb(api):.1f}MB")
+            elif not (ok := session_check(df, d))[0]:
+                partial[key] = ok[1]
+                state["partial"] = partial
+                save_state(state)
+                print(f"[{i}/{len(todo)}] {key} 資料不完整 {ok[1]}，不寫檔（待人工檢查）| rem={remaining_mb(api):.1f}MB")
             else:
                 df.insert(0, "code", "TMFR1")
                 df.insert(1, "date", key)

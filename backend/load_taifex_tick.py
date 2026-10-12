@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import logging
 import os
 import zipfile
@@ -237,6 +238,99 @@ def _tmfr1_fingerprint(tmfr1_dir) -> tuple:
     return tuple(fingerprint)
 
 
+# 每日重採樣結果的磁盤快取（data/kline_cache/）。TMFR1 逐筆檔會被補缺或覆寫（backfill --overwrite），
+# 所以每個檔案記下自己的指紋（修改時間、大小），只有新檔或指紋變了才重算該日，其餘直接沿用。
+# 重採樣演算法有改動時遞增版本號，會讓所有快取失效、全部重算。
+_KLINE_CACHE_VERSION = 1
+_KLINE_CACHE_COLUMNS = ["open", "high", "low", "close", "volume"]
+
+
+def _kline_cache_paths(minutes: int) -> tuple[Path, Path]:
+    cache_dir = DATA_DIR / "kline_cache"
+    return cache_dir / f"TMFR1_{minutes}min_daily.parquet", cache_dir / f"TMFR1_{minutes}min_daily.json"
+
+
+def _file_stamp(path: Path) -> list[int]:
+    stat = path.stat()
+    return [stat.st_mtime_ns, stat.st_size]
+
+
+def _empty_bars() -> pd.DataFrame:
+    return pd.DataFrame(columns=_KLINE_CACHE_COLUMNS, index=pd.DatetimeIndex([], name="datetime"))
+
+
+def _resample_daily_file(path: Path, minutes: int) -> pd.DataFrame:
+    day_df = pd.read_parquet(path, columns=["ts", "close", "volume"])
+    day_df = day_df.rename(columns={"ts": "datetime"})
+    day_df["open"] = day_df["close"]
+    day_df["high"] = day_df["close"]
+    day_df["low"] = day_df["close"]
+    return resample_to_nmin(day_df, minutes=minutes)
+
+
+def _read_kline_cache(minutes: int) -> tuple[dict[str, list[int]], pd.DataFrame | None]:
+    data_path, manifest_path = _kline_cache_paths(minutes)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("version") != _KLINE_CACHE_VERSION:
+            return {}, None
+        frame = pd.read_parquet(data_path)
+    except Exception:  # noqa: BLE001 - 快取不存在或損壞都當作沒有快取，重算即可
+        return {}, None
+    return manifest.get("files", {}), frame
+
+
+def _write_kline_cache(minutes: int, stamps: dict[str, list[int]], per_file: dict[str, pd.DataFrame]) -> None:
+    data_path, manifest_path = _kline_cache_paths(minutes)
+    data_path.parent.mkdir(parents=True, exist_ok=True)
+    pieces = [bars.assign(_file=name) for name, bars in per_file.items() if not bars.empty]
+    frame = pd.concat(pieces) if pieces else _empty_bars().assign(_file=pd.Series(dtype=object))
+
+    # 先寫暫存檔再換名，寫到一半被中斷時不會留下損壞的快取
+    tmp_data = data_path.with_suffix(".tmp.parquet")
+    frame.to_parquet(tmp_data)
+    os.replace(tmp_data, data_path)
+    tmp_manifest = manifest_path.with_suffix(".tmp.json")
+    tmp_manifest.write_text(
+        json.dumps({"version": _KLINE_CACHE_VERSION, "files": stamps}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    os.replace(tmp_manifest, manifest_path)
+
+
+def _tmfr1_daily_bars(tmfr1_dir: Path, minutes: int) -> tuple[dict[str, pd.DataFrame], dict[str, str]]:
+    """回傳 ({檔名: 當日K棒}, {讀取失敗的檔名: 錯誤訊息})，只重算新檔或指紋有變的檔案。"""
+    cached_stamps, cached_frame = _read_kline_cache(minutes)
+    cached_by_file: dict[str, pd.DataFrame] = {}
+    if cached_frame is not None and "_file" in cached_frame.columns:
+        for name, group in cached_frame.groupby("_file", sort=False):
+            cached_by_file[name] = group.drop(columns="_file")
+
+    per_file: dict[str, pd.DataFrame] = {}
+    stamps: dict[str, list[int]] = {}
+    errors: dict[str, str] = {}
+    changed = cached_frame is None
+    for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):
+        stamp = _file_stamp(path)
+        if cached_stamps.get(path.name) == stamp:
+            per_file[path.name] = cached_by_file.get(path.name, _empty_bars())
+            stamps[path.name] = stamp
+            continue
+        changed = True
+        try:
+            per_file[path.name] = _resample_daily_file(path, minutes)
+            stamps[path.name] = stamp
+        except Exception as exc:  # noqa: BLE001 - 單一檔案壞掉不該整批失敗，但要留下紀錄
+            errors[path.name] = str(exc)
+            logger.warning("讀取 TMFR1 檔案失敗 %s: %s", path, exc)
+    if set(cached_stamps) - set(stamps):
+        changed = True  # 有檔案被刪除，快取要跟著移除
+
+    if changed:
+        _write_kline_cache(minutes, stamps, per_file)
+    return per_file, errors
+
+
 def load_tmfr1_60min_bars(
     start_date: str | None = None,
     end_date: str | None = None,
@@ -272,32 +366,25 @@ def load_tmfr1_60min_bars(
     parquet_failed = 0
     first_error = ""
     if tmfr1_dir.is_dir():
+        daily_by_file, read_errors = _tmfr1_daily_bars(tmfr1_dir, minutes)
         daily_bars: list[pd.DataFrame] = []
-        for path in sorted(tmfr1_dir.glob("TMFR1_*.parquet")):
+        for file_name in sorted(daily_by_file.keys() | read_errors.keys()):
             parquet_found += 1
-            date_str = path.stem[len("TMFR1_") :]
+            date_str = Path(file_name).stem[len("TMFR1_") :]
             try:
                 file_date = pd.Timestamp(date_str)
             except ValueError:
                 continue
             if (start is not None and file_date < start) or (end is not None and file_date > end):
                 continue
-            try:
-                day_df = pd.read_parquet(path, columns=["ts", "close", "volume"])
-                day_df = day_df.rename(columns={"ts": "datetime"})
-                day_df["open"] = day_df["close"]
-                day_df["high"] = day_df["close"]
-                day_df["low"] = day_df["close"]
-                bars_day = resample_to_nmin(day_df, minutes=minutes)
-                if not bars_day.empty:
-                    daily_bars.append(bars_day)
-            except Exception as exc:  # noqa: BLE001 - 單一檔案壞掉不該整批失敗，但要留下紀錄
+            if file_name in read_errors:
                 parquet_failed += 1
                 if not first_error:
-                    first_error = f"{path.name}: {exc}"
-                logger.warning("讀取 TMFR1 檔案失敗 %s: %s", path, exc)
-            finally:
-                day_df = None
+                    first_error = f"{file_name}: {read_errors[file_name]}"
+                continue
+            bars_day = daily_by_file[file_name]
+            if not bars_day.empty:
+                daily_bars.append(bars_day)
         if daily_bars:
             combined = pd.concat(daily_bars).sort_index(kind="stable")
             # 相鄰兩天的檔案會在邊界重複產生同一根K棒，圖表要求時間唯一且遞增，否則整張圖不畫
