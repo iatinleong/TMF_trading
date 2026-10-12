@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from backend.broker import capital_futures
-from backend.broker.capital_futures import CapitalFuturesBroker
+from backend.broker.capital_futures import CapitalFuturesBroker, SmartOrderTimeFlag
 from backend.kline_engine import get_kline_store, get_store
 from backend.timeutil import TAIPEI_TZ
 
@@ -184,6 +184,114 @@ def test_send_future_oco_order_success_builds_both_legs():
     assert sent_order.bstrStockNo == "TMF"
     assert sent_order.bstrSettlementMonth == "202609"
     assert sent_order.sNewClose == 1
+    # 2026-10-07：長效單撤單還沒驗證過（見下面 test_cancel_stp_order_...），
+    # 預設維持原本的行為（不開長效單、只在 T 盤有效），呼叫端要自己明確打開。
+    assert sent_order.nLongActionFlag == 0
+    assert sent_order.nTimeFlag == SmartOrderTimeFlag.T_SESSION
+    assert sent_order.bstrLongEndDate == ""
+
+
+def test_send_future_oco_order_long_action_when_explicitly_requested():
+    # 長效單的能力要留著（之後驗證過撤單格式就會打開），這裡驗證呼叫端明確
+    # 傳 long_action_flag=True 時，欄位真的會照文件填對。
+    broker = _ready_broker()
+    broker.order.SendFutureOCOOrderV1.return_value = (
+        "20260906,智慧條件單已送出 條件單號：27169464,u5490,27169464,1688300002076",
+        0,
+    )
+
+    result = broker.send_future_oco_order(
+        account="F0200006921941",
+        stock_no="TMF",
+        settlement_month="202609",
+        qty=1,
+        side=1,
+        trigger_price="45850",
+        price="P",
+        side2=1,
+        trigger_price2="46650",
+        price2="P",
+        new_close=1,
+        long_action_flag=True,
+    )
+
+    assert result.success is True
+    sent_order = broker.order.SendFutureOCOOrderV1.call_args[0][2]
+    assert sent_order.nLongActionFlag == 1
+    assert sent_order.nTimeFlag == 3
+    assert sent_order.nLAType == 1
+    assert sent_order.bstrLongEndDate == "20260916"
+
+
+def test_send_future_stp_order_defaults_match_pre_incident_behavior():
+    broker = _ready_broker()
+    broker.order.SendFutureSTPOrderV1.return_value = (
+        "20261006,智慧單已送出 條件單號：27169464,u5490,27169464,1688300002076",
+        0,
+    )
+
+    result = broker.send_future_stp_order(
+        account="F0200006921941",
+        stock_no="TMF",
+        settlement_month="202610",
+        side=1,
+        qty=1,
+        trigger_price="49870",
+        price="49870",
+        new_close=1,
+    )
+
+    assert result.success is True
+    sent_order = broker.order.SendFutureSTPOrderV1.call_args[0][2]
+    # 原本的 STP 送單從沒設過 nTimeFlag，關閉長效單時維持不設，停在元件初始值 0，
+    # 不要自己多引入一個沒被官方範例驗證過的欄位。
+    assert sent_order.nTimeFlag == 0
+    assert sent_order.nLongActionFlag == 0
+    assert sent_order.bstrLongEndDate == ""
+
+
+def test_send_future_stp_order_long_action_when_explicitly_requested():
+    broker = _ready_broker()
+    broker.order.SendFutureSTPOrderV1.return_value = (
+        "20261006,智慧單已送出 條件單號：27169464,u5490,27169464,1688300002076",
+        0,
+    )
+
+    result = broker.send_future_stp_order(
+        account="F0200006921941",
+        stock_no="TMF",
+        settlement_month="202610",
+        side=1,
+        qty=1,
+        trigger_price="49870",
+        price="49870",
+        new_close=1,
+        long_action_flag=True,
+    )
+
+    assert result.success is True
+    sent_order = broker.order.SendFutureSTPOrderV1.call_args[0][2]
+    assert sent_order.nLongActionFlag == 1
+    assert sent_order.nTimeFlag == 3
+    assert sent_order.nLAType == 1
+    assert sent_order.bstrLongEndDate == "20261021"
+
+
+def test_cancel_stp_order_defaults_long_action_key_to_zero():
+    # 2026-10-07：這不是驗證「填 0 是對的」——是記錄目前真實的行為：長效單號
+    # 目前完全沒有解析、沒有存，撤單一律填 "0"。這正是長效單預設關閉的原因
+    # （見 send_future_oco_order 的註解），撤單格式沒驗證過之前，不能信任這裡。
+    broker = _ready_broker()
+    broker.order.CancelTFStrategyOrderV1.return_value = ("刪除成功", 0)
+
+    result = broker.cancel_stp_order(
+        account="F0200006921941",
+        smart_key="27169464",
+    )
+
+    assert result.success is True
+    cancel_order = broker.order.CancelTFStrategyOrderV1.call_args[0][0]
+    assert cancel_order.bstrLongActionKey == "0"
 
 
 def test_send_future_oco_order_failure_when_code_is_nonzero():
@@ -340,6 +448,42 @@ def test_parse_open_interest_clears_on_empty_snapshot():
     broker._parse_open_interest("##,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,")
 
     assert broker.live.positions == []
+
+
+def _sample_stop_loss_line(smart_key: str = "27169464") -> str:
+    # 44 欄的 STP 格式（索引 0~32 共用、33~43 為 STP/MIT/MST 專屬），完整欄位對照
+    # 見 backend/capital_parse.py 和 tests/test_capital_parse_stop_loss_report.py。
+    # 這裡只需要湊滿欄位數讓解析器不會因為「太短」被當成壞資料，不要求每個值都合理。
+    return ",".join([smart_key] + [""] * 43)
+
+
+def test_parse_stop_loss_report_does_not_commit_before_terminator():
+    # 2026-10-07：GetStopLossReport 跟 OnOpenInterest 是同一種分段回應模式，用同一套
+    # 緩衝＋提交驗證——還沒收到 "##" 終止符之前，不該寫進 self.live.stop_loss_rows。
+    broker = CapitalFuturesBroker()
+    broker._parse_stop_loss_report(_sample_stop_loss_line())
+    assert broker.live.stop_loss_rows == []
+
+
+def test_parse_stop_loss_report_commits_buffered_rows_on_terminator():
+    broker = CapitalFuturesBroker()
+    broker._parse_stop_loss_report("M000,1")  # 查詢成功，共 1 筆（不是委託資料列）
+    broker._parse_stop_loss_report(_sample_stop_loss_line("27169464"))
+    broker._parse_stop_loss_report("##,,,,")
+
+    assert len(broker.live.stop_loss_rows) == 1
+    assert broker.live.stop_loss_rows[0]["smart_key"] == "27169464"
+
+
+def test_parse_stop_loss_report_handles_multiple_orders_in_one_query():
+    # 這是這次要修的那個 bug 本身：原本每次呼叫都直接覆蓋，兩筆資料只會留下最後一筆。
+    broker = CapitalFuturesBroker()
+    broker._parse_stop_loss_report(_sample_stop_loss_line("111111"))
+    broker._parse_stop_loss_report(_sample_stop_loss_line("222222"))
+    broker._parse_stop_loss_report("##,,,,")
+
+    smart_keys = [row["smart_key"] for row in broker.live.stop_loss_rows]
+    assert smart_keys == ["111111", "222222"]
 
 
 def test_parse_open_interest_bare_empty_string_still_commits_empty():

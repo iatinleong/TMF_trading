@@ -699,6 +699,13 @@ class TradingService:
             new_close_key = str(payload.get("new_close", "close")).lower()
             new_close = NewClose.CLOSE if new_close_key == "close" else NewClose.NEW
 
+            # 2026-10-07：長效單撤單格式還沒驗證過，預設關閉（False），要呼叫端自己
+            # 明確要求才打開，見 capital_futures.send_future_oco_order/send_future_stp_order
+            # 的註解。
+            long_action_flag = bool(payload.get("long_action_flag", False))
+            long_end_date = str(payload.get("long_end_date") or "")
+            time_flag = int(payload.get("time_flag", 3)) if long_action_flag else 1
+
             result = broker.send_future_stp_order(
                 account=account,
                 stock_no=str(payload.get("stock_no") or "TMF"),
@@ -710,6 +717,9 @@ class TradingService:
                 new_close=new_close,
                 trade_type=int(payload.get("trade_type", SmartOrderTradeType.ROD)),
                 order_price_type=int(payload.get("order_price_type", SmartOrderPriceType.RANGE_MARKET)),
+                time_flag=time_flag,
+                long_action_flag=long_action_flag,
+                long_end_date=long_end_date,
             )
             broker.pump_events(2.0)
             broker.refresh_live_snapshot(account)
@@ -807,6 +817,13 @@ class TradingService:
             new_close_key = str(payload.get("new_close", "close")).lower()
             new_close = NewClose.CLOSE if new_close_key == "close" else NewClose.NEW
 
+            # 2026-10-07：長效單撤單格式還沒驗證過，預設關閉（False），要呼叫端自己
+            # 明確要求才打開，見 capital_futures.send_future_oco_order/send_future_stp_order
+            # 的註解。
+            long_action_flag = bool(payload.get("long_action_flag", False))
+            long_end_date = str(payload.get("long_end_date") or "")
+            time_flag = int(payload.get("time_flag", 3)) if long_action_flag else 1
+
             result = broker.send_future_oco_order(
                 account=account,
                 stock_no=str(payload.get("stock_no") or "TMF"),
@@ -821,6 +838,9 @@ class TradingService:
                 new_close=new_close,
                 trade_type=int(payload.get("trade_type", SmartOrderTradeType.ROD)),
                 order_price_type=int(payload.get("order_price_type", SmartOrderPriceType.RANGE_MARKET)),
+                time_flag=time_flag,
+                long_action_flag=long_action_flag,
+                long_end_date=long_end_date,
             )
             broker.pump_events(2.0)
             broker.refresh_live_snapshot(account)
@@ -852,6 +872,7 @@ class TradingService:
                 smart_key=str(payload.get("smart_key") or ""),
                 seq_no=str(payload.get("seq_no") or ""),
                 order_no=str(payload.get("order_no") or ""),
+                long_action_key=str(payload.get("long_action_key") or "0"),
                 trade_kind=int(payload.get("trade_kind", SmartOrderKind.STP)),
             )
             broker.pump_events(2.0)
@@ -866,10 +887,14 @@ class TradingService:
                 "state": broker.get_live_state(),
             }
 
-    def query_stop_loss_report(self, account: str | None = None) -> dict[str, Any]:
-        return self._run_com(lambda: self._query_stop_loss_report_impl(account))
+    def query_stop_loss_report(
+        self, account: str | None = None, *, kind: str = "OCO"
+    ) -> dict[str, Any]:
+        return self._run_com(lambda: self._query_stop_loss_report_impl(account, kind=kind))
 
-    def _query_stop_loss_report_impl(self, account: str | None) -> dict[str, Any]:
+    def _query_stop_loss_report_impl(
+        self, account: str | None, *, kind: str = "OCO"
+    ) -> dict[str, Any]:
         with self._lock:
             if not self._broker:
                 raise RuntimeError("尚未連線")
@@ -877,9 +902,12 @@ class TradingService:
             acc = account or broker.live.active_account
             if not acc:
                 raise ValueError("請指定交易帳號")
-            broker.get_stop_loss_report(acc)
+            broker.get_stop_loss_report(acc, kind=kind)
             broker.pump_events(2.0)
-            return {"stop_loss_raw": broker.live.stop_loss_raw}
+            return {
+                "stop_loss_raw": broker.live.stop_loss_raw,
+                "stop_loss_rows": list(broker.live.stop_loss_rows),
+            }
 
     def cancel_order(self, seq_no: str, account: str | None = None) -> dict[str, Any]:
         return self._run_com(lambda: self._cancel_order_impl(seq_no, account))

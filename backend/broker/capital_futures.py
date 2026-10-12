@@ -42,7 +42,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
@@ -128,6 +128,42 @@ class Environment:
     PRODUCTION_SGX = 1  # 正式環境 SGX
     TEST = 2            # 測試環境
     TEST_SGX = 3         # 測試環境 SGX
+
+
+class SmartOrderTimeFlag:
+    """FUTUREORDER.nTimeFlag（設定長效單/智慧單的盤別）：1=T盤, 2=T+1盤, 3=全盤(T盤與T+1盤皆有效)。"""
+
+    T_SESSION = 1
+    T_PLUS_1_SESSION = 2
+    ALL_SESSION = 3
+
+
+class SmartOrderLAType:
+    """FUTUREORDER.nLAType（觸發別）：1=效期內觸發即失效, 3=效期內完全成交即失效。"""
+
+    TRIGGER_CANCEL = 1
+    FILLED_CANCEL = 3
+
+
+def _default_long_end_date(settlement_month: str = "") -> str:
+    """
+    計算智慧長效單的預設結束日期（YYYYMMDD）。
+    台指期/小台/微台月合約的最後交易日/結算日為該合約月份的「第三個星期三」。
+    若未提供合約月份、或解析失敗，則退回預設（今日+14天）。
+    """
+    try:
+        if settlement_month and len(settlement_month) == 6 and settlement_month.isdigit():
+            year = int(settlement_month[:4])
+            month = int(settlement_month[4:6])
+            # 每月 1 號
+            first_day = date(year, month, 1)
+            # 星期三 (weekday: Monday=0, Tuesday=1, Wednesday=2)
+            first_wed_day = 1 + (2 - first_day.weekday()) % 7
+            third_wed = date(year, month, first_wed_day + 14)
+            return third_wed.strftime("%Y%m%d")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("計算長效單結束日失敗 (settlement_month=%s): %s", settlement_month, exc)
+    return (date.today() + timedelta(days=14)).strftime("%Y%m%d")
 
 
 # 本專案內建的 SKCOM.dll 相對路徑（優先 V2 Quote 目錄，與官方 GUI 一致）
@@ -340,7 +376,8 @@ class BrokerLiveState:
     quote: LiveQuote = field(default_factory=LiveQuote)
     positions: list[dict[str, Any]] = field(default_factory=list)
     positions_raw: str = ""
-    stop_loss_raw: str = ""
+    stop_loss_raw: str = ""  # 最後一次事件呼叫的原始字串，診斷用；真正的查詢結果看 stop_loss_rows
+    stop_loss_rows: list[dict[str, Any]] = field(default_factory=list)
     orders_raw: str = ""
     fulfills_raw: str = ""
     # 2026-08-29 事故調查：發現官方文件其實有一個專門回報「這次未平倉查詢到底
@@ -407,6 +444,10 @@ class CapitalFuturesBroker:
         # 部位資料列，只有在收到終止符時才正式提交進 self.live.positions，
         # 見 _parse_open_interest。
         self._open_interest_buffer: list[dict[str, Any]] = []
+        # 2026-10-07：GetStopLossReport 跟 OnOpenInterest 是同一種「分成好幾次事件呼叫
+        # 送、結尾一個 ## 終止符」的回應模式（見官方文件《8.下單-國內期選智慧單》），
+        # 用同一套緩衝＋提交的作法，見 _parse_stop_loss_report。
+        self._stop_loss_report_buffer: list[dict[str, Any]] = []
         self.on_order_reply: Optional[Callable[[str, str], None]] = None
         self.live = BrokerLiveState(environment=environment)
         self._kline_loaded: set[str] = set()
@@ -540,9 +581,17 @@ class CapitalFuturesBroker:
             def OnStopLossReport(self, bstrData):  # noqa: N802
                 # 新版期貨智慧單(停損單/移動停損/OCO/觸價單)被動回報，透過呼叫
                 # GetStopLossReport 觸發（見官方文件《8.下單-國內期選智慧單》）。
+                # 2026-10-07 修正：跟 OnOpenInterest 一樣，有多筆智慧單掛著時官方會
+                # 逐行觸發這個事件（開頭 "M000,n" 一行、每筆委託各一行、結尾 "##" 一行
+                # 結束），原本每次都直接覆蓋 stop_loss_raw，只會留下最後一行，前面的
+                # 委託資料全部遺失。改成跟 _parse_open_interest 一樣的緩衝＋提交寫法。
                 try:
                     logger.info("[OnStopLossReport] %s", bstrData)
-                    broker.live.stop_loss_raw = bstrData
+                    if broker.live.stop_loss_raw:
+                        broker.live.stop_loss_raw += "\n" + bstrData
+                    else:
+                        broker.live.stop_loss_raw = bstrData
+                    broker._parse_stop_loss_report(bstrData)
                     broker.live.add_message("stop_loss_report", bstrData)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("OnStopLossReport parse failed: %s", exc)
@@ -807,6 +856,9 @@ class CapitalFuturesBroker:
         day_trade: int = 0,
         order_price_type: int = SmartOrderPriceType.RANGE_MARKET,
         reserved: int = Reserved.INTRADAY,
+        time_flag: int = SmartOrderTimeFlag.ALL_SESSION,
+        long_action_flag: bool = False,
+        long_end_date: str = "",
         is_async: bool = False,
     ) -> OrderResult:
         """
@@ -831,6 +883,9 @@ class CapitalFuturesBroker:
                若 order_price_type=2（限價）才需要填實際限價數字。
         new_close: 通常保護留倉用 NewClose.CLOSE，這裡預設 NEW 是因為測試/一般
                     情境下呼叫端應該明確指定，不要依賴預設值。
+        time_flag: 效期別，只有 long_action_flag=True 時才生效，預設 SmartOrderTimeFlag.ALL_SESSION。
+        long_action_flag: 是否為長效單，預設 False（維持跨盤會失效的原行為）。
+        long_end_date: 長效結束日（YYYYMMDD），預設自動對齊商品結算日（第3個星期三）。
         """
         self._require_ready()
         order = self._sk.FUTUREORDER()
@@ -846,11 +901,24 @@ class CapitalFuturesBroker:
         order.bstrTrigger = str(trigger_price)
         order.sReserved = reserved
         order.nOrderPriceType = order_price_type
-        # 長效單相關欄位：這裡固定不啟用長效單（效期內未觸發就在收盤失效，
-        # 不需要額外指定結束日），避免沒填的長效單參數被解讀成非預期值。
-        order.nLongActionFlag = 0
-        order.bstrLongEndDate = ""
-        order.nLAType = 1
+        # 2026-10-06 夜盤實測：固定設 nLongActionFlag = 0 的智慧單，在 05:00 收盤時被券商
+        # 系統自動清除，日盤開盤後直接失去保護。2026-10-07 本來想改成預設長效單解決，但
+        # 撤單時長效單號（bstrLongActionKey）還沒解析、沒有存，一律回填 "0"——如果券商真的
+        # 要求正確的長效單號才能撤，平倉後這張保護單會變成撤不掉的孤兒單，一路掛到結算日，
+        # 比原本單純失效更危險（可能在倉位已經平掉之後，意外又多開一筆反向部位）。所以先
+        # 把長效單能力做成「呼叫端要自己明確打開」，預設維持原本行為，等用真實帳號的測試單
+        # 驗證過長效單號的回報格式、確認撤得掉，才把 long_action_flag 的預設值改回 True。
+        # 原本的 STP 送單從來沒有設過 nTimeFlag 這個欄位（官方範例也沒有），關閉長效單時
+        # 就不要多設這行，確保跟原本行為逐字一致，不要自己多引入一個沒驗證過的欄位。
+        if long_action_flag:
+            order.nTimeFlag = time_flag
+            order.nLongActionFlag = 1
+            order.bstrLongEndDate = str(long_end_date or _default_long_end_date(settlement_month))
+            order.nLAType = SmartOrderLAType.TRIGGER_CANCEL
+        else:
+            order.nLongActionFlag = 0
+            order.bstrLongEndDate = ""
+            order.nLAType = SmartOrderLAType.TRIGGER_CANCEL
 
         # 2026-08-21 實測發現：跟 SendFutureOrderCLR（code, message 順序）不同，
         # 官方文件範例是 `bstrMessage,nCode= m_pSKOrder.SendFutureSTPOrderV1(...)`
@@ -953,6 +1021,9 @@ class CapitalFuturesBroker:
         day_trade: int = 0,
         order_price_type: int = SmartOrderPriceType.RANGE_MARKET,
         reserved: int = Reserved.INTRADAY,
+        time_flag: int = SmartOrderTimeFlag.ALL_SESSION,
+        long_action_flag: bool = False,
+        long_end_date: str = "",
         is_async: bool = False,
     ) -> OrderResult:
         """
@@ -973,6 +1044,9 @@ class CapitalFuturesBroker:
         side2/trigger_price2/price2: 第二支腿（例如停利）。
         price/price2: "P" = 範圍市價（配合 order_price_type=3，官方文件範例
                       這樣用）；order_price_type=2（限價）才需要填實際限價數字。
+        time_flag: 效期別，只有 long_action_flag=True 時才生效，預設 SmartOrderTimeFlag.ALL_SESSION。
+        long_action_flag: 是否為長效單，預設 False（維持跨盤會失效的原行為）。
+        long_end_date: 長效結束日（YYYYMMDD），預設自動對齊商品結算日（第3個星期三）。
         """
         self._require_ready()
         order = self._sk.FUTUREORDER()
@@ -991,11 +1065,23 @@ class CapitalFuturesBroker:
         order.bstrPrice2 = str(price2)
         order.sReserved = reserved
         order.nOrderPriceType = order_price_type
-        # 長效單相關欄位：跟 STP 一樣固定不啟用長效單。
-        order.nLongActionFlag = 0
-        order.bstrLongEndDate = ""
-        order.nLAType = 1
-        order.nTimeFlag = 1
+        # 2026-10-06 夜盤實測：固定設 nLongActionFlag = 0、nTimeFlag = 1（僅T盤有效）的 OCO，
+        # 在 05:00 收盤時被券商系統自動清除，次日日盤開盤後直接失去保護且觸價不觸發。
+        # 2026-10-07 本來想改成預設長效單解決，但撤單時長效單號（bstrLongActionKey）還沒解析、
+        # 沒有存，一律回填 "0"——如果券商真的要求正確的長效單號才能撤，平倉後這張保護單會變成
+        # 撤不掉的孤兒單，一路掛到結算日，比原本單純失效更危險（可能在倉位已經平掉之後，意外
+        # 又多開一筆反向部位）。所以先把長效單能力做成「呼叫端要自己明確打開」，預設維持原本
+        # 行為，等用真實帳號的測試單驗證過長效單號的回報格式、確認撤得掉，才把 long_action_flag
+        # 的預設值改回 True。
+        order.nTimeFlag = time_flag if long_action_flag else SmartOrderTimeFlag.T_SESSION
+        if long_action_flag:
+            order.nLongActionFlag = 1
+            order.bstrLongEndDate = str(long_end_date or _default_long_end_date(settlement_month))
+            order.nLAType = SmartOrderLAType.TRIGGER_CANCEL
+        else:
+            order.nLongActionFlag = 0
+            order.bstrLongEndDate = ""
+            order.nLAType = SmartOrderLAType.TRIGGER_CANCEL
 
         # 跟 STP/MIT 一樣：官方範例是 `bstrMessage,nCode=
         # m_pSKOrder.SendFutureOCOOrderV1(...)`——message 在前、code 在後。
@@ -1043,7 +1129,7 @@ class CapitalFuturesBroker:
         cancel_order.nTradeKind = trade_kind
         cancel_order.bstrSeqNo = seq_no
         cancel_order.bstrOrderNo = order_no
-        cancel_order.bstrLongActionKey = long_action_key
+        cancel_order.bstrLongActionKey = str(long_action_key) if long_action_key else "0"
 
         message, code = self.order.CancelTFStrategyOrderV1(cancel_order, is_async)
         return OrderResult(success=(code == 0), code=code, message=self._msg(code), raw=message)
@@ -1058,8 +1144,12 @@ class CapitalFuturesBroker:
         2026-08-21 實測發現：kind 傳空字串會被拒（M999 找不到資料表），官方
         文件範例是從下拉選單選 "STP"/"MST"/"OCO"/"MIT"/"AB" 其中之一，不能空白；
         date 也採用文件範例格式 YYYYMMDD，預設抓當天。
+
+        2026-10-07：每次查詢前清空 self.live.stop_loss_raw，確保這次查詢只累積
+        這次查到的委託，不會跟上一次查詢的舊資料混在一起（見 OnStopLossReport 的累加邏輯）。
         """
         self._require_ready()
+        self.live.stop_loss_raw = ""
         query_date = date or datetime.now().strftime("%Y%m%d")
         return int(
             self.order.GetStopLossReport(
@@ -1621,6 +1711,30 @@ class CapitalFuturesBroker:
             self.live.positions = list(self._open_interest_buffer)
             self._open_interest_buffer.clear()
         _append_position_audit(account=self.user_id or "", raw=raw, positions=rows)
+
+    def _parse_stop_loss_report(self, raw: str) -> None:
+        """
+        GetStopLossReport 查詢回報，跟 OnOpenInterest 一樣是分成好幾次事件呼叫送的
+        （開頭 "M###,n"、每筆委託各一行、結尾 "##" 終止符），用同一套緩衝＋提交寫法：
+        每次呼叫先把這次解析到的委託列（可能 0 筆或 1 筆）累加進緩衝區，只有收到
+        終止符或空字串時，才正式提交進 self.live.stop_loss_rows、並清空緩衝區。
+
+        parse_stop_loss_report_raw() 本身已經會跳過 "M###,n" 開頭行和 "##" 結尾行
+        （兩者都解析不出委託資料，回傳空列表），所以這裡直接把每次收到的單行丟給它
+        也能正確處理。
+        """
+        try:
+            from ..capital_parse import parse_stop_loss_report_raw
+        except ImportError:
+            from capital_parse import parse_stop_loss_report_raw  # type: ignore
+
+        text = raw.strip()
+        rows = parse_stop_loss_report_raw(raw)
+        self._stop_loss_report_buffer.extend(rows)
+        is_terminator = not text or text.startswith("##")
+        if is_terminator:
+            self.live.stop_loss_rows = list(self._stop_loss_report_buffer)
+            self._stop_loss_report_buffer.clear()
 
     def _parse_future_rights(self, raw: str) -> None:
         try:

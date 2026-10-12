@@ -361,3 +361,126 @@ def parse_kline_row(raw: str) -> dict[str, Any] | None:
         "volume": v,
         "raw": text,
     }
+
+
+# 2026-10-07：GetStopLossReport / OnStopLossReport 查詢智慧單（含 STP/MIT/MST/OCO）
+# 回報字串解析。欄位順序照官方文件《8.下單-國內期選智慧單》逐一核對——不是憑印象猜的，
+# 是直接解析 docx 裡的 Word 表格結構（欄位名稱欄 vs 說明欄分開讀，不是把整份文件拉平成
+# 一行行段落再用肉眼對位置，那樣容易因為表格跨行而對錯）。
+# STP/MIT/MST 跟 OCO 是兩份不同的表格，前 33 個欄位（索引 0~32）共用，第 33 個欄位開始
+# 分岔：OCO 多了「二擇一」專屬的六個欄位，所以同樣叫「長效單序號」的欄位，
+# STP/MIT/MST 在索引 39，OCO 在索引 46。目前還沒有真實的群益回報可以核對這份對照表，
+# 只確認了文件本身欄位名稱與順序一致；用之前（尤其是長效單相關欄位）务必先拿真實委託
+# 的查詢結果核對一次。
+_STOP_LOSS_REPORT_COMMON_FIELDS = (
+    "smart_key",  # 0 智慧單號
+    "market",  # 1 市場別
+    "exchange_code",  # 2 交易所代碼
+    "branch_code",  # 3 分公司代碼
+    "account",  # 4 帳號
+    "sub_account",  # 5 子帳
+    "order_no",  # 6 委託書號
+    "seq_no",  # 7 序號（13碼）
+    "orig_seq_no",  # 8 原始序號（13碼）
+    "strategy_kind",  # 9 策略別：3 OCO / 5 STP / 8 MIT / 9 MST
+    "order_status",  # 10 智慧單委託狀態
+    "trade_date",  # 11 交易日
+    "order_time",  # 12 下單時間（建立智慧單時間）
+    "product_code",  # 13 商品代碼（第一腳）
+    "contract_month",  # 14 商品契約月份（第一腳）
+    "strike_price",  # 15 履約價格
+    "direction",  # 16 買賣別 B/S
+    "order_price_kind",  # 17 委託價格別
+    "order_price_type",  # 18 委託價格類別
+    "trade_type",  # 19 委託時效 ROD/IOC/FOK
+    "order_price",  # 20 委託價格
+    "order_qty",  # 21 委託數量
+    "trigger_price",  # 22 觸發價格
+    "trigger_time",  # 23 觸發時間
+    "message",  # 24 訊息
+    "market_order_status",  # 25 市場委託狀態
+    "updated_at",  # 26 智慧單異動時間
+    "reserved_flag",  # 27 預約單註記
+    "reserved_seq_no",  # 28 預約單序號
+    "trade_date2",  # 29 交易日（第二個）
+    "leg1_order_product_code",  # 30 第一腳下單商品代碼
+    "leg2_order_product_code",  # 31 第二腳下單商品代碼
+    "leg2_contract_month",  # 32 第二腳商品契約月份
+)
+
+_STOP_LOSS_REPORT_STP_TAIL_FIELDS = (
+    "leg2_strike_price",  # 33 第二腳履約價格
+    "new_close",  # 34 新平倉
+    "is_day_trade",  # 35 是否為當沖
+    "option_right",  # 36 買賣權
+    "stop_on_first_trigger",  # 37 是否觸發即停止
+    "long_action_flag",  # 38 長效單註記：0 非長效單 / 1 長效單
+    "long_action_key",  # 39 長效單序號 ← 撤單用的長效單號
+    "long_action_end_date",  # 40 長效單結束日期
+    "long_action_condition",  # 41 長效單結束條件
+    "long_action_order_qty",  # 42 長效單委託總量
+    "long_action_filled_qty",  # 43 長效單成交總量
+)
+
+_STOP_LOSS_REPORT_OCO_TAIL_FIELDS = (
+    "leg1_new_close",  # 33 第一腳倉位
+    "is_day_trade",  # 34 是否為當沖
+    "leg1_trigger_price",  # 35 第一腳觸發價
+    "leg2_trigger_price",  # 36 第二腳觸發價
+    "leg2_direction",  # 37 第二腳買賣別
+    "leg2_order_price_kind",  # 38 第二腳委託價格別
+    "leg2_order_price_type",  # 39 第二腳委託價格類別
+    "leg2_order_price",  # 40 第二腳委託價
+    "leg2_trade_type",  # 41 第二腳委託時效
+    "leg2_new_close",  # 42 第二腳倉位
+    "universal_message",  # 43 萬用訊息（狀態碼 999 時適用）
+    "stop_on_first_trigger",  # 44 是否觸發即停止
+    "long_action_flag",  # 45 長效單註記：0 非長效單 / 1 長效單
+    "long_action_key",  # 46 長效單序號 ← 撤單用的長效單號
+    "long_action_end_date",  # 47 長效單結束日期
+    "long_action_condition",  # 48 長效單結束條件
+    "long_action_order_qty",  # 49 長效單委託總量
+    "long_action_filled_qty",  # 50 長效單成交總量
+)
+
+STOP_LOSS_STRATEGY_OCO = "3"
+
+
+def parse_stop_loss_report_line(line: str) -> dict[str, Any]:
+    """解析 GetStopLossReport 查詢回報的一行資料（不含 "M000,n" 開頭行與 "##" 結尾行）。"""
+    text = line.strip()
+    if not text:
+        return {}
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) < len(_STOP_LOSS_REPORT_COMMON_FIELDS):
+        return {"raw": text}
+
+    row: dict[str, Any] = {"raw": text}
+    for idx, key in enumerate(_STOP_LOSS_REPORT_COMMON_FIELDS):
+        row[key] = _at(parts, idx)
+
+    is_oco = row.get("strategy_kind") == STOP_LOSS_STRATEGY_OCO
+    tail_fields = _STOP_LOSS_REPORT_OCO_TAIL_FIELDS if is_oco else _STOP_LOSS_REPORT_STP_TAIL_FIELDS
+    offset = len(_STOP_LOSS_REPORT_COMMON_FIELDS)
+    for idx, key in enumerate(tail_fields):
+        row[key] = _at(parts, offset + idx)
+
+    row["is_long_action"] = row.get("long_action_flag") == "1"
+    return row
+
+
+def parse_stop_loss_report_raw(raw: str) -> list[dict[str, Any]]:
+    """
+    解析多筆 GetStopLossReport 查詢回報（每個 OnStopLossReport 事件一行，依序串起來）。
+    自動跳過開頭的 "M###,n"（成功/失敗旗標）與結尾的 "##..."（查詢結束標記），
+    這兩種不是實際的委託資料列。
+    """
+    rows: list[dict[str, Any]] = []
+    for line in str(raw or "").splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        if re.match(r"^M\d{3},\d+$", text) or text.startswith("##"):
+            continue
+        rows.append(parse_stop_loss_report_line(text))
+    return rows
