@@ -144,9 +144,23 @@ try {
     $action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $AppDir
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
     $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Highest
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+    # 2026-10-12 實盤事故：VM 上的 tmf-backend.exe 在 10/10 20:49 乾淨地停掉，前後沒有任何
+    # 錯誤或例外（Center/Quote/Order.log、position_audit.log 全部正常運作到那一秒就斷了），
+    # 停掉的時間點量出來是啟動後 2天23時59分40秒——幾乎精準踩在 72 小時整。原因是
+    # Register-ScheduledTask 原本沒傳 -Settings，用的是 New-ScheduledTaskSettingsSet 的
+    # 內建預設值，而這個預設值的 ExecutionTimeLimit 剛好是 PT72H（3天）——跟 Windows
+    # Task Scheduler 新增工作時 GUI 上「如果工作執行時間超過：3天」那個預設勾選是同一件事。
+    # 這個服務要 24/7 常駐，不該有任何執行時間上限；順便加上失敗自動重啟（3次、間隔1分鐘），
+    # 減少未來真的當掉時沒人注意到的空窗期（已有過整整36小時沒人發現的前例）。
+    $settings = New-ScheduledTaskSettingsSet `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1) `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
     Start-ScheduledTask -TaskName $taskName
-    Log "排程任務 $taskName 已註冊並啟動（使用者：$currentUser，登入時自動啟動）"
+    Log "排程任務 $taskName 已註冊並啟動（使用者：$currentUser，登入時自動啟動，無執行時間上限）"
 
     # 2026-09-03：移除了 Cloudflare quick tunnel 自動註冊（見 git 歷史）。quick tunnel
     # 網址每 3 天左右會被 Cloudflare 邊緣節點強制斷線、且沒有正常運作保證，改用 GCP
