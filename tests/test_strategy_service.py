@@ -1,5 +1,6 @@
 import time
 from datetime import datetime, timedelta
+from datetime import time as dt_time
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -701,6 +702,41 @@ def test_strategy_tick_runs_position_reconciliation_every_cycle(clean_armed):
     mock_reconcile.assert_called_once()
 
 
+def test_strategy_tick_isolates_one_strategys_crash_from_others_and_reconcile(clean_armed):
+    """2026-10-07 加固：strategy_tick() 原本對每個策略呼叫 _tick_one 完全沒包
+    try/except，任何一個策略內部丟出未預期例外（資料髒污、pandas 計算出錯等，
+    不限於新加的缺口檢查），都會讓這一輪 strategy_tick() 直接中斷——後面排隊的
+    其他策略這輪全部被跳過、連 reconcile_after_manual_close／
+    reconcile_orphan_stop_orders 這種帳務核對都不會執行。這裡驗證：壞掉的
+    策略被隔離在自己身上（其他策略照常跑完、reconcile 仍然執行），不會拖垮
+    整輪。"""
+    broken = _open_long_state(strategy_id="breakout_long")
+    healthy = _open_long_state(strategy_id="breakout_short", held_qty=0, held_direction=None)
+    _armed["breakout_long"] = broken
+    _armed["breakout_short"] = healthy
+
+    healthy_ticked = []
+
+    def _fake_tick_one(state, svc, st):
+        if state.strategy_id == "breakout_long":
+            raise RuntimeError("模擬資料髒污導致的未預期例外")
+        healthy_ticked.append(state.strategy_id)
+
+    with patch.object(strategy_service.TradingService, "get") as mock_get, patch.object(
+        strategy_service, "_tick_one", side_effect=_fake_tick_one
+    ), patch.object(strategy_service, "reconcile_after_manual_close") as mock_reconcile, patch.object(
+        strategy_service, "reconcile_orphan_stop_orders"
+    ) as mock_reconcile_orphan:
+        mock_get.return_value.status.return_value = {"connected": True, "positions": []}
+        mock_reconcile.return_value = []
+        strategy_service.strategy_tick()
+
+    assert healthy_ticked == ["breakout_short"], "壞掉的策略不該讓排在它後面的健康策略被跳過"
+    assert "執行異常" in broken.last_action
+    mock_reconcile.assert_called_once()
+    mock_reconcile_orphan.assert_called_once()
+
+
 def test_contract_from_product_recognizes_real_tmf_month_codes():
     # 2026-08-21 修正：實際活著在用的商品碼是 "TM"+YYMM（例如 "TM2609"），
     # 原本只認 "TMF" 前綴會誤判成 TX（point_value 200，正確應該是 TMF 的 10）。
@@ -791,6 +827,96 @@ def test_place_oco_protection_for_state_long_orders_legs_by_value():
     assert call_kwargs["settlement_month"] == "202609"
     assert call_kwargs["new_close"] == "close"
     assert call_kwargs["order_price_type"] == 2
+    assert call_kwargs.get("long_action_flag") is True  # 實測驗證通過，正式開啟長效保護
+
+
+def test_place_oco_protection_queries_and_stores_long_action_key_when_enabled():
+    # 2026-10-07：長效單預設關閉，但功能要先驗證「打開之後真的會查、真的會存對」，
+    # 用 monkeypatch 打開開關來測，不代表這是現在的正式行為。
+    state = _open_long_state(product_code="TM2609", entry_price=20000.0)
+    svc = MagicMock()
+    svc.place_oco_order.return_value = _oco_success_response()
+    svc.query_stop_loss_report.return_value = {
+        "stop_loss_rows": [
+            {"smart_key": "99999999", "long_action_key": "LA_WRONG"},  # 不同智慧單號，不該被取用
+            {"smart_key": "26564233", "long_action_key": "LA000789"},
+        ]
+    }
+
+    with patch.object(strategy_service, "USE_LONG_ACTION_PROTECTION", True):
+        _place_oco_protection_for_state(state, svc)
+
+    call_kwargs = svc.place_oco_order.call_args.args[0]
+    assert call_kwargs["long_action_flag"] is True
+    svc.query_stop_loss_report.assert_called_once()
+    assert state.protection_order_long_action_key == "LA000789"
+
+
+def test_place_oco_protection_long_action_key_stays_none_when_query_has_no_match():
+    state = _open_long_state(product_code="TM2609", entry_price=20000.0)
+    svc = MagicMock()
+    svc.place_oco_order.return_value = _oco_success_response()
+    svc.query_stop_loss_report.return_value = {"stop_loss_rows": [{"smart_key": "不一樣", "long_action_key": "LA1"}]}
+
+    with patch.object(strategy_service, "USE_LONG_ACTION_PROTECTION", True):
+        _place_oco_protection_for_state(state, svc)
+
+    assert state.protection_order_long_action_key is None
+
+
+def test_place_oco_protection_long_action_key_ignores_zero_value():
+    # "0" 是非長效單的填法（見官方文件），就算查詢結果裡出現也不該被當成真的長效單號存下來。
+    state = _open_long_state(product_code="TM2609", entry_price=20000.0)
+    svc = MagicMock()
+    svc.place_oco_order.return_value = _oco_success_response()
+    svc.query_stop_loss_report.return_value = {"stop_loss_rows": [{"smart_key": "26564233", "long_action_key": "0"}]}
+
+    with patch.object(strategy_service, "USE_LONG_ACTION_PROTECTION", True):
+        _place_oco_protection_for_state(state, svc)
+
+    assert state.protection_order_long_action_key is None
+
+
+def test_place_oco_protection_survives_query_exception_without_losing_protection():
+    # 查詢長效單號失敗，不該影響已經掛成功的 OCO——smart_key 還是要記住，
+    # last_action 不該被誤導成「OCO 掛單失敗」（這是這次順手修掉的一個遺留 bug）。
+    state = _open_long_state(product_code="TM2609", entry_price=20000.0)
+    svc = MagicMock()
+    svc.place_oco_order.return_value = _oco_success_response()
+    svc.query_stop_loss_report.side_effect = RuntimeError("連線中斷")
+
+    with patch.object(strategy_service, "USE_LONG_ACTION_PROTECTION", True):
+        _place_oco_protection_for_state(state, svc)
+
+    assert state.protection_order_smart_key == "26564233"
+    assert state.protection_order_long_action_key is None
+    assert "掛單失敗" not in state.last_action
+
+
+def test_cancel_protection_order_passes_long_action_key_when_present():
+    state = _open_long_state(product_code="TM2609", protection_order_smart_key="26564233")
+    state.protection_order_long_action_key = "LA000789"
+    svc = MagicMock()
+    svc.cancel_stop_order.return_value = {"cancel_result": {"success": True}}
+
+    _cancel_protection_order_for_state(state, svc)
+
+    call_kwargs = svc.cancel_stop_order.call_args.args[0]
+    assert call_kwargs["long_action_key"] == "LA000789"
+    assert state.protection_order_long_action_key is None  # 撤單成功後清空
+
+
+def test_cancel_protection_order_passes_empty_string_when_no_long_action_key():
+    # 沒有長效單號（一般情況）時傳空字串，讓 trading_service 補預設值 "0"，
+    # 不要自己在這裡猜一個值。
+    state = _open_long_state(product_code="TM2609", protection_order_smart_key="26564233")
+    svc = MagicMock()
+    svc.cancel_stop_order.return_value = {"cancel_result": {"success": True}}
+
+    _cancel_protection_order_for_state(state, svc)
+
+    call_kwargs = svc.cancel_stop_order.call_args.args[0]
+    assert call_kwargs["long_action_key"] == ""
 
 
 def test_place_oco_protection_for_state_short_flips_leg_order():
@@ -905,17 +1031,53 @@ def test_cancel_protection_order_for_state_noop_when_nothing_tracked():
 
 
 def test_tick_one_skips_soft_stop_loss_when_broker_protection_order_exists(clean_armed):
-    # 有真正的 OCO 保護單頂著時，軟停損檢查要讓路，不要兩邊搶著平倉。
-    # 用 150 點跌幅：超過預設 stop_loss_points=100（若軟停損沒讓路會觸發），
-    # 但用正確的 TMF point_value=10 換算浮動損益只有 1,500 元，不會誤觸風控保險。
+    # 有真正的 OCO 保護單頂著時，在安全緩衝內軟停損檢查要讓路，讓券商 OCO 優先執行。
+    # 預設 stop_loss_points=100，跌 105 點（19895.0）在 10 點安全緩衝內（尚未穿價超過 110 點）。
     state = _open_long_state(product_code="TM2609", protection_order_smart_key="26564233")
     svc = MagicMock()
-    st = {"quote": {"last_price": 19850.0}}
+    st = {"quote": {"last_price": 19895.0}}
 
     _tick_one(state, svc, st)
 
     svc.place_order.assert_not_called()
     assert state.held_qty == 1  # 沒被軟停損平掉
+
+
+def test_tick_one_emergency_stop_when_price_deeply_breaches_stop_loss_with_broker_order(clean_armed):
+    # 2026-10-07 事故防護：即使記有券商 OCO 智慧單號，若現價已穿過停損超過安全緩衝（10 點），
+    # 研判券商智慧單未觸發或已跨盤失效，本地必須啟動「緊急硬穿價軟停損」市價平倉！
+    state = _open_long_state(product_code="TM2609", protection_order_smart_key="26564233")
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    svc.cancel_stop_order.return_value = {"cancel_result": {"success": True}}
+    # 預設 stop_loss_points=100，跌 115 點（19885.0）超過 100 + 10 = 110 點安全緩衝門檻
+    st = {"quote": {"last_price": 19885.0}}
+
+    _tick_one(state, svc, st)
+
+    svc.place_order.assert_called_once()
+    assert state.held_qty == 0
+    assert "緊急穿價停損" in state.stop_reason
+
+
+def test_tick_one_cancels_protection_order_before_sending_close_order(clean_armed):
+    # 2026-10-07 事故根因：2026-08-27 已經發生過一次同樣的 bug——分開送兩張平倉
+    # 委託，第二張因為第一張還佔著平倉額度被 [999] 拒單。強制平倉時若 OCO 保護單
+    # 還掛著，必須先撤單釋放額度，再送平倉單，順序顛倒會重蹈覆轍。
+    state = _open_long_state(product_code="TM2609", protection_order_smart_key="26564233")
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    svc.cancel_stop_order.return_value = {"cancel_result": {"success": True}}
+    st = {"quote": {"last_price": 19885.0}}  # 穿價超過安全緩衝，觸發緊急停損
+
+    _tick_one(state, svc, st)
+
+    svc.cancel_stop_order.assert_called_once()
+    svc.place_order.assert_called_once()
+    call_order = [call[0] for call in svc.mock_calls]
+    assert call_order.index("cancel_stop_order") < call_order.index("place_order"), (
+        "撤單必須先於平倉單送出，否則 OCO 還佔著平倉額度會讓平倉被 [999] 拒單"
+    )
 
 
 def test_tick_one_entry_places_oco_protection(clean_armed):
@@ -936,6 +1098,8 @@ def test_tick_one_entry_places_oco_protection(clean_armed):
         strategy_service,
         "_latest_closed_signal",
         return_value={"time": "2026-08-21T09:45:00", "direction": "long", "key": "k1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-08-21T09:45:00") + pd.Timedelta(minutes=5)
     ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
         strategy_service, "_signaled_frame", return_value=MagicMock()
     ):
@@ -943,6 +1107,9 @@ def test_tick_one_entry_places_oco_protection(clean_armed):
 
     assert state.held_qty == 1
     svc.place_oco_order.assert_called_once()
+    payload = svc.place_oco_order.call_args[0][0]
+    # 2026-10-07：長效單實測驗證通過，正式開啟長效保護（long_action_flag=True）。
+    assert payload.get("long_action_flag") is True
     assert state.protection_order_smart_key == "26564233"
 
 
@@ -964,6 +1131,8 @@ def test_tick_one_entry_skips_oco_when_disabled(clean_armed):
         strategy_service,
         "_latest_closed_signal",
         return_value={"time": "2026-08-21T09:45:00", "direction": "long", "key": "k1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-08-21T09:45:00") + pd.Timedelta(minutes=5)
     ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
         strategy_service, "_signaled_frame", return_value=MagicMock()
     ):
@@ -993,6 +1162,8 @@ def test_tick_one_reverse_signal_closes_position_by_default(clean_armed):
         strategy_service,
         "_latest_closed_signal",
         return_value={"time": "2026-08-21T09:45:00", "direction": "short", "key": "k1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-08-21T09:45:00") + pd.Timedelta(minutes=5)
     ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
         strategy_service, "_signaled_frame", return_value=MagicMock()
     ):
@@ -1015,6 +1186,8 @@ def test_tick_one_reverse_signal_skipped_when_disabled(clean_armed):
         strategy_service,
         "_latest_closed_signal",
         return_value={"time": "2026-08-21T09:45:00", "direction": "short", "key": "k1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-08-21T09:45:00") + pd.Timedelta(minutes=5)
     ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
         strategy_service, "_signaled_frame", return_value=MagicMock()
     ):
@@ -1045,6 +1218,8 @@ def test_tick_one_reverse_signal_flat_position_unaffected_by_toggle(clean_armed)
         strategy_service,
         "_latest_closed_signal",
         return_value={"time": "2026-08-21T09:45:00", "direction": "short", "key": "k1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-08-21T09:45:00") + pd.Timedelta(minutes=5)
     ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
         strategy_service, "_signaled_frame", return_value=MagicMock()
     ):
@@ -1090,6 +1265,8 @@ def test_tick_one_entry_falls_back_to_bar_close_when_quote_missing(clean_armed):
         strategy_service,
         "_latest_closed_signal",
         return_value={"time": "2026-08-21T09:45:00", "direction": "long", "key": "k1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-08-21T09:45:00") + pd.Timedelta(minutes=5)
     ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
         strategy_service, "_signaled_frame", return_value=MagicMock()
     ):
@@ -1131,6 +1308,8 @@ def test_tick_one_entry_records_estimated_trade_on_orphaned_fill(clean_armed):
             strategy_service,
             "_latest_closed_signal",
             return_value={"time": "2026-08-25T09:45:00", "direction": "long", "key": "k1"},
+        ), patch.object(
+            strategy_service, "_now", return_value=pd.Timestamp("2026-08-25T09:45:00") + pd.Timedelta(minutes=5)
         ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
             strategy_service, "_signaled_frame", return_value=MagicMock()
         ):
@@ -1500,8 +1679,14 @@ def test_tick_one_skips_entry_when_opposite_direction_sibling_holds_position(cle
 
     dummy_signal = {"key": "2026-09-08 01:00:00_long", "direction": "long", "close": 47500.0, "time": 1788213600}
     mock_df = pd.DataFrame({"close": [47500.0] * 70, "ma_fast": [47500.0] * 70, "ma_mid": [47400.0] * 70, "ma_slow": [47300.0] * 70})
+    # dummy_signal 的 "time" 是整數（單位是秒的 unix epoch），但 _tick_one 裡用
+    # pd.Timestamp(signal["time"]) 轉換時沒有指定 unit——這是 production code 的既有
+    # 行為（真正的 _latest_closed_signal 永遠回傳 ISO 字串，不會走到這個整數分支），
+    # 這裡 _now 刻意比照同一種（無 unit）解讀方式，避免測試誤判「訊號過期」。
+    fake_now = pd.Timestamp(dummy_signal["time"]) + pd.Timedelta(minutes=5)
 
     with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._now", return_value=fake_now), \
          patch("backend.strategy_service._load_bars", return_value=mock_df):
         st = {"quote": {"last_price": 47500.0}}
         _tick_one(state, mock_svc, st)
@@ -1516,6 +1701,7 @@ def test_tick_one_skips_entry_when_opposite_direction_sibling_holds_position(cle
     holder.held_qty = 0
     holder.held_direction = None
     with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._now", return_value=fake_now), \
          patch("backend.strategy_service._load_bars", return_value=mock_df):
         _tick_one(state, mock_svc, st)
 
@@ -1552,8 +1738,10 @@ def test_tick_one_discards_stale_quote_and_uses_bar_close_for_entry_price(clean_
 
     dummy_signal = {"key": "2026-09-11 18:00:00_long", "direction": "long", "close": 46390.0, "time": 1789120800}
     mock_df = pd.DataFrame({"close": [46390.0] * 70, "ma_fast": [46390.0] * 70, "ma_mid": [46300.0] * 70, "ma_slow": [46200.0] * 70})
+    fake_now = pd.Timestamp(dummy_signal["time"]) + pd.Timedelta(minutes=5)
 
     with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._now", return_value=fake_now), \
          patch("backend.strategy_service._load_bars", return_value=mock_df):
         st = {"quote": {"last_price": 46082.0}}  # 過期的舊報價，偏離現價 308 點
         _tick_one(state, mock_svc, st)
@@ -1643,8 +1831,10 @@ def test_full_session_switch_simulation_end_to_end(clean_armed):
 
     dummy_signal = {"key": "2026-09-11 18:00:00_long", "direction": "long", "close": 46390.0, "time": 1789120800}
     mock_df = pd.DataFrame({"close": [46390.0] * 70, "ma_fast": [46390.0] * 70, "ma_mid": [46300.0] * 70, "ma_slow": [46200.0] * 70})
+    fake_now = pd.Timestamp(dummy_signal["time"]) + pd.Timedelta(minutes=5)
 
     with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._now", return_value=fake_now), \
          patch("backend.strategy_service._load_bars", return_value=mock_df):
         _tick_one(state, mock_svc, st)
 
@@ -1731,6 +1921,220 @@ def test_load_bars_default_60min_behavior_unchanged(monkeypatch):
     assert calls == [60]
 
 
+# 2026-10-06 事故（見 backend/strategy_service.py 裡 _has_abnormal_intraday_gap
+# 上方的事故說明）：K 棒快取補齊前有缺口時，.shift(1) 比到的「上一根」其實是缺口
+# 前的舊資料，算出來的交叉是假訊號。以下驗證缺口偵測本身，以及 _tick_one 真的會
+# 因為偵測到缺口而不下單。
+def test_bar_session_key_groups_day_session_together():
+    assert strategy_service._bar_session_key(
+        pd.Timestamp("2026-10-06 09:45")
+    ) == strategy_service._bar_session_key(pd.Timestamp("2026-10-06 13:45"))
+
+
+def test_bar_session_key_treats_midnight_hours_as_previous_nights_session():
+    # 00:00~05:00 算進「前一天晚上開始」的夜盤，跟同一晚 23:00 算同一盤。
+    assert strategy_service._bar_session_key(
+        pd.Timestamp("2026-10-07 02:00")
+    ) == strategy_service._bar_session_key(pd.Timestamp("2026-10-06 23:00"))
+
+
+def test_has_abnormal_intraday_gap_true_for_same_session_missing_bars():
+    # 同一盤（日盤）內，10:45 -> 13:45 中間漏了 11:45/12:45 兩根，算異常缺口。
+    assert strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp("2026-10-06 10:45"), pd.Timestamp("2026-10-06 13:45"), 60
+    )
+
+
+def test_has_abnormal_intraday_gap_false_for_exact_interval():
+    # 正常相鄰一根，不算缺口。
+    assert not strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp("2026-10-06 10:45"), pd.Timestamp("2026-10-06 11:45"), 60
+    )
+
+
+def test_has_abnormal_intraday_gap_false_for_day_to_night_transition():
+    # 日盤收盤(13:45) 跳到當晚第一根夜盤K棒(16:00)，是正常換盤，不算異常。
+    assert not strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp("2026-10-06 13:45"), pd.Timestamp("2026-10-06 16:00"), 60
+    )
+
+
+def test_has_abnormal_intraday_gap_false_for_night_to_next_day_across_holiday():
+    # 跨假日：週五夜盤最後一根(05:00) 跳到下週一日盤第一根(09:45)，隔了好幾天，
+    # 但是換盤的正常跳躍，不算異常。
+    assert not strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp("2026-10-09 05:00"), pd.Timestamp("2026-10-12 09:45"), 60
+    )
+
+
+def test_has_abnormal_intraday_gap_true_for_day_to_night_skipping_first_bars():
+    """回歸測試（第一版的真實漏洞）：日盤收盤(13:45) 直接跳到夜盤第 6 根(21:00)，
+    不是夜盤第一根(16:00)，中間漏了 16:00/17:00/18:00/19:00/20:00 五根——第一版
+    的程式碼只檢查「盤別是否不同」，沒檢查「跳過去的是不是真的第一根」，會把這種
+    情況誤判成正常換盤而放行。現在要求 cur 必須恰好等於新盤第一根的收盤時間。"""
+    assert strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp("2026-10-06 13:45"), pd.Timestamp("2026-10-06 21:00"), 60
+    )
+
+
+def test_has_abnormal_intraday_gap_true_for_night_to_day_skipping_first_bar():
+    # 同理：夜盤收盤跳到日盤，但不是日盤第一根(09:45)，也算異常。
+    assert strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp("2026-10-06 05:00"), pd.Timestamp("2026-10-07 10:45"), 60
+    )
+
+
+def test_session_first_bar_time_generalizes_to_other_intervals():
+    """回歸測試：Gemini 提出的替代方案把換盤第一根時間寫死成 60 分K 的
+    16:00/09:45，套用到這個專案本來就有的 15 分K（death_cross 策略，見
+    _interval_minutes_for_strategy）會整個判斷錯誤，把每天的正常換盤都誤判成
+    異常缺口。這裡驗證 _session_first_bar_time 是用 interval_minutes 動態算，
+    15 分K 的換盤第一根本來就該是 09:00（日盤）/15:15（夜盤），不是 60 分K 的
+    09:45/16:00。"""
+    assert strategy_service._session_first_bar_time("day", 60) == dt_time(9, 45)
+    assert strategy_service._session_first_bar_time("night", 60) == dt_time(16, 0)
+    assert strategy_service._session_first_bar_time("day", 15) == dt_time(9, 0)
+    assert strategy_service._session_first_bar_time("night", 15) == dt_time(15, 15)
+    # 用 15 分K 的真實換盤邊界驗證：13:45→15:15 是 15 分K 夜盤第一根，不算異常；
+    # 13:45→16:00 對 15 分K 來說不是第一根（漏了 15:15~15:45 三根），算異常。
+    assert not strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp("2026-10-06 13:45"), pd.Timestamp("2026-10-06 15:15"), 15
+    )
+    assert strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp("2026-10-06 13:45"), pd.Timestamp("2026-10-06 16:00"), 15
+    )
+
+
+def test_has_abnormal_gap_in_recent_window_catches_gap_further_back():
+    """回歸測試（第一版的真實漏洞）：第一版只檢查「訊號用到的最後一對」，MA 卻是
+    20 根的滾動視窗，缺口只要落在視窗裡任何一段就會讓均線失真。這裡建一個 bars，
+    最後一對是正常的 60 分鐘間隔，但視窗再往前一點（gap_idx-1 再往前一步）有個同
+    一盤內的異常缺口，驗證 _has_abnormal_gap_in_recent_window 抓得到（單看最後一對
+    的舊版邏輯抓不到）。"""
+    index = [
+        pd.Timestamp("2026-10-06 09:45"),
+        pd.Timestamp("2026-10-06 10:45"),
+        pd.Timestamp("2026-10-06 13:45"),  # 跟上一根之間漏了 11:45/12:45，同盤內異常缺口
+        pd.Timestamp("2026-10-06 14:45"),
+        pd.Timestamp("2026-10-06 15:45"),  # 這一對（14:45→15:45）本身是正常的 60 分鐘間隔
+    ]
+    bars = pd.DataFrame({"close": range(len(index))}, index=pd.DatetimeIndex(index))
+    gap_idx = len(bars) - 2  # 指向 14:45 這一根
+    # 單看最後一對（13:45→14:45）的話是正常間隔，抓不到更前面 10:45→13:45 的缺口。
+    assert not strategy_service._has_abnormal_intraday_gap(
+        pd.Timestamp(bars.index[gap_idx - 1]), pd.Timestamp(bars.index[gap_idx]), 60
+    )
+    # 但整個視窗一起檢查，就能抓到。
+    assert strategy_service._has_abnormal_gap_in_recent_window(bars, gap_idx, window=4, interval_minutes=60)
+
+
+def _bars_with_gap_before_last_two_rows(*, abnormal_gap: bool) -> pd.DataFrame:
+    """建 62 根（= ma_slow(60)+2，滿足 _min_bars_required_for_strategy）的真實
+    DataFrame，缺口（或沒有缺口）刻意放在倒數第二、第三根之間——這正是
+    _latest_closed_signal 用來判斷訊號的那一對（見 _tick_one 裡的 gap_idx）。"""
+    warm_up = pd.date_range("2026-10-06 09:00", periods=60, freq="1min")
+    last_normal = warm_up[-1]
+    if abnormal_gap:
+        second_last = last_normal + pd.Timedelta(hours=3)  # 同一盤內異常跳躍
+    else:
+        second_last = last_normal + pd.Timedelta(minutes=60)  # 正常間隔
+    last = second_last + pd.Timedelta(minutes=60)
+    index = list(warm_up) + [second_last, last]
+    return pd.DataFrame({"close": range(len(index))}, index=pd.DatetimeIndex(index))
+
+
+def test_tick_one_skips_signal_when_bars_have_abnormal_gap(clean_armed):
+    """核心回歸測試：bars 倒數第二、三根之間有同一盤內的異常缺口時，就算
+    _latest_closed_signal 回報 long 訊號，_tick_one 也不該下單（可能是缺口造成的
+    假訊號），要先略過等下一輪缺口補齊。"""
+    state = _open_long_state(
+        product_code="TM2609", held_qty=0, held_direction=None, entry_price=0.0
+    )
+    state.last_signal_key = None
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    st = {"quote": {"last_price": 20000.0}}
+
+    bars = _bars_with_gap_before_last_two_rows(abnormal_gap=True)
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-10-06T10:00:00", "direction": "long", "key": "k1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-10-06T10:00:00") + pd.Timedelta(minutes=5)
+    ), patch.object(strategy_service, "_load_bars", return_value=bars):
+        _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 0
+    assert "缺口" in state.last_action
+
+
+def test_tick_one_still_trades_when_bars_have_no_abnormal_gap(clean_armed):
+    """對照組：同樣是真實 DataFrame（不是 MagicMock），但倒數第二、三根之間是正常
+    間隔、沒有缺口——不該被新加的缺口防呆擋下，訊號照常執行進場。"""
+    state = _open_long_state(
+        product_code="TM2609", held_qty=0, held_direction=None, entry_price=0.0
+    )
+    state.last_signal_key = None
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    svc.place_oco_order.return_value = _oco_success_response()
+    st = {"quote": {"last_price": 20000.0}}
+
+    bars = _bars_with_gap_before_last_two_rows(abnormal_gap=False)
+
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": "2026-10-06T10:00:00", "direction": "long", "key": "k1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-10-06T10:00:00") + pd.Timedelta(minutes=5)
+    ), patch.object(strategy_service, "_load_bars", return_value=bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    svc.place_order.assert_called_once()
+    assert state.held_qty == 1
+
+
+def test_tick_one_skips_stale_signal_and_marks_it_consumed(clean_armed):
+    """2026-10-07 加固（Gemini 提出的第二層防護）：就算缺口檢查都通過，訊號收盤
+    時間如果離現在已經超過 1.5 個週期（表示是好幾輪前就該處理、卻拖到現在才真正
+    算到的舊訊號），也不該追價下單——只標記為已消費，安靜略過。"""
+    state = _open_long_state(
+        product_code="TM2609", held_qty=0, held_direction=None, entry_price=0.0
+    )
+    state.last_signal_key = None
+    svc = MagicMock()
+    svc.place_order.return_value = {"order_result": {"success": True}}
+    st = {"quote": {"last_price": 20000.0}}
+
+    fake_bars = MagicMock()
+    fake_bars.empty = False
+    fake_bars.__len__.return_value = 100
+
+    stale_signal_time = "2026-10-06T10:00:00"
+    with patch.object(
+        strategy_service,
+        "_latest_closed_signal",
+        return_value={"time": stale_signal_time, "direction": "long", "key": "k1"},
+    ), patch.object(
+        # "現在" 設在訊號收盤之後 3 小時——遠超過 60 分鐘策略的 1.5 個週期門檻。
+        strategy_service, "_now", return_value=pd.Timestamp(stale_signal_time) + pd.Timedelta(hours=3)
+    ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
+        strategy_service, "_signaled_frame", return_value=MagicMock()
+    ):
+        _tick_one(state, svc, st)
+
+    svc.place_order.assert_not_called()
+    assert state.held_qty == 0
+    assert state.last_signal_key == "k1"  # 標記已消費，避免下一輪又重新評估同一個舊訊號
+    assert "過期" in state.last_action
+
+
 def _death_cross_short_state(**overrides) -> StrategyState:
     defaults = dict(
         strategy_id="death_cross_short",
@@ -1776,6 +2180,8 @@ def test_tick_one_death_cross_enters_short_via_signal(clean_armed):
         strategy_service,
         "_latest_closed_signal",
         return_value={"time": "2026-08-25T09:00:00", "direction": "short", "key": "dc-1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-08-25T09:00:00") + pd.Timedelta(minutes=5)
     ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
         strategy_service, "_signaled_frame", return_value=MagicMock()
     ):
@@ -1807,6 +2213,8 @@ def test_tick_one_death_cross_ignores_golden_cross_when_reverse_exit_disabled(cl
         strategy_service,
         "_latest_closed_signal",
         return_value={"time": "2026-08-25T09:15:00", "direction": "long", "key": "dc-golden-1"},
+    ), patch.object(
+        strategy_service, "_now", return_value=pd.Timestamp("2026-08-25T09:15:00") + pd.Timedelta(minutes=5)
     ), patch.object(strategy_service, "_load_bars", return_value=fake_bars), patch.object(
         strategy_service, "_signaled_frame", return_value=MagicMock()
     ):

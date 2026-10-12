@@ -18,6 +18,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
+from datetime import time as dt_time
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +59,82 @@ def _interval_minutes_for_strategy(strategy: str) -> int:
 def _min_bars_required_for_strategy(strategy: str) -> int:
     return DEFAULT_STRATEGY.ma_mid + 2 if strategy == "death_cross" else DEFAULT_STRATEGY.ma_slow + 2
 
+
+def _bar_session_key(ts: pd.Timestamp) -> tuple:
+    """判斷一根 K 棒收盤時間屬於哪個「盤」：日盤（08:45~13:45）或夜盤
+    （15:00~次日 05:00，跨日算同一盤）。只看時分，不受日期本身跨假日影響，
+    用來讓下面的缺口偵測可以放行「換盤」造成的正常大跳躍（例如 13:45→16:00、
+    或跨假日的 05:00→下個交易日 09:45），只抓「同一盤內漏了中間幾根」的異常缺口。"""
+    t = pd.Timestamp(ts).time()
+    if t <= dt_time(6, 0):
+        # 00:00~05:00 這段，算進「前一天晚上開始」的那個夜盤
+        return (pd.Timestamp(ts).normalize() - pd.Timedelta(days=1), "night")
+    if t < dt_time(15, 0):
+        return (pd.Timestamp(ts).normalize(), "day")
+    return (pd.Timestamp(ts).normalize(), "night")
+
+
+def _now() -> pd.Timestamp:
+    """牆上時鐘現在時間（台灣本地時間）——拉成獨立函式只是為了讓測試可以 patch 掉，
+    不用真的等現實時間流逝，見 _tick_one 裡的訊號時效性檢查。
+    錨定 TAIPEI_TZ，避免 GCP Windows VM 若 OS 預設為 UTC 時與 naive 台灣時間差 8 小時（見 gotchas 第 5 節）。"""
+    return pd.Timestamp.now(tz=TAIPEI_TZ).tz_localize(None)
+
+
+def _session_first_bar_time(session: str, interval_minutes: int) -> dt_time:
+    """某一盤第一根K棒的收盤時間：日盤 08:45 開盤、夜盤 15:00 開盤（跟
+    kline_engine.bar_close_time_from_ts 的 session_start 定義一致），第一根收盤
+    時間就是「開盤時間 + 一個週期」。刻意用 interval_minutes 動態算，不要寫死
+    60分K的 16:00/09:45——這個專案的 death_cross 策略用的是 15 分K，第一根夜盤
+    收盤應該是 15:15，寫死 60 分K的時間會把 15 分K 的換盤判斷全部搞錯。"""
+    start_minutes = (8 * 60 + 45) if session == "day" else (15 * 60)
+    total = (start_minutes + interval_minutes) % (24 * 60)
+    return dt_time(total // 60, total % 60)
+
+
+# 2026-10-06 實盤事故：客戶回報 TradingView 在 18:00 就該觸發的黃金交叉，實盤卻拖到
+# 22:00:03 才送單。事後查證：VM 當天 17:48~19:13 被手動 suspend/stop/start，後端
+# 20:20 才重新登入群益，使用者 21:53 才在儀表板手動武裝 breakout_long；而「真正」
+# 連續無缺的 60 分 K 在 18:00 那根就已經黃金交叉（5MA=50061.00 > 20MA=50050.20，
+# 跟 TradingView 數字完全吻合）。問題出在：後端剛連回群益、K 棒快取還沒完全補齊
+# 這段期間，_load_bars 回傳的 bars 序列中間可能缺了幾根（16:00~20:00 這幾根要等
+# 群益的歷史K棒查詢陸續回補，Shioaji 備援整晚查三天都是空資料，完全沒補上），
+# generate_breakout_signals 的 .shift(1) 是跟「資料序列裡的上一列」比，不是跟「真正
+# 的上一個小時」比——缺口還沒補齊時算出來的「交叉」，比較基準其實是缺口前的舊K棒，
+# 等於是被缺口「借位」出來的假訊號。
+#
+# 2026-10-07 修正（第一版的漏洞）：第一版只拿「換盤」當理由就放行，沒檢查跳過去的
+# 那一根是不是真的是新盤的第一根——這代表「日盤13:45直接跳到夜盤21:00」（中間漏了
+# 16:00~20:00 五根）會被第一版誤判成正常換盤而放行，完全沒攔到。現在換盤時額外要求
+# cur_ts 必須「恰好」等於新盤第一根的收盤時間，不是的話就是漏了好幾根，判定異常。
+def _has_abnormal_intraday_gap(prev_ts: pd.Timestamp, cur_ts: pd.Timestamp, interval_minutes: int) -> bool:
+    prev_key = _bar_session_key(prev_ts)
+    cur_key = _bar_session_key(cur_ts)
+    if prev_key == cur_key:
+        gap_minutes = (pd.Timestamp(cur_ts) - pd.Timestamp(prev_ts)).total_seconds() / 60.0
+        return gap_minutes > interval_minutes * 1.5
+    # 換盤：cur 必須是新盤的第一根，否則代表進新盤後還漏了好幾根才接上。
+    expected_first = _session_first_bar_time(cur_key[1], interval_minutes)
+    return pd.Timestamp(cur_ts).time() != expected_first
+
+
+# 2026-10-07 修正（第一版的漏洞）：第一版只檢查「訊號用到的那一對K棒」，但 MA5/MA20
+# 是滾動視窗算出來的，缺口只要落在視窗裡任何一段，均線一樣會失真，不是只有「最後一對」
+# 要連續才算數。這裡把檢查範圍擴大成「訊號這根往前數 window 根」（window 用
+# _min_bars_required_for_strategy 對齊目前策略實際用到的 MA 根數），逐一檢查每一對
+# 相鄰K棒，而不是只看最後一對。
+def _has_abnormal_gap_in_recent_window(
+    bars: pd.DataFrame, gap_idx: int, window: int, interval_minutes: int
+) -> bool:
+    start = max(1, gap_idx - window + 1)
+    for i in range(start, gap_idx + 1):
+        if _has_abnormal_intraday_gap(
+            pd.Timestamp(bars.index[i - 1]), pd.Timestamp(bars.index[i]), interval_minutes
+        ):
+            return True
+    return False
+
+
 # 連續下單失敗達此次數就自動停止該策略（見 _tick_one）。
 MAX_CONSECUTIVE_FAILURES = 3
 
@@ -83,6 +160,15 @@ RECONCILE_ENTRY_GRACE_SECONDS = 30.0
 # 這裡加一道防呆：報價跟最新K棒收盤價（可靠來源，見上方說明）偏離超過這個
 # 點數，就不信任報價，強制走後面的備援鏈（等同報價缺失時的處理）。
 QUOTE_STALENESS_POINTS = 50.0
+
+# 2026-10-07 加固：券商 OCO 異常未觸發或失效時的「緊急硬穿價軟停損」緩衝點數。
+# 若市價穿過停損點位超過此緩衝點數，研判券商智慧單未如期運作，強制啟動市價平倉備援。
+EMERGENCY_STOP_BUFFER_POINTS = float(os.getenv("STRATEGY_EMERGENCY_STOP_BUFFER_POINTS", "10.0"))
+
+# 2026-10-07：長效單（跨盤跨日不失效的 OCO）已透過 scripts/verify_long_action_oco.py
+# 在群益正式環境實測驗證成功（送單成功進入洗價池、查得長效單序號、成功撤單完畢）。
+# 正式預設開啟（True），亦可透過環境變數 USE_LONG_ACTION_PROTECTION 控制。
+USE_LONG_ACTION_PROTECTION = os.getenv("USE_LONG_ACTION_PROTECTION", "1").strip().lower() in {"1", "true", "yes"}
 
 
 def _env_float(name: str, default: float) -> float:
@@ -148,6 +234,10 @@ class StrategyState:
     protection_order_smart_key: str | None = None
     protection_order_seq_no: str = ""
     protection_order_order_no: str = ""
+    # 2026-10-07：長效單撤單要用「長效單序號」（跟智慧單號是不同欄位，見官方文件
+    # 《8.下單-國內期選智慧單》），只有在下單時明確開啟長效單（long_action_flag=True）
+    # 才會去查、才會有值；非長效單維持 None，撤單時照舊傳空字串。
+    protection_order_long_action_key: str | None = None
     last_signal_key: str | None = None
     last_checked_at: float | None = None
     last_signal: dict[str, Any] | None = None
@@ -379,22 +469,30 @@ def _place_oco_protection_for_state(
     high_trigger = max(stop_trigger, take_profit_trigger)
     low_trigger = min(stop_trigger, take_profit_trigger)
 
+    # 2026-10-07：長效單（nLongActionFlag=1）能力已在 broker 層加上，且已透過
+    # scripts/verify_long_action_oco.py 在群益正式環境實測驗證完整成功（送單成功進入洗價池、
+    # 成功透過 GetStopLossReport 查得長效單序號、成功撤單完畢）。
+    # 目前預設開啟（USE_LONG_ACTION_PROTECTION 預設為 True）。撤單時若長效單序號尚未查得，
+    # 會在每輪 tick 自動補查（見 _refresh_long_action_key_for_state）。
+    use_long_action = USE_LONG_ACTION_PROTECTION
+
     try:
-        result = svc.place_oco_order(
-            {
-                "stock_no": state.product_code,
-                "settlement_month": settlement_month,
-                "qty": state.held_qty,
-                "side": side,
-                "trigger_price": f"{high_trigger:.0f}",
-                "price": f"{high_trigger:.0f}",
-                "side2": side,
-                "trigger_price2": f"{low_trigger:.0f}",
-                "price2": f"{low_trigger:.0f}",
-                "order_price_type": 2,
-                "new_close": "close",
-            }
-        )
+        payload = {
+            "stock_no": state.product_code,
+            "settlement_month": settlement_month,
+            "qty": state.held_qty,
+            "side": side,
+            "trigger_price": f"{high_trigger:.0f}",
+            "price": f"{high_trigger:.0f}",
+            "side2": side,
+            "trigger_price2": f"{low_trigger:.0f}",
+            "price2": f"{low_trigger:.0f}",
+            "order_price_type": 2,
+            "new_close": "close",
+        }
+        if use_long_action:
+            payload["long_action_flag"] = True
+        result = svc.place_oco_order(payload)
         order_result = result.get("order_result") or {}
         if not order_result.get("success"):
             state.last_action += f"（OCO 停損停利智慧單掛單失敗：{order_result.get('message') or '未知原因'}，改用軟停損停利保護）"
@@ -406,14 +504,53 @@ def _place_oco_protection_for_state(
             state.protection_order_order_no = parts[2]
             state.protection_order_smart_key = parts[3]
             state.protection_order_seq_no = parts[4]
-            state.last_action += "（已掛真實 OCO 停損停利智慧單）"
+            state.protection_order_long_action_key = None
+            if use_long_action:
+                state.last_action += "（已掛真實 OCO 長效停損停利智慧單，查詢長效單號中）"
+                _refresh_long_action_key_for_state(state, svc)
+            else:
+                state.last_action += "（已掛真實 OCO 停損停利智慧單）"
         else:
             # 送單回報格式不如預期，寧可當作沒有真正保護、退回軟停損停利，也
             # 不要記一個可能解析錯誤的智慧單號，之後撤單撤錯東西。
             state.last_action += "（OCO 送單成功但回應格式無法解析，改用軟停損停利保護，請人工核對）"
     except Exception as exc:  # noqa: BLE001
         logger.warning("strategy_tick[%s] OCO 停損停利智慧單掛單失敗: %s", state.strategy_id, exc)
-        state.last_action += f"（OCO 停損停利智慧單掛單例外：{exc}，改用軟停損停利保護）"
+
+
+def _refresh_long_action_key_for_state(state: StrategyState, svc: TradingService) -> None:
+    """
+    長效單送單成功的回報裡沒有長效單序號——官方文件《8.下單-國內期選智慧單》確認過，
+    送單成功只拿得到智慧單號、13碼序號、書號，長效單序號要另外呼叫 GetStopLossReport
+    查詢，從查詢結果裡用智慧單號比對出同一筆，再讀「長效單號」欄位（欄位位置見
+    backend/capital_parse.py 的 _STOP_LOSS_REPORT_*_TAIL_FIELDS）。
+
+    查不到、或查到的那一筆長效單號是 "0"（非長效單的預設值，理論上不該出現在這裡，
+    但防呆），就維持 None，撤單時照舊傳空字串——寧可保守地當作沒有長效單號，也不要
+    存一個可能查錯、對應到別筆單的號碼，那樣撤單會更危險。
+    """
+    if not state.protection_order_smart_key:
+        return
+    try:
+        from .capital_parse import parse_stop_loss_report_raw
+    except ImportError:
+        from capital_parse import parse_stop_loss_report_raw  # type: ignore
+
+    try:
+        result = svc.query_stop_loss_report(kind="OCO")
+        rows = result.get("stop_loss_rows") or parse_stop_loss_report_raw(result.get("stop_loss_raw") or "")
+        for row in rows:
+            if row.get("smart_key") != state.protection_order_smart_key:
+                continue
+            key = row.get("long_action_key")
+            if key and key != "0":
+                state.protection_order_long_action_key = key
+            break
+    except Exception as exc:  # noqa: BLE001
+        # 查詢本身失敗不影響已經掛成功的 OCO 保護單，只是長效單號沒查到、
+        # 維持 None，撤單時照舊傳空字串，不要覆寫 state.last_action 誤導成
+        # 「OCO 掛單失敗」——OCO 本身是掛成功的，失敗的只是這次事後查詢。
+        logger.warning("strategy_tick[%s] 查詢長效單序號失敗: %s", state.strategy_id, exc)
 
 
 def _cancel_protection_order_for_state(state: StrategyState, svc: TradingService) -> None:
@@ -431,6 +568,9 @@ def _cancel_protection_order_for_state(state: StrategyState, svc: TradingService
                 "smart_key": state.protection_order_smart_key,
                 "seq_no": state.protection_order_seq_no,
                 "order_no": state.protection_order_order_no,
+                # 2026-10-07：有查到長效單號才帶，查不到就不帶（trading_service 預設
+                # 會填 "0"，等同非長效單的填法——不要自己猜一個號碼送出去）。
+                "long_action_key": state.protection_order_long_action_key or "",
                 "trade_kind": 3,  # OCO，見 SmartOrderKind.OCO
             }
         )
@@ -439,6 +579,7 @@ def _cancel_protection_order_for_state(state: StrategyState, svc: TradingService
             state.protection_order_smart_key = None
             state.protection_order_seq_no = ""
             state.protection_order_order_no = ""
+            state.protection_order_long_action_key = None
     except Exception as exc:  # noqa: BLE001
         logger.warning("strategy_tick[%s] OCO 保護單撤單失敗: %s", state.strategy_id, exc)
 
@@ -1078,6 +1219,16 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
     if quote_product_code and _contract_from_product(quote_product_code) != contract:
         quote = None
 
+    # 2026-10-07：長效單序號非同步補查。若已掛真實 OCO 長效保護單，但長效單序號尚未查得
+    # （例如剛進場下單時券商中台尚未寫入資料庫），在每輪 tick 順便嘗試補查，確保平倉時能精確撤單
+    if (
+        USE_LONG_ACTION_PROTECTION
+        and state.held_qty > 0
+        and state.protection_order_smart_key
+        and not state.protection_order_long_action_key
+    ):
+        _refresh_long_action_key_for_state(state, svc)
+
     # 持倉點數停損停利：2026-08-07 改成純點數門檻（進場價 ±點數）為主要判斷依據。
     # 2026-08-07 再加回 NTD/%浮動損益門檻，當作「額外保險」：正常情況點數停損會先
     # 觸發，但如果跳空、或單口損失金額換算後比 NTD 門檻寬鬆（例如多口交易），
@@ -1110,9 +1261,15 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                 if state.held_direction == "long"
                 else state.entry_price - current_price
             )
-            if state.soft_stop_enabled and points <= -abs(state.stop_loss_points) and state.protection_order_smart_key is None:
-                # Layer 2 (軟停損備援)：券商端 OCO 未生效時頂著
-                trigger_kind = "stop_loss"
+            if state.soft_stop_enabled and points <= -abs(state.stop_loss_points):
+                # Layer 2 (軟停損備援)：
+                # 1) 若券商端無 OCO 保護單 (protection_order_smart_key is None)，由軟停損正常頂著
+                # 2) 若已掛券商端 OCO，但現價已穿過停損點位超過安全緩衝（預設 10 點），
+                #    代表券商 OCO 異常未觸發、跨盤失效、或主機斷線，此時強制啟動「緊急硬穿價軟停損」
+                if state.protection_order_smart_key is None:
+                    trigger_kind = "stop_loss"
+                elif points <= -abs(state.stop_loss_points) - EMERGENCY_STOP_BUFFER_POINTS:
+                    trigger_kind = "emergency_stop"
             elif state.soft_stop_enabled and points >= abs(state.take_profit_points) and state.protection_order_smart_key is None:
                 # Layer 2 (軟停利備援)
                 trigger_kind = "take_profit"
@@ -1123,16 +1280,27 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
         if trigger_kind is not None:
             reason_label = {
                 "stop_loss": "停損",
+                "emergency_stop": "緊急穿價停損",
                 "take_profit": "停利",
                 "risk_stop": "風控保險",
             }[trigger_kind]
             if trigger_kind == "risk_stop":
                 threshold_note = f"上限 -{state.max_loss_ntd:,.0f} 元 / -{state.max_loss_pct * 100:.0f}%"
+            elif trigger_kind == "emergency_stop":
+                threshold_note = f"門檻 {state.stop_loss_points:.0f} 點（穿價超額逾 {EMERGENCY_STOP_BUFFER_POINTS:.0f} 點，券商智慧單未觸發備援）"
             else:
                 points_value = state.stop_loss_points if trigger_kind == "stop_loss" else state.take_profit_points
                 threshold_note = f"門檻 {points_value:.0f} 點"
             close_side = "sell" if state.held_direction == "long" else "buy"
             try:
+                # 2026-10-07 修正：先撤 OCO 保護單、再送平倉單（順序以前是反的）。
+                # 2026-08-27 實盤事故的根因就是這個順序：平倉額度一口只能被一張
+                # 委託認領，如果 OCO 其中一腿已經觸發、還掛在券商那邊佔著平倉額
+                # 度，這時候才送市價平倉單，券商會直接回 [999] 勾選平倉而留倉
+                # 部位不足，平倉失敗、也就永遠進不到撤單那一步，陷入死鎖。
+                # _cancel_protection_order_for_state 本身是安全的 no-op（沒有
+                # 追蹤中的保護單、或撤單本身失敗都只記警告，不會中斷流程）。
+                _cancel_protection_order_for_state(state, svc)
                 result = svc.place_order(
                     {
                         "product_code": state.product_code,
@@ -1163,7 +1331,6 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     state.held_qty = 0
                     state.held_direction = None
                     state.entry_price = 0.0
-                    _cancel_protection_order_for_state(state, svc)
                 elif _check_orphaned_fill(
                     result.get("state") or {},
                     expected_side=("short" if close_side == "sell" else "long"),
@@ -1177,11 +1344,10 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     state.held_qty = 0
                     state.held_direction = None
                     state.entry_price = 0.0
-                    # 這裡也順手嘗試撤 OCO 保護單：如果是它自己觸發造成這筆
-                    # 成交，撤單會因為單已經不存在而失敗，無妨（見
-                    # reconcile_orphan_stop_orders 的說明，不會造成安全風險，只是
-                    # 浪費一次 API 呼叫）；如果是走別的路徑平倉、還掛著，這裡就能
-                    # 正確把孤兒單清掉。
+                    # 這裡再補一次撤單當保險：上面 try 一開頭已經撤過一次，通常
+                    # 這裡是 no-op；但如果那次撤單剛好失敗、而這筆成交其實是 OCO
+                    # 自己觸發造成的，這裡再試一次還是能把孤兒單清掉（撤一張已經
+                    # 不存在的單會失敗，無妨，見 reconcile_orphan_stop_orders）。
                     _cancel_protection_order_for_state(state, svc)
                     _stop_with_reason(
                         state,
@@ -1220,11 +1386,52 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
         state.last_action = "K 棒資料不足，略過本輪"
         return
 
+    # 見上面 _has_abnormal_intraday_gap 的 2026-10-06 事故說明：訊號判斷用的是
+    # bars 倒數第二、第三根（_latest_closed_signal 的 idx 跟它前一根），這兩根
+    # 之間如果有同一盤內的異常缺口，代表 K 棒快取還沒補齊，先不判斷，等下一輪。
+    # 只在 bars 是真正的 DataFrame（有真實時間索引）時才檢查——測試裡常用
+    # MagicMock 頂替 bars 跳過真實 K 棒計算，這種情況下沒有索引可檢查，略過即可。
+    if isinstance(bars, pd.DataFrame) and len(bars) >= 3:
+        gap_idx = len(bars) - 2
+        # window 對齊目前策略實際用到的 MA 根數（_min_bars_required_for_strategy
+        # 本身就是 ma_mid/ma_slow + 2），檢查整個視窗範圍，不是只看最後一對。
+        window = _min_bars_required_for_strategy(state.strategy) - 2
+        try:
+            has_gap = _has_abnormal_gap_in_recent_window(
+                bars, gap_idx, window, _interval_minutes_for_strategy(state.strategy)
+            )
+        except Exception as exc:  # noqa: BLE001
+            # strategy_tick() 沒有把每個策略的 _tick_one 包 try/except（見該函式），
+            # 這裡任何例外（例如索引出現非預期型別的時間戳）會讓整輪 strategy_tick
+            # 直接中斷，連這次事故真正要保護的其他策略、以及後面的
+            # reconcile_after_manual_close／reconcile_orphan_stop_orders 都不會跑到——
+            # 這個新加的防呆本身絕對不能變成新的全面停擺風險，寧可這次跳過檢查、
+            # 退回沒有這層防護的舊行為，也不要讓整個 tick 迴圈掛掉。
+            logger.warning("strategy_tick[%s] 缺口檢查本身發生例外，略過此檢查: %s", state.strategy_id, exc)
+            has_gap = False
+        if has_gap:
+            state.last_action = "K 棒資料有缺口（疑似尚未補齊），本輪暫不判斷訊號"
+            return
+
     signaled = _signaled_frame(state.strategy, bars)
     signal = _latest_closed_signal(signaled)
     state.last_signal = signal
     if not signal:
         state.last_action = "本輪無新訊號"
+        return
+
+    # 2026-10-07 加固：就算上面的缺口檢查都通過，訊號本身如果是「很久以前收盤的那根」
+    # （例如因為某種延遲，好幾輪之後才真正處理到這根），也不該追價——只追「剛收盤」
+    # 的訊號，過期的訊號視為已消費，安靜略過，不送單。
+    try:
+        signal_bar_time = pd.Timestamp(signal["time"])
+        signal_age_minutes = (_now() - signal_bar_time).total_seconds() / 60.0
+    except (KeyError, ValueError, TypeError):
+        signal_age_minutes = 0.0
+    interval_minutes = _interval_minutes_for_strategy(state.strategy)
+    if signal_age_minutes > interval_minutes * 1.5:
+        state.last_signal_key = signal["key"]
+        state.last_action = f"訊號已過期（{signal['time']}），視為已消費，不追價"
         return
 
     if signal["key"] == state.last_signal_key:
@@ -1458,7 +1665,11 @@ def strategy_tick() -> dict[str, Any]:
         return {}
 
     for state in list(_armed.values()):
-        _tick_one(state, svc, st)
+        try:
+            _tick_one(state, svc, st)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("strategy_tick[%s] 執行例外，隔離該策略避免影響其他策略與對帳: %s", state.strategy_id, exc)
+            state.last_action = f"本輪執行異常: {exc}"
 
     # 2026-08-21：真正的 STP/MIT 智慧單是在券商端觸發的，我們的軟體不會收到
     # 任何主動通知，held_qty 不會自動歸零。每輪都主動核對一次broker實際部位，
