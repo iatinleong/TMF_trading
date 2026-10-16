@@ -197,6 +197,33 @@ try {
     }
     Start-ScheduledTask -TaskName $taskName
 
+    # 6) 把 Windows Update 的安裝+重開機時間鎖在每週六下午（交易時段外的安全空檔）
+    #
+    # 2026-10-15 實盤事故：VM 在凌晨 03:36（台指期夜盤 15:00~05:00 期間，當下
+    # 還在交易時段內）被 Windows 累積更新強制重開機兩次，整台機器斷線近 5 分鐘，
+    # 真實查證過（GCE 序列埠開機日誌 + 10/13 正好是當月 Patch Tuesday）。重開機
+    # 本身已經靠上面的排程任務修正自動恢復，但「盤中被強制重開機」這個根因還是
+    # 該消除，不要只靠恢復得快。台指期週六凌晨05:00（週五夜盤）收盤後，整個週六
+    # 都沒有盤、要到下週一08:45才開盤，鎖在週六14:00前後留了超過一天的緩衝，
+    # 完全不影響任何交易時段。
+    #
+    # 故意不整個關掉 Windows Update（NoAutoUpdate）——這台機器對外開著 RDP、
+    # 長期處理真錢交易，永久不打安全更新的風險比「重開機時間不可控」更高。這裡
+    # 只控制「安裝+重開機」的排程，照常背景檢查/下載更新，不影響安全性。
+    $wuKey = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
+    if (-not (Test-Path $wuKey)) { New-Item -Path $wuKey -Force | Out-Null }
+    Set-ItemProperty -Path $wuKey -Name "AUOptions" -Value 4 -Type DWord                      # 自動下載，排程時間才安裝
+    Set-ItemProperty -Path $wuKey -Name "ScheduledInstallDay" -Value 7 -Type DWord             # 7 = 星期六
+    Set-ItemProperty -Path $wuKey -Name "ScheduledInstallTime" -Value 14 -Type DWord           # 14:00（24小時制）
+    Set-ItemProperty -Path $wuKey -Name "NoAutoRebootWithLoggedOnUsers" -Value 1 -Type DWord   # 有人登入時不強迫立刻重開
+    Set-ItemProperty -Path $wuKey -Name "AlwaysAutoRebootAtScheduledTime" -Value 0 -Type DWord # 不在排程外的維護時段額外重開
+    try {
+        Start-Process -FilePath "gpupdate.exe" -ArgumentList "/force" -Wait -WindowStyle Hidden -ErrorAction Stop
+    } catch {
+        Log "WARNING: gpupdate /force 失敗（不影響已寫入的登錄機碼，下次開機原生排程器重新讀取設定時仍會生效）: $_"
+    }
+    Log "Windows Update 已鎖定：僅於每週六 14:00 安裝並重開機，交易時段內不會被強制重啟"
+
     # 2026-09-03：移除了 Cloudflare quick tunnel 自動註冊（見 git 歷史）。quick tunnel
     # 網址每 3 天左右會被 Cloudflare 邊緣節點強制斷線、且沒有正常運作保證，改用 GCP
     # 靜態外部 IP + 防火牆規則對外連線（見 docs/live_trading_flow.md），對外連線網址

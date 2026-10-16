@@ -93,6 +93,18 @@ Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=
 Filename: "{sys}\regsvr32.exe"; \
   Parameters: "/u /s ""{app}\CapitalAPI_2.13.58_PythonExample\CapitalAPI_2.13.58_PythonExample\PythonExampleV2\Quote\Quote\SKCOM.dll"""; \
   Flags: runhidden 64bit; RunOnceId: "TmfUnregisterSkcom"
+; 2026-10-16：只刪我們自己寫入的 5 個值，不刪整個 AU 登錄機碼——萬一這台機器本來
+; 就有別的 Windows Update 原則設定在同一個機碼下，整把刪掉會連那些也清掉。
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"" /v AUOptions /f"; \
+  Flags: runhidden 64bit; RunOnceId: "TmfRemoveWuAUOptions"
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"" /v ScheduledInstallDay /f"; \
+  Flags: runhidden 64bit; RunOnceId: "TmfRemoveWuInstallDay"
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"" /v ScheduledInstallTime /f"; \
+  Flags: runhidden 64bit; RunOnceId: "TmfRemoveWuInstallTime"
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"" /v NoAutoRebootWithLoggedOnUsers /f"; \
+  Flags: runhidden 64bit; RunOnceId: "TmfRemoveWuNoReboot"
+Filename: "{sys}\reg.exe"; Parameters: "delete ""HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"" /v AlwaysAutoRebootAtScheduledTime /f"; \
+  Flags: runhidden 64bit; RunOnceId: "TmfRemoveWuAlwaysReboot"
 
 [Icons]
 Name: "{group}\開啟 {#AppName} 儀表板"; Filename: "http://127.0.0.1:{#AppPort}"
