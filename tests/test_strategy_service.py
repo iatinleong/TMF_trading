@@ -903,6 +903,23 @@ def test_place_oco_protection_survives_query_exception_without_losing_protection
     assert "掛單失敗" not in state.last_action
 
 
+# 2026-10-16 code review 抓到的真實漏洞：我自己在這次對話中途把這行誤刪了——
+# 跟上面那個「查詢長效單號失敗不該覆寫 last_action」的理由不一樣，這裡是送單
+# 本身（svc.place_oco_order 或後續解析）丟例外，根本不知道 OCO 到底掛成功了
+# 沒有，必須留下可見訊號，不能只靜默 log。
+def test_place_oco_protection_exception_during_placement_updates_last_action():
+    state = _open_long_state(product_code="TM2609", entry_price=20000.0)
+    state.last_action = "測試進場"
+    svc = MagicMock()
+    svc.place_oco_order.side_effect = RuntimeError("逾時")
+
+    _place_oco_protection_for_state(state, svc)
+
+    assert state.protection_order_smart_key is None
+    assert "掛單例外" in state.last_action
+    assert "逾時" in state.last_action
+
+
 def test_cancel_protection_order_passes_long_action_key_when_present():
     state = _open_long_state(product_code="TM2609", protection_order_smart_key="26564233")
     state.protection_order_long_action_key = "LA000789"
@@ -1624,6 +1641,30 @@ def test_stop_strategy_with_open_position_still_removes_it_from_snapshot(clean_a
     assert strategy_service._armed["breakout_long"].stopped is True  # 還在監控平倉
     rows = json.loads(strategy_service._ARMED_SNAPSHOT_PATH.read_text(encoding="utf-8"))
     assert rows == []
+
+
+# 2026-10-16 code review 抓到的真實漏洞：_stop_with_reason 另外還有 8 個既有呼叫點
+# （強制停損/停利、孤兒成交金額不符、loss_limit_hit、MAX_CONSECUTIVE_FAILURES 等），
+# 原本只有兩個新加的孤兒倉位防呆呼叫點會手動補呼叫 _persist_armed_snapshot()，這些
+# 既有的安全性自動停止完全不會寫回快照——策略因為真正風控理由被自動停止後，重啟
+# 會照舊的快照把它重新開起來，悄悄撤銷掉這個安全停止。
+def test_stop_with_reason_persists_snapshot_for_any_internal_auto_stop(clean_armed):
+    """直接驗證 _stop_with_reason 這個共用函式本身會寫回快照——不用一一列舉它
+    10 個呼叫點，因為現在全部呼叫點都共用同一個函式，驗證這個函式本身就夠了。"""
+    from backend.strategy_service import start_strategy
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
+        start_strategy("breakout_long", "TM2609")
+    assert json.loads(strategy_service._ARMED_SNAPSHOT_PATH.read_text(encoding="utf-8")) != []
+
+    # 模擬任何一個內部安全性自動停止呼叫點（例如 MAX_CONSECUTIVE_FAILURES）：
+    # 直接呼叫 _stop_with_reason，不透過使用者手動按的 stop_strategy()。
+    strategy_service._stop_with_reason(
+        strategy_service._armed["breakout_long"], "模擬風控自動停止（連續拒單過多次）"
+    )
+
+    rows = json.loads(strategy_service._ARMED_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    assert rows == [], "策略被自動停止後，快照裡不該還留著它，否則重啟會悄悄把它恢復"
 
 
 def test_resume_armed_strategies_from_snapshot_rearms_saved_config(clean_armed):

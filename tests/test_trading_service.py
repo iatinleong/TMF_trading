@@ -1,6 +1,12 @@
+import inspect
 from datetime import date, timedelta
 
-from backend.trading_service import compute_current_tmf_code, days_since_tmf_rollover, third_wednesday
+from backend.trading_service import (
+    TradingService,
+    compute_current_tmf_code,
+    days_since_tmf_rollover,
+    third_wednesday,
+)
 
 
 def test_third_wednesday_august_2026():
@@ -54,3 +60,13 @@ def test_days_since_tmf_rollover_rolls_across_year_boundary():
     assert days_since_tmf_rollover(rollover_day) == 0
     ten_days_later = rollover_day + timedelta(days=10)
     assert days_since_tmf_rollover(ten_days_later) == 10
+
+
+# 2026-10-16 code review 抓到的真實漏洞：query_stop_loss_report() 的 kind 預設值
+# 曾經一度被改成 "OCO"（當時誤以為這個函式只有長效單序號查詢在用），但
+# /api/order/stop/report 這個既有端點（live_service.query_stop_loss_report）一直
+# 都不帶 kind、吃這裡的預設值——改掉等於讓這個名字叫「stop/report」的端點悄悄
+# 開始查 OCO 資料。直接用 inspect 鎖住預設值，之後再有人想改，測試會先擋下來。
+def test_query_stop_loss_report_defaults_to_stp_kind():
+    default_kind = inspect.signature(TradingService.query_stop_loss_report).parameters["kind"].default
+    assert default_kind == "STP"

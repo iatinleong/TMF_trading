@@ -468,7 +468,10 @@ def cancel_stop_order(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def query_stop_loss_report(account: str | None = None) -> dict[str, Any]:
-    return _svc().query_stop_loss_report(account)
+    # 2026-10-16：/api/order/stop/report 這個端點名稱本來就是查 STP 停損單，
+    # 明確傳 kind="STP"，不要依賴 TradingService.query_stop_loss_report() 的
+    # 預設值——那個預設值之前曾經被改成過 "OCO"，當時沒注意到這裡會受影響。
+    return _svc().query_stop_loss_report(account, kind="STP")
 
 
 def close_position(payload: dict[str, Any]) -> dict[str, Any]:

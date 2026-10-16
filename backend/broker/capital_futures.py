@@ -1147,9 +1147,18 @@ class CapitalFuturesBroker:
 
         2026-10-07：每次查詢前清空 self.live.stop_loss_raw，確保這次查詢只累積
         這次查到的委託，不會跟上一次查詢的舊資料混在一起（見 OnStopLossReport 的累加邏輯）。
+
+        2026-10-16 code review 抓到的漏洞：上面那次只清了 stop_loss_raw，沒有清
+        _stop_loss_report_buffer——如果上一次查詢的「##」終止符還沒送達（例如券商
+        回應延遲），這次新查詢的列會被 _parse_stop_loss_report 的 .extend() 接到
+        上一次沒清掉的舊緩衝區後面，等終止符終於送達時，新舊兩次查詢的資料會被
+        一起提交，污染 smart_key 比對（strategy_service._refresh_long_action_key_
+        for_state 現在每一輪 tick 都會呼叫這個查詢，不像舊的 _open_interest_buffer
+        用法那樣有節流間隔，更容易在上一次還沒收完終止符時就發出下一次查詢）。
         """
         self._require_ready()
         self.live.stop_loss_raw = ""
+        self._stop_loss_report_buffer.clear()
         query_date = date or datetime.now().strftime("%Y%m%d")
         return int(
             self.order.GetStopLossReport(

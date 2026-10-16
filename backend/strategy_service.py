@@ -166,6 +166,11 @@ QUOTE_STALENESS_POINTS = 50.0
 # 若市價穿過停損點位超過此緩衝點數，研判券商智慧單未如期運作，強制啟動市價平倉備援。
 EMERGENCY_STOP_BUFFER_POINTS = float(os.getenv("STRATEGY_EMERGENCY_STOP_BUFFER_POINTS", "10.0"))
 
+# 2026-10-16 code review 加固：_refresh_long_action_key_for_state 的 COM 查詢會
+# 阻塞 ~2 秒，長效單號一直查不到時不該每輪 tick 都重查一次（會拖慢同一輪其他
+# 策略），改成至少間隔這麼多秒才重試一次。
+LONG_ACTION_KEY_LOOKUP_THROTTLE_SECONDS = 30.0
+
 # 2026-10-07：長效單（跨盤跨日不失效的 OCO）已透過 scripts/verify_long_action_oco.py
 # 在群益正式環境實測驗證成功（送單成功進入洗價池、查得長效單序號、成功撤單完畢）。
 # 正式預設開啟（True），亦可透過環境變數 USE_LONG_ACTION_PROTECTION 控制。
@@ -239,6 +244,12 @@ class StrategyState:
     # 《8.下單-國內期選智慧單》），只有在下單時明確開啟長效單（long_action_flag=True）
     # 才會去查、才會有值；非長效單維持 None，撤單時照舊傳空字串。
     protection_order_long_action_key: str | None = None
+    # 2026-10-16 code review 抓到的漏洞：_refresh_long_action_key_for_state 會發出
+    # 一個會阻塞 ~2 秒的 COM 查詢（pump_events(2.0)），原本沒有任何節流，只要長效單號
+    # 一直查不到，每一輪 tick 都會重查一次，等於整個 strategy_tick() 迴圈（單執行緒、
+    # 依序處理所有策略）每輪都被這一個策略拖慢 2 秒，拖累同一輪的其他策略跟對帳。
+    # 這個欄位記下「上次嘗試查詢的時間」，讓查詢有節流間隔，不是每輪都查。
+    long_action_key_lookup_attempted_at: float | None = None
     last_signal_key: str | None = None
     last_checked_at: float | None = None
     last_signal: dict[str, Any] | None = None
@@ -372,7 +383,6 @@ def _pause_resumed_strategies_with_unclaimed_broker_positions(resumed_strategy_i
         return
 
     broker_positions = st.get("positions") or []
-    paused_any = False
     for strategy_id in resumed_strategy_ids:
         state = _armed.get(strategy_id)
         if state is None or state.held_qty > 0:
@@ -385,12 +395,8 @@ def _pause_resumed_strategies_with_unclaimed_broker_positions(resumed_strategy_i
             f"{unclaimed} 口未被任何策略認領），本機重啟前的狀態不明，已暫停此策略"
             "避免重複進場或保護失效，請人工核對實際部位與保護單後再手動重新啟動。"
         )
-        _stop_with_reason(state, reason)
+        _stop_with_reason(state, reason)  # 內部會自己寫回快照，不用在這裡重複呼叫
         logger.critical("resume_armed_strategies_from_snapshot[%s]: %s", strategy_id, reason)
-        paused_any = True
-
-    if paused_any:
-        _persist_armed_snapshot()
 
 # 各策略的實際成交紀錄（進場/出場），跟 _armed 分開存：策略停止後歷史紀錄仍保留，
 # 給圖表畫「真正下單」的箭頭用，跟 klines_with_signals 那種「幾何上發生過的訊號」不同。
@@ -677,7 +683,16 @@ def _place_oco_protection_for_state(
             # 不要記一個可能解析錯誤的智慧單號，之後撤單撤錯東西。
             state.last_action += "（OCO 送單成功但回應格式無法解析，改用軟停損停利保護，請人工核對）"
     except Exception as exc:  # noqa: BLE001
+        # 2026-10-16 code review 抓到：這行 state.last_action 更新本次對話中途被我
+        # 自己誤刪了——跟 _refresh_long_action_key_for_state 內層那個「查詢失敗不
+        # 代表 OCO 掛單失敗，不要覆寫 last_action」的理由不一樣：這裡是送單本身的
+        # try 區塊（svc.place_oco_order() 或後續解析）丟例外，意味著我們根本不知道
+        # OCO 到底掛成功了沒有——如果委託其實已經送到券商、只是後續解析逾時，
+        # protection_order_smart_key 永遠不會被設定，_tick_one 會乖乖退回軟停損
+        # 停利頂著，但畫面上完全看不出「OCO 掛單出過問題，現在吃的是軟保護」，
+        # 使用者會以為一切正常。一定要留下這個可見訊號。
         logger.warning("strategy_tick[%s] OCO 停損停利智慧單掛單失敗: %s", state.strategy_id, exc)
+        state.last_action += f"（OCO 停損停利智慧單掛單例外：{exc}，改用軟停損停利保護，請人工核對券商端是否已有未被追蹤的委託）"
 
 
 def _refresh_long_action_key_for_state(state: StrategyState, svc: TradingService) -> None:
@@ -690,9 +705,21 @@ def _refresh_long_action_key_for_state(state: StrategyState, svc: TradingService
     查不到、或查到的那一筆長效單號是 "0"（非長效單的預設值，理論上不該出現在這裡，
     但防呆），就維持 None，撤單時照舊傳空字串——寧可保守地當作沒有長效單號，也不要
     存一個可能查錯、對應到別筆單的號碼，那樣撤單會更危險。
+
+    2026-10-16 code review 加固：這個查詢本身會阻塞 ~2 秒（pump_events(2.0)），
+    strategy_tick() 是單執行緒依序處理所有策略，長效單號一直查不到的話，原本每輪
+    都會重查，等於每輪都拖慢同一輪其他策略跟對帳 2 秒。加上節流，至少間隔
+    LONG_ACTION_KEY_LOOKUP_THROTTLE_SECONDS 秒才重試一次。
     """
     if not state.protection_order_smart_key:
         return
+    now = time.time()
+    if (
+        state.long_action_key_lookup_attempted_at is not None
+        and now - state.long_action_key_lookup_attempted_at < LONG_ACTION_KEY_LOOKUP_THROTTLE_SECONDS
+    ):
+        return
+    state.long_action_key_lookup_attempted_at = now
     try:
         from .capital_parse import parse_stop_loss_report_raw
     except ImportError:
@@ -1339,6 +1366,15 @@ def _stop_with_reason(state: StrategyState, reason: str) -> None:
     state.stopped = True
     state.stop_reason = reason
     state.last_action = reason
+    # 2026-10-16 code review 抓到的真實漏洞：_stop_with_reason 有 10 個呼叫點（強制
+    # 停損/停利、孤兒成交金額不符、loss_limit_hit、MAX_CONSECUTIVE_FAILURES 等），
+    # 但原本只有兩個新加的孤兒倉位防呆呼叫點會手動補呼叫 _persist_armed_snapshot()，
+    # 其餘 8 個既有的安全性自動停止完全不會寫回快照——代表策略因為真正的風控理由
+    # （例如連續拒單太多次、虧損觸頂）被自動停止之後，本機快照還留著「這個策略還在
+    # 開著」的舊紀錄，backend 重啟時 resume_armed_strategies_from_snapshot() 會照單
+    # 全收把它重新開起來，等於悄悄撤銷掉這個安全停止。改成直接在這個共用函式裡呼叫，
+    # 一次補齊全部 10 個呼叫點，不用每個呼叫點各自記得加。
+    _persist_armed_snapshot()
 
 
 def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> None:
@@ -1631,8 +1667,7 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
                     state,
                     f"⚠️ 偵測到券商端有未被認領的留倉（{state.product_code} 共 {unclaimed} "
                     "口），暫緩進場並暫停此策略，請人工核對實際部位與保護單後再手動重新啟動。",
-                )
-                _persist_armed_snapshot()
+                )  # 內部會自己寫回快照，不用在這裡重複呼叫
             elif state.held_qty == 0 and _opposite_direction_position_exists(
                 state.product_code, target, exclude_strategy_id=state.strategy_id
             ):

@@ -212,7 +212,12 @@ def _summarize(
         "profit_factor": profit_factor,
         "profit_factor_display": profit_factor_display,
         "total_net_pnl_ntd": float(summary.get("total_net_pnl_ntd", 0.0)),
-        "max_drawdown_ntd": float(summary.get("max_drawdown_ntd", 0.0)),
+        # 2026-10-16 code review 抓到：backend/backtest_engine.py 的 summary 已經不再
+        # 產生 max_drawdown_ntd 這個欄位（這份報告原本依賴 summary.get(...,0.0) 的
+        # 預設值，現在一律是 0.0，誤導成「這個變體完全沒有回撤」），而且這個欄位
+        # 從頭到尾也沒有在這份報告裡被印出來過，是死欄位，直接移除，不要留一個
+        # 看起來有意義但其實恆為 0 的數字。下面的 max_drawdown_pct 是這個檔案自己
+        # 算的（_max_drawdown_pct(returns)），沒有依賴 backtest_engine 的輸出，不受影響。
         "total_return_pct": _total_return(returns) * 100.0,
         "max_drawdown_pct": _max_drawdown_pct(returns) * 100.0,
         "sharpe_ratio": sharpe,

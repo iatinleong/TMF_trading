@@ -888,8 +888,16 @@ class TradingService:
             }
 
     def query_stop_loss_report(
-        self, account: str | None = None, *, kind: str = "OCO"
+        self, account: str | None = None, *, kind: str = "STP"
     ) -> dict[str, Any]:
+        # 2026-10-16 code review 抓到的真實漏洞：這個預設值曾經一度改成 "OCO"
+        # （當時誤以為這個函式只有 strategy_service._refresh_long_action_key_
+        # for_state 在用），但 live_service.query_stop_loss_report()（/api/order/
+        # stop/report 這個既有端點的實作）一直都是不帶 kind、吃這裡的預設值——
+        # 改成 "OCO" 等於讓這個名字叫「stop/report」的既有端點悄悄開始查 OCO
+        # 資料，對任何還在查 STP 單的呼叫端回傳錯誤/空白結果。改回跟券商原生
+        # 預設一致的 "STP"，真正需要查 OCO 的呼叫端（_refresh_long_action_key_
+        # for_state）本來就已經自己明確傳 kind="OCO"，不受影響。
         return self._run_com(lambda: self._query_stop_loss_report_impl(account, kind=kind))
 
     def _query_stop_loss_report_impl(
