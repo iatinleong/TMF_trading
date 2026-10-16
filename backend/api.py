@@ -55,6 +55,7 @@ from .strategy_service import (
     STRATEGY_DEFS,
     klines_with_signals,
     reconcile_after_manual_close,
+    resume_armed_strategies_from_snapshot,
     start_strategy,
     stop_strategy,
     strategy_list,
@@ -172,6 +173,16 @@ def _connect_then_auto_arm() -> None:
     預設值，不是真的權益數。這裡在同一個背景執行緒裡照順序執行，不平行。"""
     auto_connect_on_startup()
     _auto_arm_bound_strategies()
+    # 2026-10-16：單帳號桌面部署（沒有設 WORKER_MODE）用這個，從本機檔案自動恢復
+    # 重啟前還在開著的策略，不用使用者每次重啟後都手動回儀表板按啟動。跟上面那個
+    # Supabase 版本互斥（_is_worker_mode() 為 True 時才需要那個，這裡故意反過來只
+    # 在非 worker 模式下跑），避免兩套機制在同一次啟動裡都被觸發。
+    from .live_service import _is_worker_mode
+
+    if not _is_worker_mode():
+        resumed = resume_armed_strategies_from_snapshot()
+        if resumed:
+            logger.info("已自動恢復 %d 個重啟前開著的策略", resumed)
 
 
 @asynccontextmanager

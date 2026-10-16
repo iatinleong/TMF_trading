@@ -160,6 +160,11 @@ begin
       '# trading starts disabled; set to 0 manually after verifying connection/quotes' + #13#10 +
       'DISABLE_TRADING=1' + #13#10 +
       '' + #13#10 +
+      '# 2026-10-16: on every restart, re-arm whichever strategies were still' + #13#10 +
+      '# running (not stopped) right before the restart - no need to manually' + #13#10 +
+      '# click start on the dashboard each time. Set to 0 to opt out.' + #13#10 +
+      'AUTO_RESUME_STRATEGIES=1' + #13#10 +
+      '' + #13#10 +
       'STRATEGY_INITIAL_CAPITAL=100000' + #13#10 +
       'STRATEGY_MAX_LOSS_NTD=10000' + #13#10 +
       'STRATEGY_MAX_LOSS_PCT=0.10' + #13#10 +

@@ -1,3 +1,4 @@
+import json
 import time
 from datetime import datetime, timedelta
 from datetime import time as dt_time
@@ -428,6 +429,15 @@ def _isolate_reconcile_audit_log(tmp_path, monkeypatch):
     monkeypatch.setattr(
         strategy_service, "_reconcile_audit_log_path", lambda: tmp_path / "reconcile_audit.log"
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_armed_snapshot(tmp_path, monkeypatch):
+    """2026-10-16：start_strategy/stop_strategy 現在每次都會寫
+    _persist_armed_snapshot() 的快照檔，同樣隔離到 tmp_path，避免測試假資料混進
+    專案真實的 data/armed_strategies.json（這份是用來讓真正的服務重啟後自動恢復
+    策略用的，被測試資料污染會導致下次真的啟動時恢復出測試裡的假策略）。"""
+    monkeypatch.setattr(strategy_service, "_ARMED_SNAPSHOT_PATH", tmp_path / "armed_strategies.json")
 
 
 @pytest.fixture(autouse=True)
@@ -1572,6 +1582,93 @@ def test_resolve_strategy_product_code_corrects_expired_tmf():
     current_tmf = strategy_service.compute_current_tmf_code()
     # 傳入過去已過期的 TM2608，應自動校正為當前近月
     assert resolve_strategy_product_code("TM2608") == current_tmf
+
+
+# 2026-10-16 加固：單帳號桌面部署用本機檔案記住「目前開著的策略」，backend process
+# 重啟後（不管是VM重開機、或任何其他原因）能自動恢復成重啟前的樣子，不用使用者
+# 每次重啟都手動回儀表板按啟動。
+def test_start_strategy_writes_armed_snapshot_to_disk(clean_armed):
+    from backend.strategy_service import start_strategy
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
+        start_strategy("breakout_long", "TM2609", qty=3, stop_loss_points=80.0)
+
+    rows = json.loads(strategy_service._ARMED_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    assert len(rows) == 1
+    assert rows[0]["strategy_id"] == "breakout_long"
+    assert rows[0]["product_code"] == "TM2609"
+    assert rows[0]["qty"] == 3
+    assert rows[0]["stop_loss_points"] == 80.0
+
+
+def test_stop_strategy_without_position_removes_it_from_snapshot(clean_armed):
+    from backend.strategy_service import start_strategy, stop_strategy
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
+        start_strategy("breakout_long", "TM2609")
+    stop_strategy("breakout_long")
+
+    rows = json.loads(strategy_service._ARMED_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    assert rows == []
+
+
+def test_stop_strategy_with_open_position_still_removes_it_from_snapshot(clean_armed):
+    """即使還有留倉在等平倉（stop_strategy 不會真的移除 _armed，只標記
+    stopped=True，見該函式註解），快照裡也不該留著它——使用者已經明確按過停止，
+    重啟後不該又被自動恢復成「開著」。"""
+    state = _open_long_state(strategy_id="breakout_long")  # held_qty=1
+    strategy_service._armed["breakout_long"] = state
+
+    stop_strategy("breakout_long")
+
+    assert strategy_service._armed["breakout_long"].stopped is True  # 還在監控平倉
+    rows = json.loads(strategy_service._ARMED_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    assert rows == []
+
+
+def test_resume_armed_strategies_from_snapshot_rearms_saved_config(clean_armed):
+    from backend.strategy_service import resume_armed_strategies_from_snapshot
+
+    strategy_service._ARMED_SNAPSHOT_PATH.write_text(
+        json.dumps([{
+            "strategy_id": "breakout_long", "product_code": "TM2609",
+            "qty": 5, "stop_loss_points": 60.0, "take_profit_points": 150.0,
+            "max_loss_ntd": 8000.0, "max_loss_pct": 0.2,
+            "oco_enabled": False, "soft_stop_enabled": True,
+            "risk_insurance_enabled": False, "reverse_signal_exit_enabled": True,
+        }]),
+        encoding="utf-8",
+    )
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()):
+        resumed = resume_armed_strategies_from_snapshot()
+
+    assert resumed == 1
+    state = strategy_service._armed["breakout_long"]
+    assert state.qty == 5
+    assert state.stop_loss_points == 60.0
+    assert state.oco_enabled is False
+    assert state.risk_insurance_enabled is False
+
+
+def test_resume_armed_strategies_from_snapshot_noop_when_no_file(clean_armed):
+    from backend.strategy_service import resume_armed_strategies_from_snapshot
+
+    assert not strategy_service._ARMED_SNAPSHOT_PATH.exists()
+    assert resume_armed_strategies_from_snapshot() == 0
+    assert strategy_service._armed == {}
+
+
+def test_resume_armed_strategies_from_snapshot_respects_opt_out_env_var(clean_armed, monkeypatch):
+    from backend.strategy_service import resume_armed_strategies_from_snapshot
+
+    strategy_service._ARMED_SNAPSHOT_PATH.write_text(
+        json.dumps([{"strategy_id": "breakout_long", "product_code": "TM2609"}]), encoding="utf-8"
+    )
+    monkeypatch.setenv("AUTO_RESUME_STRATEGIES", "0")
+
+    assert resume_armed_strategies_from_snapshot() == 0
+    assert strategy_service._armed == {}
 
 
 def test_auto_roll_premarks_existing_signal_and_does_not_fire_stale_order():

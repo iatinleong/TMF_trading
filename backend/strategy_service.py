@@ -12,6 +12,7 @@ strategy_service.py — 實盤自動策略（4 個獨立方向策略，可同時
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -270,6 +271,73 @@ class StrategyState:
 
 # key = strategy_id（見 STRATEGY_DEFS），可以同時有多個進入 armed 狀態
 _armed: dict[str, StrategyState] = {}
+
+# 2026-10-16：單機單帳號部署（docs/deploy_end_user_pc.md）用這個本機檔案記住「目前
+# 有哪些策略是使用者自己開著的」，讓 backend process 重啟後（不管是這次修的
+# VM重開機、還是任何其他原因重啟）能自動恢復成重啟前的樣子，不用使用者每次都手動
+# 回儀表板重新按「啟動」。跟 _auto_arm_bound_strategies（backend/api.py）是兩套
+# 不同機制：那個是給「多帳號共用一台機器、WORKER_MODE=1」的部署模式用，從 Supabase
+# 讀設定，而且會連帶關掉這個行程自己的 K 線回補（假設有別的行程負責）——這台單帳號
+# VM 沒有「別的行程」，不能沿用那套，所以另外用一個單純的本機檔案。
+_ARMED_SNAPSHOT_PATH = DATA_DIR / "armed_strategies.json"
+_ARMED_SNAPSHOT_FIELDS = (
+    "qty", "stop_loss_points", "take_profit_points", "max_loss_ntd", "max_loss_pct",
+    "oco_enabled", "soft_stop_enabled", "risk_insurance_enabled", "reverse_signal_exit_enabled",
+)
+
+
+def _persist_armed_snapshot() -> None:
+    """把目前「還在開著、沒被使用者停止」的策略設定寫到本機檔案，供下次啟動時
+    resume_armed_strategies_from_snapshot() 讀回來自動恢復。故意只存 start_strategy
+    會用到的設定值，不存 held_qty/entry_price/protection_order_* 這些執行期狀態——
+    那些本來就該靠 reconcile_after_manual_close/reconcile_orphan_stop_orders 跟券商
+    端現狀重新核對，不能憑舊的本機檔案假裝記得，會跟實際留倉脫鉤。"""
+    try:
+        rows = []
+        for state in _armed.values():
+            if state.stopped:
+                continue  # 使用者已經按停止、只是還在等留倉平掉，不算「開著」
+            row = {"strategy_id": state.strategy_id, "product_code": state.product_code}
+            row.update({f: getattr(state, f) for f in _ARMED_SNAPSHOT_FIELDS})
+            rows.append(row)
+        _ARMED_SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _ARMED_SNAPSHOT_PATH.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        # 寫這個檔案純粹是「重啟後體驗更好」的加分項，絕對不能讓它的失敗影響
+        # start_strategy/stop_strategy 本身（那兩個函式才是真的在管理真錢部位）。
+        logger.warning("寫入 armed_strategies.json 快照失敗（不影響本次操作）: %s", exc)
+
+
+def resume_armed_strategies_from_snapshot() -> int:
+    """開機時呼叫：讀回上次重啟前「還在開著」的策略設定，用跟手動按啟動完全一樣的
+    start_strategy() 重新 arm 起來。回傳成功恢復的策略數量。AUTO_RESUME_STRATEGIES
+    環境變數預設開啟（"1"），可設成 "0" 關閉、改回每次都要手動到儀表板重新啟動。"""
+    if os.getenv("AUTO_RESUME_STRATEGIES", "1").strip().lower() in {"0", "false", "no"}:
+        return 0
+    if not _ARMED_SNAPSHOT_PATH.is_file():
+        return 0
+    try:
+        rows = json.loads(_ARMED_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("讀取 armed_strategies.json 快照失敗，略過自動恢復: %s", exc)
+        return 0
+
+    resumed = 0
+    for row in rows:
+        strategy_id = row.get("strategy_id")
+        if not strategy_id or strategy_id not in STRATEGY_DEFS:
+            continue
+        try:
+            start_strategy(
+                strategy_id,
+                row.get("product_code"),
+                **{f: row.get(f) for f in _ARMED_SNAPSHOT_FIELDS},
+            )
+            resumed += 1
+            logger.info("已從重啟前的快照自動恢復策略: %s", strategy_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("自動恢復策略 %s 失敗: %s", strategy_id, exc)
+    return resumed
 
 # 各策略的實際成交紀錄（進場/出場），跟 _armed 分開存：策略停止後歷史紀錄仍保留，
 # 給圖表畫「真正下單」的箭頭用，跟 klines_with_signals 那種「幾何上發生過的訊號」不同。
@@ -995,6 +1063,7 @@ def start_strategy(
             state.last_signal_key = existing_signal["key"]
 
     _armed[strategy_id] = state
+    _persist_armed_snapshot()
     return strategy_status(strategy_id)
 
 
@@ -1015,6 +1084,7 @@ def stop_strategy(strategy_id: str) -> dict[str, Any]:
         )
     else:
         _armed.pop(strategy_id, None)
+    _persist_armed_snapshot()
     return strategy_status(strategy_id)
 
 
