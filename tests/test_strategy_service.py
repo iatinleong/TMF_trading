@@ -1855,6 +1855,77 @@ def test_tick_one_skips_entry_when_opposite_direction_sibling_holds_position(cle
     assert mock_svc.place_order.called, "反向持倉出場後，應該要能正常進場"
 
 
+# 2026-10-16 加固（同一次 Gemini review 抓到的第二個漏洞）：孤兒倉位暫停機制的
+# 第一版只擋「跟孤兒倉位同方向」的策略，漏了跨方向沖銷死角——孤兒倉位如果是空單，
+# 被暫停的 breakout_short held_qty 還是 0，breakout_long 看到多頭訊號時
+# _opposite_direction_position_exists 查的是「其他策略的 held_qty」，完全查不到
+# 已經被暫停、held_qty=0 的孤兒策略，一樣會誤判「沒有反向持倉」而放行，買單一送
+# 出就會被券商拿去跟孤兒空單直接淨額沖銷（2026-09-08 那次實盤事故重演）。
+def test_unclaimed_broker_position_for_product_detects_opposite_direction_orphan():
+    from backend.strategy_service import _unclaimed_broker_position_for_product
+
+    # breakout_short 被暫停了，held_qty=0，完全沒有策略認領這口券商端的空單。
+    holder = StrategyState(
+        strategy_id="breakout_short", product_code="TM2609", strategy="breakout",
+        direction_limit="short", label="測試空", held_qty=0, held_direction=None, stopped=True,
+    )
+    strategy_service._armed["breakout_short"] = holder
+    broker_positions = [{"product": "TM2609", "direction_key": "short", "qty": "1"}]
+
+    assert _unclaimed_broker_position_for_product("TM2609", broker_positions) == 1
+
+
+def test_unclaimed_broker_position_for_product_zero_when_fully_claimed():
+    from backend.strategy_service import _unclaimed_broker_position_for_product
+
+    holder = StrategyState(
+        strategy_id="breakout_short", product_code="TM2609", strategy="breakout",
+        direction_limit="short", label="測試空", held_qty=1, held_direction="short",
+    )
+    strategy_service._armed["breakout_short"] = holder
+    broker_positions = [{"product": "TM2609", "direction_key": "short", "qty": "1"}]
+
+    assert _unclaimed_broker_position_for_product("TM2609", broker_positions) == 0
+
+
+def test_tick_one_blocks_entry_on_unclaimed_opposite_direction_orphan(clean_armed):
+    """核心回歸測試：重演上面漏洞的完整情境——breakout_short 被暫停、held_qty=0，
+    券商端其實還握著那口空單。breakout_long 看到多頭訊號時，即使
+    _opposite_direction_position_exists 會誤判沒有反向持倉，新加的
+    _unclaimed_broker_position_for_product 守門員也要擋下來，不能送出買單。"""
+    holder = StrategyState(
+        strategy_id="breakout_short", product_code="TM2609", strategy="breakout",
+        direction_limit="short", label="測試空", held_qty=0, held_direction=None, stopped=True,
+    )
+    _armed["breakout_short"] = holder
+
+    state = StrategyState(
+        strategy_id="breakout_long", product_code="TM2609", strategy="breakout",
+        direction_limit="long", label="測試多", qty=1,
+        initial_capital_ntd=100000.0, max_loss_ntd=10000.0, max_loss_pct=0.1,
+        stop_loss_points=100.0, take_profit_points=250.0,
+    )
+    _armed["breakout_long"] = state
+
+    mock_svc = MagicMock()
+    mock_svc.is_order_enabled.return_value = True
+
+    dummy_signal = {"key": "2026-09-08 01:00:00_long", "direction": "long", "close": 47500.0, "time": 1788213600}
+    mock_df = pd.DataFrame({"close": [47500.0] * 70, "ma_fast": [47500.0] * 70, "ma_mid": [47400.0] * 70, "ma_slow": [47300.0] * 70})
+    fake_now = pd.Timestamp(dummy_signal["time"]) + pd.Timedelta(minutes=5)
+    # 券商端其實還握著那口孤兒空單——這是漏洞的關鍵：舊的互斥檢查完全看不到這個。
+    st = {"quote": {"last_price": 47500.0}, "positions": [{"product": "TM2609", "direction_key": "short", "qty": "1"}]}
+
+    with patch("backend.strategy_service._latest_closed_signal", return_value=dummy_signal), \
+         patch("backend.strategy_service._now", return_value=fake_now), \
+         patch("backend.strategy_service._load_bars", return_value=mock_df):
+        _tick_one(state, mock_svc, st)
+
+    assert not mock_svc.place_order.called, "跨方向孤兒倉位沒擋住，買單會被券商拿去跟孤兒空單淨額沖銷！"
+    assert state.stopped is True
+    assert "未被認領的留倉" in state.stop_reason
+
+
 def test_tick_one_discards_stale_quote_and_uses_bar_close_for_entry_price(clean_armed):
     """2026-09-11 實盤事故重現：st["quote"]["last_price"] 是跨盤沒更新的過期值
     （46082，實際是前一個夜盤 05:00 的收盤價），真實市價（也就是K棒收盤價）

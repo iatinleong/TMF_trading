@@ -356,39 +356,34 @@ def _pause_resumed_strategies_with_unclaimed_broker_positions(resumed_strategy_i
 
     這裡保守處理：偵測到就不讓那個策略去送新倉單，先停在這裡、大聲記警告，等
     人工確認實際部位跟保護單之後再手動重新啟動——不嘗試猜測怎麼接管（同一商品
-    理論上不會有兩個策略同時認領，但故意不賭這個假設一定成立）。"""
+    理論上不會有兩個策略同時認領，但故意不賭這個假設一定成立）。
+
+    2026-10-16 第二輪修正（同一次 Gemini review 抓到）：第一版只比對「跟即將要
+    用的方向相同」那一邊，漏了跨方向沖銷死角——孤兒倉位如果是空單，只會暫停
+    同是空方的策略，多方策略的 _opposite_direction_position_exists 查的是其他
+    策略的 held_qty（暫停的孤兒策略 held_qty 還是 0），完全擋不住，多方策略一
+    送出買單就會被券商拿去跟孤兒空單直接淨額沖銷。改用
+    _unclaimed_broker_position_for_product（不分方向，這個商品只要有任何一邊
+    沒被認領就算有風險）。"""
     try:
         st = TradingService.get().status()
     except Exception as exc:  # noqa: BLE001
         logger.warning("resume 後檢查券商留倉失敗，略過這次孤兒倉位檢查: %s", exc)
         return
 
-    broker_qty: dict[tuple[str, str], int] = {}
-    for pos in st.get("positions") or []:
-        direction_key = pos.get("direction_key")
-        if direction_key not in {"long", "short"}:
-            continue
-        prod = _canonical_position_product(str(pos.get("product") or ""))
-        try:
-            qty = int(float(str(pos.get("qty", "0")).replace(",", "")))
-        except ValueError:
-            qty = 0
-        key = (prod, direction_key)
-        broker_qty[key] = broker_qty.get(key, 0) + qty
-
+    broker_positions = st.get("positions") or []
     paused_any = False
     for strategy_id in resumed_strategy_ids:
         state = _armed.get(strategy_id)
         if state is None or state.held_qty > 0:
             continue
-        key = (_canonical_position_product(state.product_code), state.direction_limit)
-        actual = broker_qty.get(key, 0)
-        if actual <= 0:
+        unclaimed = _unclaimed_broker_position_for_product(state.product_code, broker_positions)
+        if unclaimed <= 0:
             continue
         reason = (
-            f"⚠️ 重啟後偵測到券商端有未被認領的留倉（{key[0]}/{key[1]} x{actual}），"
-            "本機重啟前的狀態不明，已暫停此策略避免重複進場或保護失效，請人工核對"
-            "實際部位與保護單後再手動重新啟動。"
+            f"⚠️ 重啟後偵測到券商端有未被認領的留倉（{state.product_code} 共 "
+            f"{unclaimed} 口未被任何策略認領），本機重啟前的狀態不明，已暫停此策略"
+            "避免重複進場或保護失效，請人工核對實際部位與保護單後再手動重新啟動。"
         )
         _stop_with_reason(state, reason)
         logger.critical("resume_armed_strategies_from_snapshot[%s]: %s", strategy_id, reason)
@@ -523,6 +518,47 @@ def _opposite_direction_position_exists(
             continue
         return True
     return False
+
+
+def _unclaimed_broker_position_for_product(product_code: str, broker_positions: list[dict[str, Any]]) -> int:
+    """2026-10-16 加固（Gemini review 抓到的漏洞）：回傳這個商品在券商端的淨部位，
+    有多少口數沒有被「目前任何還活著的策略」的 held_qty 認領。
+
+    第一版的 _pause_resumed_strategies_with_unclaimed_broker_positions 只比對
+    「跟即將要用的方向相同」的那一邊——但 _opposite_direction_position_exists
+    的判斷依據是「其他策略的 held_qty」，一個被暫停的孤兒策略 held_qty 還是 0，
+    完全不會被那個函式擋到。如果孤兒倉位是空單、暫停的是 breakout_short，
+    breakout_long 看到多頭訊號時 _opposite_direction_position_exists 會誤判
+    「沒有反向持倉」而放行，新的買單一送出就會被券商拿去跟孤兒空單直接淨額
+    沖銷（2026-09-08 那次實盤事故的同一個根因）。所以這裡故意不分方向，只要
+    這個商品有任何一邊沒被認領，就算是有風險，兩邊都要擋。"""
+    prod = _canonical_position_product(product_code)
+    broker_qty: dict[str, int] = {}
+    for pos in broker_positions:
+        direction_key = pos.get("direction_key")
+        if direction_key not in {"long", "short"}:
+            continue
+        if _canonical_position_product(str(pos.get("product") or "")) != prod:
+            continue
+        try:
+            qty = int(float(str(pos.get("qty", "0")).replace(",", "")))
+        except ValueError:
+            qty = 0
+        broker_qty[direction_key] = broker_qty.get(direction_key, 0) + qty
+
+    claimed: dict[str, int] = {}
+    for s in _armed.values():
+        if _canonical_position_product(s.product_code) != prod:
+            continue
+        if s.held_qty > 0 and s.held_direction in {"long", "short"}:
+            claimed[s.held_direction] = claimed.get(s.held_direction, 0) + s.held_qty
+
+    unclaimed_total = 0
+    for direction in ("long", "short"):
+        diff = broker_qty.get(direction, 0) - claimed.get(direction, 0)
+        if diff > 0:
+            unclaimed_total += diff
+    return unclaimed_total
 
 
 def _settlement_month_from_tmf_code(product_code: str) -> str | None:
@@ -1576,7 +1612,28 @@ def _tick_one(state: StrategyState, svc: TradingService, st: dict[str, Any]) -> 
 
     try:
         if target == state.direction_limit:
-            if state.held_qty == 0 and _opposite_direction_position_exists(
+            # 2026-10-16 加固（Gemini review 抓到的漏洞）：這是最後一道守門員，在
+            # 每一輪真的要送新倉單之前都重新查一次券商現狀（用的是這輪 strategy_tick()
+            # 剛拿到的 st，不是另外開一次查詢），不是只在
+            # resume_armed_strategies_from_snapshot() 開機那一次查。理由：(1) 開機
+            # 那次查詢可能因為非同步 COM 事件還沒到位而拿到空的持倉快照，當下誤判
+            # 放行；(2) 開機時的檢查只比對「跟即將要用的方向相同」那一邊，這裡改用
+            # 不分方向的 _unclaimed_broker_position_for_product，連「孤兒倉位跟這次
+            # 要進場的方向相反、會被券商直接淨額沖銷掉」這種情況也擋得住。每一輪都
+            # 查，就算某一輪剛好漏放行，下一輪還有機會被擋下來。
+            unclaimed = (
+                _unclaimed_broker_position_for_product(state.product_code, st.get("positions") or [])
+                if state.held_qty == 0
+                else 0
+            )
+            if unclaimed > 0:
+                _stop_with_reason(
+                    state,
+                    f"⚠️ 偵測到券商端有未被認領的留倉（{state.product_code} 共 {unclaimed} "
+                    "口），暫緩進場並暫停此策略，請人工核對實際部位與保護單後再手動重新啟動。",
+                )
+                _persist_armed_snapshot()
+            elif state.held_qty == 0 and _opposite_direction_position_exists(
                 state.product_code, target, exclude_strategy_id=state.strategy_id
             ):
                 state.last_action = (
