@@ -165,3 +165,33 @@ tunnel（見 `installer/tmf_trading_setup.iss`/`post_install.ps1` 2026-09-03 之
    換過 zone——`gcloud config get-value project`/`gcloud compute instances list` 先
    查清楚實際的 project/zone，不要沿用之前記得的值，這個專案就因為猜錯專案/zone
    走過兩次冤枉路（`compute.addresses.create` 權限不足、`describe` 查不到 VM）。
+
+## 9. `-LogonType Interactive -AtLogOn` 兩個獨立的洞：VM重開機沒人登入、RDP登出會砍任務
+
+第 1b 點解的是「用 SYSTEM 身分跑排程會讓 SKCOM 回 602」，當時改成
+`-LogonType Interactive -AtLogOn -User <實際使用者>` 解掉——但這個設定本身帶著
+另外兩個獨立的洞，跟 602 是不同問題：
+
+1. **`-AtLogOn` 只有「這個使用者真的登入」才會觸發**：VM 本身重開機（Windows
+   更新、GCP host 維護，或任何原因）如果沒人手動登入，這個排程永遠沒有機會啟動，
+   跟程式本身有沒有 bug 無關。2026-10-15 03:36 實測過一次：process 乾淨停止（前後
+   沒有任何錯誤），空了超過一天沒人發現，就是這個洞。
+2. **`-LogonType Interactive` 把任務綁在那次登入的 session 上**：session 被登出
+   （不是斷線，是真的 log off）就會連帶把任務中止——見上面第 6 點的
+   `267014`/`SCHED_S_TASK_TERMINATED`。
+
+**How to apply（已經實裝，見 `installer/post_install.ps1` 2026-10-16 的註解與
+`tmf_trading_setup.iss` 的安裝精靈新增頁面）**：改用 `-LogonType Password`
+（Windows 原生支援的「不管有沒有人登入都執行」模式，密碼由 Windows 自己加密存成
+LSA secret）+ `-AtStartup` 觸發，兩個洞一次解掉——不綁定任何一次登入的 session，
+也不需要等人登入才啟動。查證過 `-LogonType S4U`：Microsoft 官方文件
+（`taskschedulerschema-logontype-simpletype`）明寫 S4U 不存密碼、沒有
+DPAPI／憑證存取權限，大概率會重演 SYSTEM 的 602，不是這裡能用的替代方案。
+
+⚠️ **這個模式還沒有在「完全沒人登入、真的重開機」的情況下實測驗證過群益登入不會
+回 602**——SKCOM 是第三方 COM 元件，理論上可能檢查某些只有真正互動 session 才有
+的東西（例如 window station）。裝完務必找非交易時段真的重開機測一次（不要馬上
+登入），確認服務自己起來、群益登入正常。如果驗證後還是 602，退回
+`-LogonType Interactive -AtLogOn`，改用「開機自動登入」（`AutoAdminLogon`）當
+備援，並把這個帳號設成低權限、限制 RDP 來源IP（開機自動登入會讓誰連上 RDP 都
+直接進到一個沒鎖的桌面，風險比存密碼的排程任務高）。

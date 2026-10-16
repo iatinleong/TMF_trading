@@ -71,8 +71,12 @@ Name: "{app}\data"
 ; Inno 的 Setup.exe 本體是 32 位元程序，裸寫 "powershell.exe" 會抓到 SysWOW64 的
 ; 32 位元版 → regsvr32 註冊寫進 32 位元登錄區，64 位元後端讀不到 → Class not registered；
 ; 且 32 位元下 System32 路徑被重導向，連 VC2010 已裝與否的判斷都會失真。
+; 2026-10-16：-TaskPassword 透過 {code:...} 在執行當下才展開填入命令列，不是寫在
+; 編譯好的 .iss 靜態字串裡，也不落地成任何檔案——唯一的殘留風險是「如果使用者自己
+; 在跑 Setup.exe 時加了 /LOG 參數」，Inno 會把展開後的完整命令列寫進那份 log 檔，
+; 這點沒有辦法從這邊完全防範，只能在使用手冊註明不要搭配 /LOG 使用。
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\post_install.ps1"" -AppDir ""{app}"" -Port {#AppPort}"; \
+  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\post_install.ps1"" -AppDir ""{app}"" -Port {#AppPort} -TaskPassword ""{code:GetTaskPassword}"""; \
   StatusMsg: "設定 SKCOM 元件、防火牆與開機自動啟動..."; \
   Flags: runhidden waituntilterminated 64bit
 
@@ -97,6 +101,7 @@ Name: "{commondesktop}\{#AppName}"; Filename: "http://127.0.0.1:{#AppPort}"
 [Code]
 var
   EnvPage: TInputOptionWizardPage;
+  TaskPwdPage: TInputQueryWizardPage;
 
 procedure InitializeWizard;
 begin
@@ -113,6 +118,22 @@ begin
   EnvPage.Add('測試環境（建議先選這個）');
   EnvPage.Add('正式環境（我已完成連線測試，確定要用正式帳號）');
   EnvPage.SelectedValueIndex := 0;
+
+  // 2026-10-16：讓交易程式在電腦「重新開機」後也能自動恢復運作，不用你每次都手動
+  // 登入才會啟動——這個密碼只會交給 Windows 工作排程器自己加密保存（跟你平常登入
+  // Windows 用的是同一套機制），不會寫進任何安裝檔案，我方也看不到。留空的話一樣能
+  // 裝、一樣能用，只是重開機後要你自己登入一次才會恢復自動交易。
+  TaskPwdPage := CreateInputQueryPage(EnvPage.ID,
+    '開機自動啟動（建議設定）', '讓交易程式在電腦重開機後自動恢復運作，不用你手動登入',
+    '目前這個 Windows 帳號（' + ExpandConstant('{username}') + '）的登入密碼，' + #13#10 +
+    '只會交給 Windows 工作排程器加密保存，不進任何安裝檔案，我方也看不到。' + #13#10 +
+    '留空 = 略過（之後電腦重開機，要你自己手動登入一次才會恢復自動交易）。');
+  TaskPwdPage.Add('Windows 登入密碼（留空 = 略過）:', True);
+end;
+
+function GetTaskPassword(Param: String): String;
+begin
+  Result := TaskPwdPage.Values[0];
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

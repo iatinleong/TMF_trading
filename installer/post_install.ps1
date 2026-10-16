@@ -3,7 +3,11 @@
 # pip install（本安裝包已內附凍結好的 tmf-backend.exe，不需要系統上有 Python）。
 param(
     [string]$AppDir = "C:\tmf-trading",
-    [int]$Port = 8765
+    [int]$Port = 8765,
+    # 2026-10-16：開機自動啟動排程要用的 Windows 帳號密碼，留空則退回舊的
+    # AtLogOn/Interactive 模式（見下面註冊排程任務那段的說明）。這個值只會傳給
+    # Register-ScheduledTask 做一次性登入驗證，不寫進任何檔案或 log。
+    [string]$TaskPassword = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +17,7 @@ $ErrorActionPreference = "Stop"
 # regsvr32 也會把 COM 註冊寫進 32 位元登錄區，64 位元的 tmf-backend 讀不到，全部白做。
 if (-not [Environment]::Is64BitProcess) {
     $ps64 = Join-Path $env:SystemRoot "Sysnative\WindowsPowerShell\v1.0\powershell.exe"
-    & $ps64 -NoProfile -ExecutionPolicy Bypass -File $MyInvocation.MyCommand.Path -AppDir $AppDir -Port $Port
+    & $ps64 -NoProfile -ExecutionPolicy Bypass -File $MyInvocation.MyCommand.Path -AppDir $AppDir -Port $Port -TaskPassword $TaskPassword
     exit $LASTEXITCODE
 }
 
@@ -142,8 +146,6 @@ try {
     $taskName = "TMF-Trading-API"
     $currentUser = "$env:USERDOMAIN\$env:USERNAME"
     $action = New-ScheduledTaskAction -Execute $exePath -WorkingDirectory $AppDir
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
-    $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Highest
     # 2026-10-12 實盤事故：VM 上的 tmf-backend.exe 在 10/10 20:49 乾淨地停掉，前後沒有任何
     # 錯誤或例外（Center/Quote/Order.log、position_audit.log 全部正常運作到那一秒就斷了），
     # 停掉的時間點量出來是啟動後 2天23時59分40秒——幾乎精準踩在 72 小時整。原因是
@@ -158,9 +160,42 @@ try {
         -RestartInterval (New-TimeSpan -Minutes 1) `
         -AllowStartIfOnBatteries `
         -DontStopIfGoingOnBatteries
-    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+
+    # 2026-10-16 實盤事故：上面那個修正解決了「跑太久被砍」，但 AtLogOn 觸發只有
+    # 「這個使用者真的登入」才會啟動排程——VM 本身重開機（Windows更新/GCP維護/任何
+    # 原因）如果沒人手動登入，這個排程永遠沒有機會啟動。10/15 03:36 乾淨停止後，
+    # 空了超過一天沒人發現，根因就是這個洞，不是程式本身壞掉。
+    #
+    # 查證過：S4U 登入類型不存密碼、沒有 DPAPI/憑證存取權限（Microsoft 官方文件
+    # taskschedulerschema-logontype-simpletype 明寫），大概率會重演 SYSTEM 的 602；
+    # 只有 -LogonType Password（Windows 原生支援的「不管有沒有人登入都執行」模式，
+    # 密碼由 Windows 自己加密存成 LSA secret，不是我們這邊存在任何檔案裡）才會走跟
+    # 真正互動登入一樣的 DPAPI 解鎖路徑，有機會摸到憑證，且比「開機自動登入」更安全
+    # （不會留一個沒鎖的桌面在那邊讓 RDP 直接撿走）。
+    #
+    # ⚠️ 這個模式還沒有在「完全沒人登入、真的重開機」的情況下實測驗證過群益登入不會
+    # 回 602——SKCOM 是第三方 COM 元件，理論上可能檢查某些只有真正互動 session 才有
+    # 的東西（例如 window station）。裝完務必找非交易時段真的重開機測一次（不要馬上
+    # 登入），確認服務自己起來、群益登入正常，才能放心依賴這個機制。如果驗證後還是
+    # 602，退回下面 else 分支的舊模式，改用開機自動登入（AutoAdminLogon）當備援，
+    # 並把這個帳號設成低權限、限制 RDP 來源IP。
+    #
+    # $TaskPassword 留空則退回舊的 AtLogOn/Interactive（能用，但保留「VM重開機沒人
+    # 登入就不會自動恢復」的限制），給不想在安裝精靈輸入密碼的人當選項。
+    if ($TaskPassword) {
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+        $trigger.Delay = "PT1M"  # 開機後延遲1分鐘，等網路/憑證服務就位
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+            -User $currentUser -Password $TaskPassword -RunLevel Highest -Settings $settings -Force | Out-Null
+        $TaskPassword = $null  # 盡早清掉，不留在變數裡
+        Log "排程任務 $taskName 已註冊並啟動（使用者：$currentUser，開機自動啟動、不需要登入，無執行時間上限）"
+    } else {
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
+        $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Highest
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+        Log "排程任務 $taskName 已註冊並啟動（使用者：$currentUser，登入時自動啟動，無執行時間上限）——未設定開機自動啟動密碼，VM重開機後需要手動登入才會恢復"
+    }
     Start-ScheduledTask -TaskName $taskName
-    Log "排程任務 $taskName 已註冊並啟動（使用者：$currentUser，登入時自動啟動，無執行時間上限）"
 
     # 2026-09-03：移除了 Cloudflare quick tunnel 自動註冊（見 git 歷史）。quick tunnel
     # 網址每 3 天左右會被 Cloudflare 邊緣節點強制斷線、且沒有正常運作保證，改用 GCP
