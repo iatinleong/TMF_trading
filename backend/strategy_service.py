@@ -322,7 +322,7 @@ def resume_armed_strategies_from_snapshot() -> int:
         logger.warning("讀取 armed_strategies.json 快照失敗，略過自動恢復: %s", exc)
         return 0
 
-    resumed = 0
+    resumed_ids: list[str] = []
     for row in rows:
         strategy_id = row.get("strategy_id")
         if not strategy_id or strategy_id not in STRATEGY_DEFS:
@@ -333,11 +333,69 @@ def resume_armed_strategies_from_snapshot() -> int:
                 row.get("product_code"),
                 **{f: row.get(f) for f in _ARMED_SNAPSHOT_FIELDS},
             )
-            resumed += 1
+            resumed_ids.append(strategy_id)
             logger.info("已從重啟前的快照自動恢復策略: %s", strategy_id)
         except Exception as exc:  # noqa: BLE001
             logger.warning("自動恢復策略 %s 失敗: %s", strategy_id, exc)
-    return resumed
+
+    if resumed_ids:
+        _pause_resumed_strategies_with_unclaimed_broker_positions(resumed_ids)
+    return len(resumed_ids)
+
+
+def _pause_resumed_strategies_with_unclaimed_broker_positions(resumed_strategy_ids: list[str]) -> None:
+    """2026-10-16 加固（Gemini review 抓到的真實漏洞，讀過 reconcile_after_manual_
+    close／reconcile_orphan_stop_orders 的程式碼驗證過）：resume_armed_strategies_
+    from_snapshot() 重新 arm 起來的策略一律從 held_qty=0 開始（本機快照故意不存
+    執行期狀態，見 _persist_armed_snapshot 的說明），但如果重啟前那一刻券商端其實
+    還握著一筆真倉位（process 剛好在持倉中被重開機打斷），現有的兩個 reconcile
+    函式都只處理「內部有、券商沒有」這個方向，完全沒有反過來比對「內部沒有、券商
+    有」——放著不管，策略會誤判自己空手，可能對同一方向再送一次進場單（曝險
+    加倍），軟停損/風控也完全不會替那筆舊倉位計算損益，保護單的智慧單號也早就
+    遺失、無法自動撤銷。
+
+    這裡保守處理：偵測到就不讓那個策略去送新倉單，先停在這裡、大聲記警告，等
+    人工確認實際部位跟保護單之後再手動重新啟動——不嘗試猜測怎麼接管（同一商品
+    理論上不會有兩個策略同時認領，但故意不賭這個假設一定成立）。"""
+    try:
+        st = TradingService.get().status()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("resume 後檢查券商留倉失敗，略過這次孤兒倉位檢查: %s", exc)
+        return
+
+    broker_qty: dict[tuple[str, str], int] = {}
+    for pos in st.get("positions") or []:
+        direction_key = pos.get("direction_key")
+        if direction_key not in {"long", "short"}:
+            continue
+        prod = _canonical_position_product(str(pos.get("product") or ""))
+        try:
+            qty = int(float(str(pos.get("qty", "0")).replace(",", "")))
+        except ValueError:
+            qty = 0
+        key = (prod, direction_key)
+        broker_qty[key] = broker_qty.get(key, 0) + qty
+
+    paused_any = False
+    for strategy_id in resumed_strategy_ids:
+        state = _armed.get(strategy_id)
+        if state is None or state.held_qty > 0:
+            continue
+        key = (_canonical_position_product(state.product_code), state.direction_limit)
+        actual = broker_qty.get(key, 0)
+        if actual <= 0:
+            continue
+        reason = (
+            f"⚠️ 重啟後偵測到券商端有未被認領的留倉（{key[0]}/{key[1]} x{actual}），"
+            "本機重啟前的狀態不明，已暫停此策略避免重複進場或保護失效，請人工核對"
+            "實際部位與保護單後再手動重新啟動。"
+        )
+        _stop_with_reason(state, reason)
+        logger.critical("resume_armed_strategies_from_snapshot[%s]: %s", strategy_id, reason)
+        paused_any = True
+
+    if paused_any:
+        _persist_armed_snapshot()
 
 # 各策略的實際成交紀錄（進場/出場），跟 _armed 分開存：策略停止後歷史紀錄仍保留，
 # 給圖表畫「真正下單」的箭頭用，跟 klines_with_signals 那種「幾何上發生過的訊號」不同。

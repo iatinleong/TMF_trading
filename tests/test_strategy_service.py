@@ -1671,6 +1671,56 @@ def test_resume_armed_strategies_from_snapshot_respects_opt_out_env_var(clean_ar
     assert strategy_service._armed == {}
 
 
+# 2026-10-16 加固（Gemini review 抓到的真實漏洞，讀過 reconcile_after_manual_close/
+# reconcile_orphan_stop_orders 的程式碼驗證過）：兩個既有的 reconcile 函式都只處理
+# 「內部有、券商沒有」，完全沒有反過來比對「內部沒有、券商有」——resume 恢復的策略
+# 一律從 held_qty=0 開始，如果重啟前那一刻券商端其實還握著真倉位，放著不管會讓策略
+# 誤判空手、對同一方向再送一次進場單，軟停損也不會替那筆舊倉位計算損益。
+def test_resume_pauses_strategy_when_broker_has_unclaimed_position(clean_armed):
+    from backend.strategy_service import resume_armed_strategies_from_snapshot
+
+    strategy_service._ARMED_SNAPSHOT_PATH.write_text(
+        json.dumps([{"strategy_id": "breakout_long", "product_code": "TM2609"}]), encoding="utf-8"
+    )
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()), patch.object(
+        strategy_service.TradingService, "get"
+    ) as mock_get:
+        # breakout_long 的 direction_limit 是 "long"，券商端剛好回報同商品同方向
+        # 有 1 口留倉，但快照裡完全不知道這件事（本機重啟前的狀態）。
+        mock_get.return_value.status.return_value = {
+            "positions": [{"product": "TM2609", "direction_key": "long", "qty": "1"}]
+        }
+        resumed = resume_armed_strategies_from_snapshot()
+
+    assert resumed == 1  # 有被重新 arm 起來，只是接著被暫停，不是沒恢復
+    state = strategy_service._armed["breakout_long"]
+    assert state.stopped is True
+    assert "未被認領的留倉" in state.stop_reason
+    # 暫停之後要重新寫回快照，不然下次重啟又會用同一份舊設定重新恢復、重演一次
+    rows = json.loads(strategy_service._ARMED_SNAPSHOT_PATH.read_text(encoding="utf-8"))
+    assert rows == []
+
+
+def test_resume_does_not_pause_when_broker_position_matches_nothing(clean_armed):
+    """對照組：券商沒有留倉、或留倉是別的商品/方向，不該被誤判成孤兒倉位而暫停。"""
+    from backend.strategy_service import resume_armed_strategies_from_snapshot
+
+    strategy_service._ARMED_SNAPSHOT_PATH.write_text(
+        json.dumps([{"strategy_id": "breakout_long", "product_code": "TM2609"}]), encoding="utf-8"
+    )
+
+    with patch("backend.strategy_service._load_bars", return_value=pd.DataFrame()), patch.object(
+        strategy_service.TradingService, "get"
+    ) as mock_get:
+        mock_get.return_value.status.return_value = {"positions": []}
+        resumed = resume_armed_strategies_from_snapshot()
+
+    assert resumed == 1
+    state = strategy_service._armed["breakout_long"]
+    assert state.stopped is False
+
+
 def test_auto_roll_premarks_existing_signal_and_does_not_fire_stale_order():
     """驗證：當 _tick_one 觸發 auto-roll 換約時，必須立即將新商品的既有訊號標記為已消費，
     絕不能對著換約前就已存在的歷史 MA 狀態誤發真實市價委託！"""
